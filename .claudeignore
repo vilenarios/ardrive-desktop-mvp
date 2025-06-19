@@ -1,0 +1,56 @@
+# Claude Code Ignore File
+# Files and directories that Claude Code should avoid reading
+
+# Build outputs
+dist/
+out/
+build/
+*.log
+
+# Dependencies
+node_modules/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/settings.json
+.vscode/tasks.json
+.vscode/launch.json
+
+# Sensitive files
+*.pem
+*.key
+*.enc
+.env.local
+.env.production
+
+# Large binary files
+*.zip
+*.tar.gz
+*.dmg
+*.exe
+*.deb
+*.rpm
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Cache directories
+.cache/
+.turbo/
+.next/
+
+# Lock files (can be large)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
