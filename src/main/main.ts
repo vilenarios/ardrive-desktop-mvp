@@ -1253,6 +1253,30 @@ class ArDriveApp {
         throw error;
       }
     });
+
+    ipcMain.handle('shell:open-path', async (_, path: string) => {
+      try {
+        // Validate the path
+        const validatedPath = InputValidator.validateFilePath(path);
+        
+        // Open the path (file or folder)
+        const result = await shell.openPath(validatedPath);
+        
+        // openPath returns an error string if it fails, empty string on success
+        if (result) {
+          throw new Error(`Failed to open path: ${result}`);
+        }
+        
+        return true;
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          console.error('Shell open path validation failed:', error.message);
+          throw error;
+        }
+        console.error('Failed to open path:', error);
+        throw error;
+      }
+    });
     
     // Open payment in a new child window instead of external browser
     ipcMain.handle('payment:open-window', async (_, url: string) => {

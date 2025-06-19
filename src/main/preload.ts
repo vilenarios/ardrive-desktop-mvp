@@ -110,6 +110,8 @@ const api = {
   shell: {
     openExternal: (url: string) => 
       ipcRenderer.invoke('shell:open-external', url),
+    openPath: (path: string) =>
+      ipcRenderer.invoke('shell:open-path', path),
   },
   
   // Payment operations

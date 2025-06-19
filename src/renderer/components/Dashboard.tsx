@@ -41,7 +41,10 @@ import {
   Search,
   Filter,
   Key,
-  Shield
+  Shield,
+  Trash2,
+  Moon,
+  Sun
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -77,6 +80,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [showAllDownloads, setShowAllDownloads] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'pending' | 'failed'>('all');
+  const [showDriveMenu, setShowDriveMenu] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   
   // Handler to fix type mismatch
   const handleStatusFilterChange = (filter: string) => {
@@ -210,6 +215,18 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     return () => clearInterval(interval);
   }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showDriveMenu) {
+        setShowDriveMenu(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showDriveMenu]);
 
 
   const handleStopSync = async () => {
@@ -411,6 +428,16 @@ const Dashboard: React.FC<DashboardProps> = ({
             alt="ArDrive" 
             style={{ height: '28px' }} 
           />
+          <span style={{
+            marginLeft: 'var(--space-4)',
+            paddingLeft: 'var(--space-4)',
+            borderLeft: '1px solid var(--gray-300)',
+            fontSize: '14px',
+            color: 'var(--gray-600)',
+            fontStyle: 'italic'
+          }}>
+            Your files, permanent and secure
+          </span>
         </div>
         
         <div className="navbar-actions">
@@ -466,6 +493,26 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
             
             {/* Multi-drive sync removed for single drive */}
+            
+            <div className="setting-row">
+              <div className="setting-info">
+                {isDarkMode ? <Moon size={16} /> : <Sun size={16} />}
+                <div>
+                  <label>Dark Mode</label>
+                  <span>{isDarkMode ? 'Enabled' : 'Disabled'}</span>
+                </div>
+              </div>
+              <button 
+                className="button small outline" 
+                onClick={() => {
+                  setIsDarkMode(!isDarkMode);
+                  // In a real implementation, this would update a global theme context
+                  alert('Dark mode toggle coming soon!');
+                }}
+              >
+                {isDarkMode ? 'Light' : 'Dark'}
+              </button>
+            </div>
             
             <div className="setting-row">
               <div className="setting-info">
@@ -534,6 +581,262 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Main Content - Tabbed Dashboard */}
       <div className="dashboard-content">
+        {/* Drive Context Bar */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: 'var(--space-4) var(--space-6)',
+          backgroundColor: 'var(--gray-50)',
+          borderBottom: '1px solid var(--gray-200)',
+          marginBottom: 'var(--space-4)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            {/* Drive Icon/Avatar */}
+            <div style={{
+              width: '40px',
+              height: '40px',
+              backgroundColor: 'var(--primary-100)',
+              borderRadius: 'var(--radius-md)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '20px'
+            }}>
+              {drive?.name ? drive.name.charAt(0).toUpperCase() : '📁'}
+            </div>
+            
+            {/* Drive Info */}
+            <div>
+              <h3 style={{ 
+                fontSize: '16px', 
+                fontWeight: '600', 
+                marginBottom: '2px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)'
+              }}>
+                {drive?.name || 'My Drive'}
+                {drive?.privacy === 'public' && (
+                  <span style={{
+                    fontSize: '12px',
+                    padding: '2px 8px',
+                    backgroundColor: 'var(--warning-100)',
+                    color: 'var(--warning-700)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontWeight: '500'
+                  }}>
+                    Public
+                  </span>
+                )}
+              </h3>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 'var(--space-3)',
+                fontSize: '14px',
+                color: 'var(--gray-600)'
+              }}>
+                {/* Sync Status */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                  {syncStatus?.isActive ? (
+                    <>
+                      <div style={{
+                        width: '8px',
+                        height: '8px',
+                        backgroundColor: 'var(--success-500)',
+                        borderRadius: '50%',
+                        animation: 'pulse 2s infinite'
+                      }} />
+                      <span>Syncing</span>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{
+                        width: '8px',
+                        height: '8px',
+                        backgroundColor: 'var(--gray-400)',
+                        borderRadius: '50%'
+                      }} />
+                      <span>Paused</span>
+                    </>
+                  )}
+                </div>
+                
+                {/* Separator */}
+                <span style={{ color: 'var(--gray-300)' }}>•</span>
+                
+                {/* Folder Path */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                  <FolderOpen size={14} />
+                  <span style={{ 
+                    maxWidth: '300px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    {config.syncFolder?.split(/[/\\]/).pop() || 'No folder'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Drive Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            {/* Sync Toggle */}
+            {syncStatus?.isActive ? (
+              <button
+                className="button small outline"
+                onClick={handleStopSync}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-1)'
+                }}
+              >
+                <Pause size={14} />
+                Pause Sync
+              </button>
+            ) : (
+              <button
+                className="button small"
+                onClick={handleStartSync}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-1)'
+                }}
+              >
+                <Play size={14} />
+                Start Sync
+              </button>
+            )}
+            
+            {/* Drive Options Dropdown */}
+            <div style={{ position: 'relative' }}>
+              <button
+                className="button small outline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDriveMenu(!showDriveMenu);
+                }}
+                style={{
+                  padding: 'var(--space-2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-1)'
+                }}
+              >
+                <Settings size={16} />
+              </button>
+              
+              {showDriveMenu && (
+                <div style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 'calc(100% + 4px)',
+                  backgroundColor: 'white',
+                  border: '1px solid var(--gray-200)',
+                  borderRadius: 'var(--radius-md)',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  minWidth: '200px',
+                  zIndex: 1000,
+                  overflow: 'hidden'
+                }}>
+                  <button
+                    onClick={() => {
+                      setShowDriveMenu(false);
+                      // TODO: Implement rename
+                      alert('Rename drive feature coming soon');
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)',
+                      padding: 'var(--space-3) var(--space-4)',
+                      width: '100%',
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      textAlign: 'left',
+                      transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--gray-50)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <FileText size={16} />
+                    Rename Drive
+                  </button>
+                  
+                  <button
+                    onClick={async () => {
+                      setShowDriveMenu(false);
+                      if (config.syncFolder) {
+                        await window.electronAPI.shell.openPath(config.syncFolder);
+                      }
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)',
+                      padding: 'var(--space-3) var(--space-4)',
+                      width: '100%',
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      textAlign: 'left',
+                      transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--gray-50)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <FolderOpen size={16} />
+                    Open Local Folder
+                  </button>
+                  
+                  <div style={{ 
+                    height: '1px', 
+                    backgroundColor: 'var(--gray-200)',
+                    margin: 'var(--space-1) 0'
+                  }} />
+                  
+                  <button
+                    onClick={() => {
+                      setShowDriveMenu(false);
+                      if (confirm('Are you sure you want to delete this drive? This action cannot be undone.')) {
+                        // TODO: Implement delete
+                        alert('Delete drive feature coming soon');
+                      }
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)',
+                      padding: 'var(--space-3) var(--space-4)',
+                      width: '100%',
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      textAlign: 'left',
+                      color: 'var(--error-600)',
+                      transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--error-50)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <Trash2 size={16} />
+                    Delete Drive
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Dashboard Tab Navigation */}
         <TabNavigation
           tabs={[
@@ -589,10 +892,55 @@ const Dashboard: React.FC<DashboardProps> = ({
                   onResolveConflict={handleResolveConflict}
                 />
               ) : (
-                <div className="empty-queue">
-                  <Upload size={48} style={{ opacity: 0.5, marginBottom: 'var(--space-4)' }} />
-                  <h3>No Pending Uploads</h3>
-                  <p>Files you add to your sync folder will appear here for approval.</p>
+                <div className="empty-queue" style={{
+                  textAlign: 'center',
+                  padding: 'var(--space-12) var(--space-8)',
+                  color: 'var(--gray-600)'
+                }}>
+                  <div style={{
+                    width: '80px',
+                    height: '80px',
+                    margin: '0 auto var(--space-6)',
+                    backgroundColor: 'var(--primary-50)',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <Upload size={40} style={{ color: 'var(--ardrive-primary)' }} />
+                  </div>
+                  <h3 style={{ 
+                    fontSize: '20px', 
+                    fontWeight: '600', 
+                    marginBottom: 'var(--space-3)',
+                    color: 'var(--gray-900)'
+                  }}>
+                    No Pending Uploads
+                  </h3>
+                  <p style={{ 
+                    fontSize: '15px', 
+                    marginBottom: 'var(--space-6)',
+                    maxWidth: '400px',
+                    margin: '0 auto var(--space-6)'
+                  }}>
+                    Files you add to your sync folder will appear here for approval before uploading to Arweave.
+                  </p>
+                  <button
+                    className="button"
+                    onClick={async () => {
+                      if (config.syncFolder) {
+                        await window.electronAPI.shell.openPath(config.syncFolder);
+                      }
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)'
+                    }}
+                  >
+                    <FolderOpen size={16} />
+                    Open Sync Folder
+                  </button>
                 </div>
               )}
             </div>
@@ -607,10 +955,51 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <p>Download queue functionality coming soon...</p>
                 </div>
               ) : (
-                <div className="empty-queue">
-                  <Download size={48} style={{ opacity: 0.5, marginBottom: 'var(--space-4)' }} />
-                  <h3>No Active Downloads</h3>
-                  <p>Files being downloaded from ArDrive will appear here.</p>
+                <div className="empty-queue" style={{
+                  textAlign: 'center',
+                  padding: 'var(--space-12) var(--space-8)',
+                  color: 'var(--gray-600)'
+                }}>
+                  <div style={{
+                    width: '80px',
+                    height: '80px',
+                    margin: '0 auto var(--space-6)',
+                    backgroundColor: 'var(--success-50)',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <Download size={40} style={{ color: 'var(--success-600)' }} />
+                  </div>
+                  <h3 style={{ 
+                    fontSize: '20px', 
+                    fontWeight: '600', 
+                    marginBottom: 'var(--space-3)',
+                    color: 'var(--gray-900)'
+                  }}>
+                    No Active Downloads
+                  </h3>
+                  <p style={{ 
+                    fontSize: '15px', 
+                    marginBottom: 'var(--space-6)',
+                    maxWidth: '400px',
+                    margin: '0 auto var(--space-6)'
+                  }}>
+                    Files being synced from your ArDrive to your local folder will appear here.
+                  </p>
+                  <button
+                    className="button outline"
+                    onClick={() => setDashboardTab('permaweb')}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)'
+                    }}
+                  >
+                    <Cloud size={16} />
+                    Browse Permaweb Files
+                  </button>
                 </div>
               )}
             </div>
@@ -637,6 +1026,122 @@ const Dashboard: React.FC<DashboardProps> = ({
           walletAddress={walletInfo.address}
           onClose={() => setShowWalletExport(false)}
         />
+      )}
+
+      {/* Floating Sync Status Widget */}
+      {syncStatus && (
+        <div style={{
+          position: 'fixed',
+          bottom: 'var(--space-6)',
+          right: 'var(--space-6)',
+          backgroundColor: 'white',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+          padding: 'var(--space-4)',
+          minWidth: '280px',
+          zIndex: 1000,
+          border: '1px solid var(--gray-200)'
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 'var(--space-3)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              {syncStatus.isActive ? (
+                <>
+                  <RefreshCw size={16} style={{ 
+                    color: 'var(--success-600)',
+                    animation: 'spin 2s linear infinite'
+                  }} />
+                  <span style={{ fontWeight: '600', fontSize: '14px' }}>Syncing</span>
+                </>
+              ) : (
+                <>
+                  <Pause size={16} style={{ color: 'var(--gray-500)' }} />
+                  <span style={{ fontWeight: '600', fontSize: '14px' }}>Sync Paused</span>
+                </>
+              )}
+            </div>
+            
+            {/* Quick sync toggle */}
+            <button
+              onClick={syncStatus.isActive ? handleStopSync : handleStartSync}
+              style={{
+                padding: '4px 8px',
+                fontSize: '12px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--gray-300)',
+                backgroundColor: 'white',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--gray-50)';
+                e.currentTarget.style.borderColor = 'var(--gray-400)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'white';
+                e.currentTarget.style.borderColor = 'var(--gray-300)';
+              }}
+            >
+              {syncStatus.isActive ? (
+                <>
+                  <Pause size={12} />
+                  Pause
+                </>
+              ) : (
+                <>
+                  <Play size={12} />
+                  Resume
+                </>
+              )}
+            </button>
+          </div>
+          
+          {/* Progress info */}
+          <div style={{ fontSize: '13px', color: 'var(--gray-600)' }}>
+            {syncStatus.currentFile ? (
+              <div style={{ marginBottom: 'var(--space-2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                  <Upload size={12} />
+                  <span style={{ 
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    {syncStatus.currentFile}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              syncStatus.isActive && (
+                <div style={{ marginBottom: 'var(--space-2)' }}>
+                  Watching for changes...
+                </div>
+              )
+            )}
+            
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              paddingTop: 'var(--space-2)',
+              borderTop: '1px solid var(--gray-100)'
+            }}>
+              <span>{syncStatus.uploadedFiles} uploaded</span>
+              {syncStatus.failedFiles > 0 && (
+                <span style={{ color: 'var(--error-600)' }}>
+                  {syncStatus.failedFiles} failed
+                </span>
+              )}
+              <span>{syncStatus.totalFiles - syncStatus.uploadedFiles - syncStatus.failedFiles} pending</span>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

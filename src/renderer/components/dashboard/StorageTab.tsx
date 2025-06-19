@@ -293,44 +293,84 @@ export const StorageTab: React.FC<StorageTabProps> = ({
 
   return (
     <div className="storage-tab">
-      {/* Drive Header */}
-      <div className="drive-header">
-        <div className="drive-title">
-          <Cloud size={24} className="drive-icon" />
-          <div>
-            <h2>{selectedDrive.name} - Online Contents</h2>
-            <div className="drive-status">
-              {syncState?.isActive ? (
-                <div className="sync-status active">
-                  <Loader size={14} className="animate-spin" />
-                  <span>Syncing... {syncState.progress}% complete</span>
-                  {syncState.estimatedTimeRemaining && (
-                    <span className="eta">• {syncState.estimatedTimeRemaining} remaining</span>
-                  )}
-                </div>
-              ) : (
-                <div className="sync-status complete">
-                  <CheckCircle size={14} />
-                  <span>
-                    {syncState?.syncedFiles || 0} files synced
-                    {syncState?.totalFiles && syncState.syncedFiles !== syncState.totalFiles && 
-                      ` of ${syncState.totalFiles}`
-                    }
-                  </span>
-                </div>
-              )}
+      {/* Permaweb Header */}
+      <div style={{
+        padding: 'var(--space-6)',
+        borderBottom: '1px solid var(--gray-200)',
+        backgroundColor: 'var(--gray-50)'
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 'var(--space-4)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              backgroundColor: 'var(--primary-100)',
+              borderRadius: 'var(--radius-md)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <Cloud size={24} style={{ color: 'var(--ardrive-primary)' }} />
+            </div>
+            <div>
+              <h2 style={{ 
+                fontSize: '24px', 
+                fontWeight: '600',
+                marginBottom: '4px',
+                color: 'var(--gray-900)'
+              }}>
+                Your Permaweb Storage
+              </h2>
+              <p style={{ 
+                fontSize: '15px', 
+                color: 'var(--gray-600)' 
+              }}>
+                Browse files permanently stored on Arweave
+              </p>
             </div>
           </div>
+          
+          <button 
+            className="button small outline"
+            onClick={handleRefresh}
+            disabled={isLoading}
+            title="Refresh file list"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-1)'
+            }}
+          >
+            <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
         </div>
-        
-        <button 
-          className="refresh-button"
-          onClick={handleRefresh}
-          disabled={isLoading}
-          title="Refresh file list"
-        >
-          <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
-        </button>
+
+        {/* Info Banner */}
+        <div style={{
+          backgroundColor: 'var(--info-50)',
+          border: '1px solid var(--info-200)',
+          borderRadius: 'var(--radius-md)',
+          padding: 'var(--space-3) var(--space-4)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-3)',
+          fontSize: '14px'
+        }}>
+          <ExternalLink size={16} style={{ color: 'var(--info-600)', flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <span style={{ color: 'var(--gray-700)' }}>
+              Files stored on the Permaweb are permanently accessible and cannot be deleted. 
+              Each file has a unique transaction ID for sharing.
+            </span>
+            <InfoButton tooltip="The Permaweb is a permanent and decentralized web built on top of the Arweave network. Once uploaded, your files will be available forever." />
+          </div>
+        </div>
       </div>
 
 
@@ -550,11 +590,74 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                 <p>Try adjusting your search terms or filters</p>
               </>
             ) : (
-              <>
-                <Folder size={48} style={{ opacity: 0.5 }} />
-                <h3>This folder is empty</h3>
-                <p>Files you upload will appear here once synced</p>
-              </>
+              <div style={{
+                textAlign: 'center',
+                padding: 'var(--space-8)',
+                maxWidth: '500px',
+                margin: '0 auto'
+              }}>
+                <div style={{
+                  width: '100px',
+                  height: '100px',
+                  margin: '0 auto var(--space-6)',
+                  backgroundColor: 'var(--primary-50)',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Cloud size={48} style={{ color: 'var(--ardrive-primary)' }} />
+                </div>
+                <h3 style={{ 
+                  fontSize: '24px', 
+                  fontWeight: '600',
+                  marginBottom: 'var(--space-3)',
+                  color: 'var(--gray-900)'
+                }}>
+                  No files on the Permaweb yet
+                </h3>
+                <p style={{ 
+                  fontSize: '16px', 
+                  color: 'var(--gray-600)',
+                  marginBottom: 'var(--space-6)',
+                  lineHeight: '1.6'
+                }}>
+                  Add files to your sync folder and approve them for upload. 
+                  Once uploaded to Arweave, they'll be permanently stored and accessible here.
+                </p>
+                <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center' }}>
+                  <button
+                    className="button"
+                    onClick={async () => {
+                      if (config.syncFolder) {
+                        await window.electronAPI.shell.openPath(config.syncFolder);
+                      }
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)'
+                    }}
+                  >
+                    <FolderOpen size={16} />
+                    Open Sync Folder
+                  </button>
+                  <button
+                    className="button outline"
+                    onClick={() => {
+                      window.open('https://www.arweave.org/technology#permaweb', '_blank');
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)'
+                    }}
+                  >
+                    Learn About Permaweb
+                    <ExternalLink size={14} />
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         )}
