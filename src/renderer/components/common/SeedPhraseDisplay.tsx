@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, Copy, CheckCircle } from 'lucide-react';
+import { Eye, EyeOff, Copy, CheckCircle } from 'lucide-react';
 
 interface SeedPhraseDisplayProps {
   seedPhrase: string;
@@ -25,11 +25,12 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
     <div style={{ position: 'relative' }}>
       <div style={{ 
         backgroundColor: showSeedPhrase ? 'var(--gray-50)' : 'var(--gray-900)',
-        padding: 'var(--space-6)',
+        padding: 'var(--space-4)',
         borderRadius: 'var(--radius-lg)',
-        marginBottom: 'var(--space-4)',
         position: 'relative',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        maxHeight: '300px',
+        overflowY: 'auto'
       }}>
         {!showSeedPhrase && (
           <div style={{
@@ -56,20 +57,21 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 'var(--space-3)',
-          opacity: showSeedPhrase ? 1 : 0.1
+          gap: 'var(--space-2)',
+          opacity: showSeedPhrase ? 1 : 0.1,
+          transition: 'opacity 0.3s ease-in'
         }}>
           {words.map((word, index) => (
             <div
               key={index}
               style={{
-                padding: 'var(--space-3)',
+                padding: 'var(--space-2)',
                 backgroundColor: 'white',
                 borderRadius: 'var(--radius-md)',
                 border: '1px solid var(--gray-300)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 'var(--space-2)'
+                gap: 'var(--space-1)'
               }}
             >
               <span style={{ 
@@ -93,30 +95,48 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
       </div>
 
       {showSeedPhrase && (
-        <button
-          className="button outline"
-          onClick={handleCopy}
-          style={{
-            position: 'absolute',
-            top: 'var(--space-3)',
-            right: 'var(--space-3)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-2)'
-          }}
-        >
-          {copied ? (
-            <>
-              <CheckCircle size={16} />
-              Copied!
-            </>
-          ) : (
-            <>
-              <Copy size={16} />
-              Copy
-            </>
-          )}
-        </button>
+        <div style={{
+          position: 'absolute',
+          top: 'var(--space-3)',
+          right: 'var(--space-3)',
+          display: 'flex',
+          gap: 'var(--space-2)'
+        }}>
+          <button
+            className="button outline"
+            onClick={() => setShowSeedPhrase(false)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)'
+            }}
+            title="Hide recovery phrase"
+          >
+            <EyeOff size={16} />
+            Hide
+          </button>
+          <button
+            className="button outline"
+            onClick={handleCopy}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)'
+            }}
+          >
+            {copied ? (
+              <>
+                <CheckCircle size={16} />
+                Copied!
+              </>
+            ) : (
+              <>
+                <Copy size={16} />
+                Copy
+              </>
+            )}
+          </button>
+        </div>
       )}
     </div>
   );

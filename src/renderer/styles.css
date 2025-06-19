@@ -11,6 +11,20 @@
   --ardrive-danger-light: #fef2f2;   /* Light red background for errors */
   --ardrive-success: #10b981;        /* Green for success states */
   
+  /* Additional color variations */
+  --primary-50: #fef2f2;             /* Very light red for backgrounds */
+  --error: #ef4444;                  /* Error color alias */
+  --error-50: #fef2f2;
+  --error-100: #fee2e2;
+  --error-200: #fecaca;
+  --error-300: #fca5a5;
+  --error-400: #f87171;
+  --error-500: #ef4444;
+  --error-600: #dc2626;
+  --error-700: #b91c1c;
+  --error-800: #991b1b;
+  --error-900: #7f1d1d;
+  
   /* Toast Notification Colors */
   --success-50: #f0fdf4;
   --success-100: #dcfce7;

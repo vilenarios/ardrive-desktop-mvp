@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Cloud, FolderOpen, HardDrive, Info, Globe, Zap } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Cloud, FolderOpen, HardDrive, Info, Globe, Zap, X, HelpCircle, CheckCircle, Trash2, AlertCircle } from 'lucide-react';
 import { ClientInputValidator } from '../input-validator';
+import { InfoButton } from './common/InfoButton';
 
 interface DriveAndSyncSetupProps {
   onSetupComplete: () => void;
@@ -12,6 +13,9 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [setupProgress, setSetupProgress] = useState<string>('');
+  const [driveNameError, setDriveNameError] = useState<string | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
+  const [enableAutoSync, setEnableAutoSync] = useState(true);
 
   const handleSelectFolder = async () => {
     try {
@@ -25,20 +29,66 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
     }
   };
 
-  const handleSetup = async () => {
-    // Validate drive name using client-side validation
+  const handleClearFolder = () => {
+    setSyncFolder('');
+  };
+
+  // Real-time drive name validation
+  const validateDriveNameRealtime = (name: string) => {
+    // Check length
+    if (name.length > 32) {
+      setDriveNameError('Drive name must be under 32 characters');
+      return false;
+    }
+    
+    // Check for valid characters (letters, numbers, spaces, dashes, underscores)
+    const validPattern = /^[a-zA-Z0-9\s\-_]*$/;
+    if (!validPattern.test(name)) {
+      setDriveNameError('Drive name can only contain letters, numbers, spaces, dashes, and underscores');
+      return false;
+    }
+    
+    // Check if not empty
+    if (name.trim().length === 0) {
+      setDriveNameError('Drive name cannot be empty');
+      return false;
+    }
+    
+    setDriveNameError(null);
+    return true;
+  };
+
+  const handleDriveNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newName = e.target.value;
+    // Allow typing but validate
+    if (newName.length <= 32) {
+      setDriveName(newName);
+    }
+    if (newName) {
+      validateDriveNameRealtime(newName);
+    } else {
+      setDriveNameError(null);
+    }
+  };
+
+  const handleProceedToSummary = () => {
+    // Final validation before showing summary
     const driveNameValidation = ClientInputValidator.validateDriveName(driveName);
     if (!driveNameValidation.isValid) {
-      setError(driveNameValidation.error!);
+      setDriveNameError(driveNameValidation.error!);
       return;
     }
     
-    // Validate sync folder
     const folderValidation = ClientInputValidator.validateFilePath(syncFolder);
     if (!folderValidation.isValid) {
       setError(folderValidation.error!);
       return;
     }
+    
+    setShowSummary(true);
+  };
+
+  const handleSetup = async () => {
 
     setLoading(true);
     setError(null);
@@ -64,9 +114,11 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
       setSetupProgress('Configuring sync folder...');
       await window.electronAPI.sync.setFolder(syncFolder);
       
-      // Start sync
-      setSetupProgress('Starting sync...');
-      await window.electronAPI.sync.start();
+      // Start sync if enabled
+      if (enableAutoSync) {
+        setSetupProgress('Starting sync...');
+        await window.electronAPI.sync.start();
+      }
       
       // Mark first run as complete
       await window.electronAPI.config.markFirstRunComplete();
@@ -101,13 +153,13 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
         boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
       }}>
         {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
-          <HardDrive size={48} style={{ color: 'var(--ardrive-primary)', marginBottom: 'var(--space-4)' }} />
-          <h2 style={{ marginBottom: 'var(--space-3)', fontSize: '28px' }}>
-            Let's Set Up Your Storage
+        <div style={{ textAlign: 'center', marginBottom: 'var(--space-6)' }}>
+          <HardDrive size={48} style={{ color: 'var(--ardrive-primary)', marginBottom: 'var(--space-3)' }} />
+          <h2 style={{ marginBottom: 'var(--space-2)', fontSize: '28px' }}>
+            {showSummary ? 'Review Your Setup' : 'Let\'s Set Up Your Storage'}
           </h2>
-          <p className="text-gray-600" style={{ fontSize: '16px', lineHeight: '1.6' }}>
-            Create your first drive and choose a folder to sync
+          <p className="text-gray-600" style={{ fontSize: '16px', lineHeight: '1.5' }}>
+            {showSummary ? 'Please review your configuration before completing setup' : 'Create your first drive and choose a folder to sync'}
           </p>
         </div>
 
@@ -117,61 +169,154 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
           </div>
         )}
 
-        {/* Drive Setup */}
-        <div style={{ marginBottom: 'var(--space-6)' }}>
-          <h3 style={{ 
-            fontSize: '18px', 
-            fontWeight: '600', 
-            marginBottom: 'var(--space-4)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-2)'
-          }}>
-            <Cloud size={20} />
-            Name Your Drive
-          </h3>
-          
-          {/* Drive Name */}
-          <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
-            <label>Drive Name</label>
-            <input
-              type="text"
-              value={driveName}
-              onChange={(e) => setDriveName(e.target.value)}
-              placeholder="e.g., Personal Files, Work Documents"
-              style={{ fontSize: '16px' }}
-            />
+        {/* Setup Summary */}
+        {showSummary ? (
+          <div style={{ marginBottom: 'var(--space-6)' }}>
+            <div style={{
+              backgroundColor: 'var(--gray-50)',
+              borderRadius: 'var(--radius-md)',
+              padding: 'var(--space-5)',
+              border: '1px solid var(--gray-200)'
+            }}>
+              <h3 style={{ 
+                fontSize: '16px', 
+                fontWeight: '600', 
+                marginBottom: 'var(--space-4)',
+                color: 'var(--gray-900)'
+              }}>
+                Setup Summary
+              </h3>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                  <Cloud size={20} style={{ color: 'var(--ardrive-primary)', flexShrink: 0, marginTop: '2px' }} />
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: '14px', fontWeight: '500', marginBottom: '4px' }}>Drive Name</p>
+                    <p style={{ fontSize: '15px', color: 'var(--gray-700)' }}>{driveName}</p>
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                  <FolderOpen size={20} style={{ color: 'var(--ardrive-primary)', flexShrink: 0, marginTop: '2px' }} />
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: '14px', fontWeight: '500', marginBottom: '4px' }}>Sync Folder</p>
+                    <p style={{ fontSize: '15px', color: 'var(--gray-700)', wordBreak: 'break-all' }}>{syncFolder}</p>
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                  <Globe size={20} style={{ color: 'var(--ardrive-primary)', flexShrink: 0, marginTop: '2px' }} />
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: '14px', fontWeight: '500', marginBottom: '4px' }}>Drive Type</p>
+                    <p style={{ fontSize: '15px', color: 'var(--gray-700)' }}>Public Drive</p>
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                  <Zap size={20} style={{ color: 'var(--success-600)', flexShrink: 0, marginTop: '2px' }} />
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: '14px', fontWeight: '500', marginBottom: '4px' }}>Auto-Sync</p>
+                    <p style={{ fontSize: '15px', color: 'var(--gray-700)' }}>{enableAutoSync ? 'Enabled' : 'Disabled'}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        ) : (
+          <>
+          {/* Drive Setup */}
+          <div style={{ marginBottom: 'var(--space-4)' }}>
+            <h3 style={{ 
+              fontSize: '18px', 
+              fontWeight: '600', 
+              marginBottom: 'var(--space-3)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)'
+            }}>
+              <Cloud size={20} />
+              Name Your Drive
+            </h3>
+            
+            {/* Drive Name */}
+            <div className="form-group" style={{ marginBottom: 'var(--space-3)' }}>
+              <label>Drive Name</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  value={driveName}
+                  onChange={handleDriveNameChange}
+                  placeholder="e.g., Personal Files, Work Documents"
+                  maxLength={32}
+                  style={{ 
+                    fontSize: '16px',
+                    borderColor: driveNameError ? 'var(--error)' : undefined,
+                    paddingRight: '60px'
+                  }}
+                />
+                <span style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  fontSize: '13px',
+                  color: driveName.length > 28 ? 'var(--error-600)' : 'var(--gray-500)'
+                }}>
+                  {driveName.length}/32
+                </span>
+              </div>
+              {driveNameError && (
+                <p style={{ 
+                  fontSize: '13px', 
+                  color: 'var(--error)', 
+                  marginTop: 'var(--space-1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-1)'
+                }}>
+                  <AlertCircle size={14} />
+                  {driveNameError}
+                </p>
+              )}
+            </div>
+
+            {/* Drive Type Info - Enhanced Warning */}
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'flex-start', 
+              gap: 'var(--space-2)',
+              padding: 'var(--space-3)',
+              backgroundColor: 'var(--warning-50)',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '14px',
+              border: '1px solid var(--warning-200)'
+            }}>
+              <Globe size={16} style={{ flexShrink: 0, marginTop: '2px', color: 'var(--warning-600)' }} />
+              <div style={{ flex: 1 }}>
+                <span style={{ color: 'var(--gray-800)' }}>
+                  🌐 This is a public drive. Your files will be permanently visible on the Arweave permaweb.
+                </span>
+                <InfoButton 
+                  tooltip="Arweave is a decentralized permanent storage network. Once uploaded, files cannot be deleted and are publicly accessible by anyone."
+                />
+              </div>
+            </div>
           </div>
 
-          {/* Drive Type Info */}
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 'var(--space-2)',
-            padding: 'var(--space-3)',
-            backgroundColor: 'var(--gray-50)',
-            borderRadius: 'var(--radius-md)',
-            fontSize: '14px',
-            color: 'var(--gray-700)'
-          }}>
-            <Globe size={16} />
-            <span>Public Drive - Files are visible to everyone on Arweave</span>
-          </div>
-        </div>
-
-        {/* Sync Folder Setup */}
-        <div style={{ marginBottom: 'var(--space-6)' }}>
-          <h3 style={{ 
-            fontSize: '18px', 
-            fontWeight: '600', 
-            marginBottom: 'var(--space-4)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-2)'
-          }}>
-            <FolderOpen size={20} />
-            Choose Sync Folder
-          </h3>
+          {/* Sync Folder Setup */}
+          <div style={{ marginBottom: 'var(--space-4)' }}>
+            <h3 style={{ 
+              fontSize: '18px', 
+              fontWeight: '600', 
+              marginBottom: 'var(--space-3)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)'
+            }}>
+              <FolderOpen size={20} />
+              Choose Sync Folder
+            </h3>
           
           <div style={{ 
             padding: 'var(--space-4)', 
@@ -183,14 +328,44 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
           }}>
             {syncFolder ? (
               <>
-                <FolderOpen size={32} style={{ color: 'var(--ardrive-primary)', marginBottom: 'var(--space-2)' }} />
-                <p style={{ fontWeight: '600', marginBottom: 'var(--space-2)' }}>{syncFolder}</p>
-                <button
-                  className="button small outline"
-                  onClick={handleSelectFolder}
-                >
-                  Change Folder
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+                  <FolderOpen size={32} style={{ color: 'var(--ardrive-primary)' }} />
+                  <div style={{ flex: 1, textAlign: 'left' }}>
+                    <p style={{ fontSize: '14px', color: 'var(--gray-600)', marginBottom: '4px' }}>Selected folder:</p>
+                    <p style={{ fontWeight: '600', wordBreak: 'break-all', fontSize: '15px' }}>{syncFolder}</p>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                  <button
+                    className="button small outline"
+                    onClick={handleSelectFolder}
+                  >
+                    Change Folder
+                  </button>
+                  <button
+                    className="button small outline"
+                    onClick={handleClearFolder}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 'var(--space-1)',
+                      borderColor: 'var(--error-500)',
+                      color: 'var(--error-500)',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--error-50)';
+                      e.currentTarget.style.borderColor = 'var(--error-600)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.borderColor = 'var(--error-500)';
+                    }}
+                  >
+                    <Trash2 size={14} />
+                    Clear
+                  </button>
+                </div>
               </>
             ) : (
               <>
@@ -209,76 +384,92 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
           </div>
         </div>
 
-        {/* Free with Turbo notification */}
-        <div style={{
-          padding: 'var(--space-4)',
-          backgroundColor: 'var(--success-50)',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--success-200)',
-          marginBottom: 'var(--space-6)',
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: 'var(--space-3)'
-        }}>
-          <Zap size={20} style={{ color: 'var(--success-600)', flexShrink: 0, marginTop: '2px' }} />
-          <div>
-            <p style={{ fontWeight: '600', color: 'var(--success-900)', marginBottom: 'var(--space-1)' }}>
-              Free with Turbo!
-            </p>
-            <p style={{ fontSize: '14px', color: 'var(--success-700)' }}>
-              Creating drives and folders is free thanks to Turbo. Transactions under 100KB cost no credits.
-            </p>
-          </div>
+        {/* Auto-sync toggle */}
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <label style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 'var(--space-2)', 
+            cursor: 'pointer',
+            padding: 'var(--space-3)',
+            backgroundColor: 'var(--gray-50)',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--gray-200)'
+          }}>
+            <input 
+              type="checkbox" 
+              checked={enableAutoSync}
+              onChange={(e) => setEnableAutoSync(e.target.checked)}
+              style={{ 
+                width: '18px', 
+                height: '18px',
+                cursor: 'pointer'
+              }}
+            />
+            <span style={{ fontSize: '15px', fontWeight: '500' }}>
+              Start syncing automatically after setup
+            </span>
+            <InfoButton 
+              tooltip="When enabled, ArDrive will begin monitoring your folder and syncing files immediately after setup. You can always start or stop sync later from the dashboard."
+            />
+          </label>
         </div>
 
-        {/* Info Box */}
-        <div style={{
-          padding: 'var(--space-4)',
-          backgroundColor: 'var(--gray-50)',
-          borderRadius: 'var(--radius-md)',
-          marginBottom: 'var(--space-6)',
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: 'var(--space-3)'
-        }}>
-          <Info size={20} style={{ color: 'var(--ardrive-primary)', flexShrink: 0, marginTop: '2px' }} />
-          <div style={{ fontSize: '14px', color: 'var(--gray-700)' }}>
-            <p style={{ marginBottom: 'var(--space-2)' }}>
-              <strong>What is Arweave?</strong>
-            </p>
-            <p style={{ lineHeight: '1.6' }}>
-              Arweave is a decentralized storage network that stores data permanently. 
-              Unlike traditional cloud storage with monthly fees, you pay once to store forever. 
-              Your files are replicated across hundreds of nodes worldwide.
-            </p>
-          </div>
-        </div>
+        </>
+        )}
 
         {/* Action Button and Progress */}
         <div>
-          <button
-            className="button large"
-            onClick={handleSetup}
-            disabled={loading || !driveName.trim() || !syncFolder}
-            style={{ width: '100%', fontSize: '16px', padding: 'var(--space-4)', marginBottom: loading ? 'var(--space-3)' : 0 }}
-          >
-            {loading ? (
-              <>
-                <div style={{ 
-                  width: '16px', 
-                  height: '16px', 
-                  border: '2px solid rgba(255,255,255,0.3)',
-                  borderTop: '2px solid white',
-                  borderRadius: '50%',
-                  animation: 'spin 1s linear infinite',
-                  marginRight: 'var(--space-2)'
-                }} />
-                Setting up...
-              </>
-            ) : (
-              'Complete Setup'
-            )}
-          </button>
+          {showSummary ? (
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <button
+                className="button outline large"
+                onClick={() => setShowSummary(false)}
+                disabled={loading}
+                style={{ flex: 1, fontSize: '16px', padding: 'var(--space-4)' }}
+              >
+                Back
+              </button>
+              <button
+                className="button large"
+                onClick={handleSetup}
+                disabled={loading}
+                style={{ flex: 2, fontSize: '16px', padding: 'var(--space-4)' }}
+              >
+                {loading ? (
+                  <>
+                    <div style={{ 
+                      width: '16px', 
+                      height: '16px', 
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      borderTop: '2px solid white',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite',
+                      marginRight: 'var(--space-2)'
+                    }} />
+                    Setting up...
+                  </>
+                ) : (
+                  'Complete Setup'
+                )}
+              </button>
+            </div>
+          ) : (
+            <button
+              className="button large"
+              onClick={handleProceedToSummary}
+              disabled={!driveName.trim() || !syncFolder || !!driveNameError || driveName.length > 32}
+              style={{ 
+                width: '100%', 
+                fontSize: '16px', 
+                padding: 'var(--space-4)',
+                opacity: (!driveName.trim() || !syncFolder || !!driveNameError) ? 0.6 : 1,
+                cursor: (!driveName.trim() || !syncFolder || !!driveNameError) ? 'not-allowed' : 'pointer'
+              }}
+            >
+              Continue to Review
+            </button>
+          )}
           
           {/* Progress indicator */}
           {loading && setupProgress && (

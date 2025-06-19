@@ -515,6 +515,7 @@ class ArDriveApp {
       }
     });
 
+
     // Ethereum wallet operations (TODO: Implement when ardrive-core-js supports Ethereum)
     ipcMain.handle('wallet:import-ethereum-from-file', async (_, walletPath: string, password: string) => {
       try {

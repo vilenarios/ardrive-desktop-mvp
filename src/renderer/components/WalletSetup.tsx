@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
-import { Wallet, Shield, ArrowRight, FileText, HelpCircle, Key, Hexagon, Plus } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Wallet, Shield, ArrowRight, FileText, Key, Hexagon, Copy, CheckCircle } from 'lucide-react';
 import { InfoButton } from './common/InfoButton';
 import { PasswordForm } from './common/PasswordForm';
-import { PasswordInput } from './common/PasswordInput';
-import { StepIndicator } from './common/StepIndicator';
 import { SeedPhraseDisplay } from './common/SeedPhraseDisplay';
+import { AddressDisplay } from './common/AddressDisplay';
 import { ClientInputValidator } from '../input-validator';
 
 interface WalletSetupProps {
@@ -24,8 +23,12 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
   const [success, setSuccess] = useState<string | null>(null);
   const [generatedSeedPhrase, setGeneratedSeedPhrase] = useState<string | null>(null);
   const [generatedAddress, setGeneratedAddress] = useState<string | null>(null);
-  const [verificationWords, setVerificationWords] = useState<{ position: number; word: string }[]>([]);
-  const [userVerificationInputs, setUserVerificationInputs] = useState<{ [key: number]: string }>({});
+  const [isDragging, setIsDragging] = useState(false);
+  const [copiedPath, setCopiedPath] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Confirmation state
+  const [hasConfirmedSeedPhrase, setHasConfirmedSeedPhrase] = useState(false);
 
   // Reset all fields when switching between create/import
   React.useEffect(() => {
@@ -50,6 +53,41 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to select wallet');
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      const file = files[0];
+      if (file.name.endsWith('.json')) {
+        setWalletPath(file.path);
+        setError(null);
+        setSuccess(`Selected wallet: ${file.name}`);
+      } else {
+        setError('Please drop a valid JSON wallet file');
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleCopyPath = async () => {
+    if (walletPath) {
+      await navigator.clipboard.writeText(walletPath);
+      setCopiedPath(true);
+      setTimeout(() => setCopiedPath(false), 2000);
     }
   };
 
@@ -209,18 +247,12 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
         width: '100%',
         margin: 'var(--space-8)'
       }}>
-        {/* Header with Logo and Progress */}
-        <div style={{ marginBottom: 'var(--space-8)' }}>
+        {/* Header with Logo */}
+        <div style={{ marginBottom: 'var(--space-6)' }}>
           <img 
             src="ArDrive-Logo-Wordmark-Dark.png" 
             alt="ArDrive" 
-            style={{ height: '60px', marginBottom: 'var(--space-6)' }} 
-          />
-          
-          <StepIndicator 
-            currentStep={step} 
-            totalSteps={walletAction === 'create' ? 4 : 2}
-            variant={walletAction}
+            style={{ height: '60px' }} 
           />
         </div>
 
@@ -363,7 +395,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
               confirmPassword={confirmPassword}
               onPasswordChange={setPassword}
               onConfirmPasswordChange={setConfirmPassword}
-              passwordTooltip="This password encrypts your wallet file. You'll need it every time you sign in."
+              passwordTooltip="This password encrypts your wallet file. You'll need it every time you sign in, and it will never leave your computer."
               showStrength={true}
               autoFocus={true}
             />
@@ -411,63 +443,89 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
 
         {/* Step 3: Create Wallet - Show Seed Phrase */}
         {step === 3 && walletAction === 'create' && generatedSeedPhrase && (
-          <div className="step-content">
-            <h2 style={{ marginBottom: 'var(--space-3)' }}>Save Your Recovery Phrase</h2>
-            <p style={{ fontSize: '16px', color: 'var(--gray-600)', marginBottom: 'var(--space-6)' }}>
+          <div className="step-content" style={{ 
+            animation: 'fadeIn 0.3s ease-in'
+          }}>
+            <h2 style={{ marginBottom: 'var(--space-2)' }}>Save Your Recovery Phrase</h2>
+            <p style={{ fontSize: '15px', color: 'var(--gray-600)', marginBottom: 'var(--space-4)' }}>
               Write down these 12 words in order. You'll need them to recover your wallet.
             </p>
 
+            {/* Address Display - moved up */}
+            {generatedAddress && (
+              <div style={{ marginBottom: 'var(--space-4)' }}>
+                <AddressDisplay address={generatedAddress} />
+              </div>
+            )}
+
+            {/* Critical Warning */}
             <div style={{ 
               backgroundColor: 'var(--error-50)', 
-              padding: 'var(--space-4)', 
+              padding: 'var(--space-3)', 
               borderRadius: 'var(--radius-md)',
-              marginBottom: 'var(--space-4)',
+              marginBottom: 'var(--space-3)',
               border: '1px solid var(--error-200)'
             }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
-                <Shield size={20} style={{ color: 'var(--error-600)', flexShrink: 0, marginTop: '2px' }} />
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+                <Shield size={18} style={{ color: 'var(--error-600)', flexShrink: 0, marginTop: '1px' }} />
                 <div>
-                  <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: 'var(--space-1)', color: 'var(--error-900)' }}>
+                  <h4 style={{ fontSize: '13px', fontWeight: '600', marginBottom: '2px', color: 'var(--error-900)' }}>
                     Critical: Save This Phrase
                   </h4>
-                  <p style={{ fontSize: '13px', color: 'var(--error-800)', lineHeight: '1.5' }}>
+                  <p style={{ fontSize: '12px', color: 'var(--error-800)', lineHeight: '1.4' }}>
                     This is the ONLY way to recover your wallet. If you lose this phrase, you lose access to your funds forever.
                   </p>
                 </div>
               </div>
             </div>
 
-            <SeedPhraseDisplay 
-              seedPhrase={generatedSeedPhrase} 
-              showByDefault={false}
-            />
+            {/* Seed Phrase Display with reduced spacing */}
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <SeedPhraseDisplay 
+                seedPhrase={generatedSeedPhrase} 
+                showByDefault={false}
+              />
+            </div>
 
-            {/* Wallet Address */}
-            {generatedAddress && (
-              <div style={{ 
-                backgroundColor: 'var(--gray-50)', 
-                padding: 'var(--space-4)', 
-                borderRadius: 'var(--radius-md)',
-                marginBottom: 'var(--space-6)'
+            {/* Confirmation Checkbox */}
+            <div style={{ 
+              backgroundColor: 'var(--gray-50)',
+              padding: 'var(--space-3)',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: 'var(--space-4)'
+            }}>
+              <label style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 'var(--space-2)', 
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500'
               }}>
-                <p style={{ fontSize: '13px', color: 'var(--gray-600)', marginBottom: 'var(--space-2)' }}>
-                  Your Arweave Address:
-                </p>
-                <p style={{ 
-                  fontFamily: 'monospace', 
-                  fontSize: '13px', 
-                  wordBreak: 'break-all',
-                  color: 'var(--gray-800)'
-                }}>
-                  {generatedAddress}
-                </p>
-              </div>
-            )}
+                <input 
+                  type="checkbox" 
+                  checked={hasConfirmedSeedPhrase}
+                  onChange={(e) => setHasConfirmedSeedPhrase(e.target.checked)}
+                  style={{ 
+                    width: '18px', 
+                    height: '18px',
+                    cursor: 'pointer'
+                  }}
+                />
+                <span style={{ color: 'var(--gray-800)' }}>
+                  I have written down or safely stored my recovery phrase
+                </span>
+              </label>
+            </div>
 
+            {/* Action Buttons */}
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
               <button
                 className="button outline"
-                onClick={prevStep}
+                onClick={() => {
+                  prevStep();
+                  setHasConfirmedSeedPhrase(false);
+                }}
                 disabled={loading}
                 style={{ flex: 1 }}
               >
@@ -475,111 +533,32 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
               </button>
               <button
                 className="button"
-                onClick={() => {
-                  // Generate random positions for verification (3 words)
-                  const words = generatedSeedPhrase!.split(' ');
-                  const positions = [];
-                  const usedPositions = new Set<number>();
-                  
-                  while (positions.length < 3) {
-                    const pos = Math.floor(Math.random() * 12) + 1;
-                    if (!usedPositions.has(pos)) {
-                      usedPositions.add(pos);
-                      positions.push({ position: pos, word: words[pos - 1] });
-                    }
-                  }
-                  
-                  setVerificationWords(positions.sort((a, b) => a.position - b.position));
-                  setUserVerificationInputs({});
-                  nextStep();
+                onClick={handleCompleteWalletCreation}
+                disabled={loading || !hasConfirmedSeedPhrase}
+                style={{ 
+                  flex: 2,
+                  opacity: hasConfirmedSeedPhrase ? 1 : 0.6,
+                  cursor: hasConfirmedSeedPhrase ? 'pointer' : 'not-allowed'
                 }}
-                disabled={loading || !generatedSeedPhrase}
-                style={{ flex: 2 }}
+                title={!hasConfirmedSeedPhrase ? 'Please confirm you have saved your recovery phrase' : ''}
               >
-                {loading ? 'Setting up...' : 'Continue'}
+                {loading ? 'Setting up...' : 'Continue to Drive Setup'}
               </button>
             </div>
           </div>
         )}
 
-        {/* Step 4: Verify Seed Phrase */}
-        {step === 4 && walletAction === 'create' && verificationWords.length > 0 && (
-          <div className="step-content">
-            <h2 style={{ marginBottom: 'var(--space-3)' }}>Verify Your Recovery Phrase</h2>
-            <p style={{ fontSize: '16px', color: 'var(--gray-600)', marginBottom: 'var(--space-6)' }}>
-              Please enter the following words from your recovery phrase to confirm you've saved it correctly.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              {verificationWords.map(({ position, word }) => (
-                <div key={position} className="form-group">
-                  <label style={{ fontSize: '14px', fontWeight: '500' }}>
-                    Word #{position}
-                  </label>
-                  <input
-                    type="text"
-                    value={userVerificationInputs[position] || ''}
-                    onChange={(e) => {
-                      setUserVerificationInputs({
-                        ...userVerificationInputs,
-                        [position]: e.target.value.toLowerCase().trim()
-                      });
-                      setError(null);
-                    }}
-                    placeholder={`Enter word #${position}`}
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    style={{ fontFamily: 'monospace' }}
-                  />
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-6)' }}>
-              <button
-                className="button outline"
-                onClick={prevStep}
-                disabled={loading}
-                style={{ flex: 1 }}
-              >
-                Back
-              </button>
-              <button
-                className="button"
-                onClick={() => {
-                  // Verify all words match
-                  const allCorrect = verificationWords.every(({ position, word }) => 
-                    userVerificationInputs[position]?.toLowerCase().trim() === word.toLowerCase()
-                  );
-                  
-                  if (!allCorrect) {
-                    setError('One or more words are incorrect. Please check and try again.');
-                    return;
-                  }
-                  
-                  handleCompleteWalletCreation();
-                }}
-                disabled={loading || verificationWords.some(({ position }) => !userVerificationInputs[position])}
-                style={{ flex: 2 }}
-              >
-                {loading ? 'Creating Wallet...' : 'Verify & Complete'}
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Step 2: Import Wallet */}
         {step === 2 && walletAction === 'import' && (
           <div className="step-content">
-            <h2 style={{ marginBottom: 'var(--space-3)' }}>Import Your Account</h2>
-            <p style={{ fontSize: '16px', color: 'var(--gray-600)', marginBottom: 'var(--space-6)' }}>
+            <h2 style={{ marginBottom: 'var(--space-2)' }}>Import Your Account</h2>
+            <p style={{ fontSize: '15px', color: 'var(--gray-600)', marginBottom: 'var(--space-4)' }}>
               Choose how you'd like to import your existing Arweave wallet
             </p>
 
             {/* Import Method Toggle */}
-            <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
               <button
                 type="button"
                 className={`button outline ${importMethod === 'file' ? 'active' : ''}`}
@@ -612,39 +591,85 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
 
             {/* File Import */}
             {importMethod === 'file' && (
-              <div className="form-group">
-                <label>Select Wallet File (JWK)</label>
+              <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
+                <label style={{ marginBottom: 'var(--space-2)' }}>
+                  Select Wallet File
+                  <span style={{ fontSize: '13px', color: 'var(--gray-500)', fontWeight: 'normal', marginLeft: 'var(--space-3)' }}>
+                    Supports Arweave wallet JSON files only
+                  </span>
+                </label>
                 <div style={{ 
-                  border: '2px dashed var(--gray-300)',
+                  border: `2px dashed ${isDragging ? 'var(--ardrive-primary)' : walletPath ? 'var(--ardrive-primary)' : 'var(--gray-300)'}`,
                   borderRadius: 'var(--radius-md)',
-                  padding: 'var(--space-6)',
+                  padding: 'var(--space-5)',
                   textAlign: 'center',
-                  backgroundColor: walletPath ? 'var(--primary-50)' : 'var(--gray-50)',
-                  borderColor: walletPath ? 'var(--ardrive-primary)' : 'var(--gray-300)'
-                }}>
+                  backgroundColor: isDragging ? 'var(--ardrive-primary-light)' : walletPath ? 'var(--primary-50)' : 'var(--gray-50)',
+                  transition: 'all 0.2s ease',
+                  cursor: 'pointer'
+                }}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onClick={() => !walletPath && handleSelectWallet()}
+                >
                   {walletPath ? (
                     <>
-                      <FileText size={32} style={{ color: 'var(--ardrive-primary)', marginBottom: 'var(--space-2)' }} />
-                      <p style={{ fontWeight: '600', marginBottom: 'var(--space-2)' }}>{walletPath.split(/[/\\]/).pop()}</p>
-                      <button
-                        className="button small outline"
-                        onClick={handleSelectWallet}
-                      >
-                        Change File
-                      </button>
+                      <FileText size={28} style={{ color: 'var(--ardrive-primary)', marginBottom: 'var(--space-2)' }} />
+                      <p style={{ fontWeight: '600', marginBottom: 'var(--space-1)', fontSize: '15px' }}>{walletPath.split(/[/\\]/).pop()}</p>
+                      <p style={{ fontSize: '13px', color: 'var(--gray-500)', marginBottom: 'var(--space-3)' }}>
+                        {walletPath}
+                      </p>
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'center' }}>
+                        <button
+                          className="button small outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectWallet();
+                          }}
+                          style={{ fontSize: '13px' }}
+                        >
+                          Change File
+                        </button>
+                        <button
+                          className="button small outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopyPath();
+                          }}
+                          style={{ fontSize: '13px' }}
+                        >
+                          {copiedPath ? (
+                            <>
+                              <CheckCircle size={14} style={{ marginRight: 'var(--space-1)' }} />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={14} style={{ marginRight: 'var(--space-1)' }} />
+                              Copy Path
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </>
                   ) : (
                     <>
-                      <FileText size={32} style={{ color: 'var(--gray-400)', marginBottom: 'var(--space-2)' }} />
-                      <p style={{ color: 'var(--gray-600)', marginBottom: 'var(--space-3)' }}>
-                        Drop your wallet file here or
+                      <FileText size={28} style={{ color: isDragging ? 'var(--ardrive-primary)' : 'var(--gray-400)', marginBottom: 'var(--space-2)' }} />
+                      <p style={{ color: 'var(--gray-600)', marginBottom: 'var(--space-2)', fontSize: '15px' }}>
+                        {isDragging ? 'Drop your wallet file here' : 'Drop your wallet file here or'}
                       </p>
-                      <button
-                        className="button"
-                        onClick={handleSelectWallet}
-                      >
-                        Browse Files
-                      </button>
+                      {!isDragging && (
+                        <button
+                          className="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectWallet();
+                          }}
+                          style={{ fontSize: '14px' }}
+                        >
+                          Browse Files
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -653,8 +678,8 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
 
             {/* Seed Phrase Import */}
             {importMethod === 'seedphrase' && (
-              <div className="form-group">
-                <label>
+              <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
+                <label style={{ marginBottom: 'var(--space-2)' }}>
                   Enter Recovery Phrase
                   <InfoButton 
                     tooltip="Enter your 12-word recovery phrase, separated by spaces"
@@ -662,25 +687,49 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                 </label>
                 <textarea
                   value={seedPhrase}
-                  onChange={(e) => setSeedPhrase(e.target.value)}
-                  placeholder="Enter your 12-word recovery phrase"
-                  rows={3}
+                  onChange={(e) => {
+                    setSeedPhrase(e.target.value);
+                    // Auto-expand based on content
+                    e.target.style.height = 'auto';
+                    e.target.style.height = e.target.scrollHeight + 'px';
+                  }}
+                  onFocus={(e) => {
+                    // Ensure proper height on focus
+                    e.target.style.height = 'auto';
+                    e.target.style.height = Math.max(80, e.target.scrollHeight) + 'px';
+                  }}
+                  placeholder="e.g. stove skate notice turtle crisp ..."
                   style={{ 
                     resize: 'none',
-                    fontFamily: 'monospace',
-                    fontSize: '14px'
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '14px',
+                    lineHeight: '1.6',
+                    minHeight: '80px',
+                    transition: 'height 0.2s ease',
+                    padding: 'var(--space-3)',
+                    backgroundColor: 'var(--gray-50)',
+                    border: `1px solid ${seedPhrase && !validateSeedPhrase(seedPhrase).isValid ? 'var(--danger-500)' : 'var(--gray-300)'}`,
+                    borderRadius: 'var(--radius-md)'
                   }}
                 />
                 {seedPhrase && !validateSeedPhrase(seedPhrase).isValid && (
-                  <p style={{ fontSize: '13px', color: 'var(--error)', marginTop: 'var(--space-2)' }}>
-                    {validateSeedPhrase(seedPhrase).error}
-                  </p>
+                  <div style={{ 
+                    fontSize: '13px', 
+                    color: 'var(--danger-600)', 
+                    marginTop: 'var(--space-2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-1)'
+                  }}>
+                    <Shield size={14} />
+                    Your recovery phrase must contain exactly 12 words.
+                  </div>
                 )}
               </div>
             )}
 
             {/* Password Fields */}
-            <div style={{ marginTop: 'var(--space-6)' }}>
+            <div style={{ marginTop: 'var(--space-4)' }}>
               <PasswordForm
                 password={password}
                 confirmPassword={confirmPassword}
@@ -692,7 +741,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
               <button
                 className="button outline"
                 onClick={prevStep}
@@ -705,8 +754,8 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                 className="button"
                 onClick={handleImport}
                 disabled={
-                  loading || !password || !confirmPassword || password.length < 8 || 
-                  (importMethod === 'file' ? !walletPath : !validateSeedPhrase(seedPhrase))
+                  loading || !password || !confirmPassword || password.length < 8 || password !== confirmPassword ||
+                  (importMethod === 'file' ? !walletPath : !validateSeedPhrase(seedPhrase).isValid)
                 }
                 style={{ flex: 2 }}
               >
@@ -727,59 +776,6 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                   <>Import Wallet</>
                 )}
               </button>
-            </div>
-
-            {/* Help Section */}
-            <div style={{ 
-              marginTop: 'var(--space-6)', 
-              padding: 'var(--space-4)',
-              backgroundColor: 'var(--gray-50)', 
-              borderRadius: 'var(--radius-md)',
-              textAlign: 'left'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
-                <HelpCircle size={16} style={{ color: 'var(--ardrive-primary)' }} />
-                <h3 style={{ fontSize: '14px', fontWeight: '600' }}>Don't have a wallet?</h3>
-              </div>
-              <div>
-                <p style={{ fontSize: '13px', color: 'var(--gray-600)', lineHeight: '1.5', marginBottom: 'var(--space-3)' }}>
-                  {importMethod === 'file' 
-                    ? 'You can download a wallet file from the Wander browser extension.'
-                    : 'We can create one for you'}
-                </p>
-                {importMethod === 'seedphrase' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWalletAction('create');
-                      setStep(1);
-                    }}
-                    style={{
-                      padding: 'var(--space-2) var(--space-4)',
-                      background: 'var(--ardrive-primary)',
-                      border: 'none',
-                      borderRadius: 'var(--radius)',
-                      color: 'white',
-                      fontSize: '13px',
-                      fontWeight: '500',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-2)'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'var(--ardrive-primary-dark)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'var(--ardrive-primary)';
-                    }}
-                  >
-                    <Plus size={14} />
-                    Create New Account
-                  </button>
-                )}
-              </div>
             </div>
           </div>
         )}
@@ -805,6 +801,28 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
         
         .wallet-setup-container > div:first-child {
           animation: subtle-pulse 20s ease-in-out infinite;
+        }
+        
+        @keyframes fadeIn {
+          from { 
+            opacity: 0; 
+            transform: translateY(10px);
+          }
+          to { 
+            opacity: 1; 
+            transform: translateY(0);
+          }
+        }
+        
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        
+        textarea:focus {
+          outline: 2px solid var(--ardrive-primary);
+          outline-offset: -1px;
+          border-color: var(--ardrive-primary);
         }
       `}</style>
     </div>

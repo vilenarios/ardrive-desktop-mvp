@@ -75,6 +75,7 @@ export class SecureWalletManager {
   }
 
 
+
   async importFromSeedPhrase(seedPhrase: string, password: string): Promise<boolean> {
     return this.importFromSeedPhraseInternal(seedPhrase, password, 'seed');
   }
