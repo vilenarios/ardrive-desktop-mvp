@@ -3,14 +3,16 @@ import { Cloud, FolderOpen, HardDrive, Info, Globe, Zap, X, HelpCircle, CheckCir
 import { ClientInputValidator } from '../input-validator';
 import { InfoButton } from './common/InfoButton';
 import SetupSuccessScreen from './SetupSuccessScreen';
+import { Profile } from '../../types';
 
 interface DriveAndSyncSetupProps {
+  currentProfile?: Profile | null;
   onSetupComplete: () => void;
   isReturningUser?: boolean;
   onBack?: () => void;
 }
 
-const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete, isReturningUser = false, onBack }) => {
+const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, onSetupComplete, isReturningUser = false, onBack }) => {
   const [driveName, setDriveName] = useState(isReturningUser ? '' : 'My Files');
   const [syncFolder, setSyncFolder] = useState('');
   const [loading, setLoading] = useState(false);
@@ -189,6 +191,7 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete, 
   if (showSuccess && createdDriveInfo) {
     return (
       <SetupSuccessScreen
+        currentProfile={currentProfile}
         driveName={createdDriveInfo.driveName}
         driveType="Public Drive"
         localSyncFolder={createdDriveInfo.localFolder}

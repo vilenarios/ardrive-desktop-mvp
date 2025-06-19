@@ -39,10 +39,11 @@ export class ArNSService {
       // Check cache first
       const cached = arnsCache.get(address);
       if (cached && Date.now() - cached.timestamp < CACHE_DURATION && cached.primaryName !== undefined) {
+        console.log('ArNS Debug - Returning cached primary name:', cached.primaryName || 'none');
         return cached.primaryName || null;
       }
 
-      console.log('Fetching primary ArNS name for address:', `${address.slice(0,4)}...${address.slice(-4)}`);
+      console.log('ArNS Debug - Fetching primary ArNS name for address:', `${address.slice(0,4)}...${address.slice(-4)}`);
 
       // Create a timeout promise
       const timeoutPromise = new Promise<null>((resolve) => {
@@ -50,13 +51,21 @@ export class ArNSService {
       });
 
       // Race between the API call and timeout
+      const primaryNamePromise = this.ario.getPrimaryName({ address }).catch(error => {
+        console.log('ArNS Debug - getPrimaryName error:', error);
+        return null;
+      });
+      
       const primaryName = await Promise.race([
-        this.ario.getPrimaryName({ address }),
+        primaryNamePromise,
         timeoutPromise
       ]);
 
-      if (primaryName && primaryName.name) {
-        console.log('Found primary name:', primaryName.name);
+      console.log('ArNS Debug - API response for getPrimaryName:', primaryName);
+
+      // According to docs, response contains: { name, processId, startTimestamp, endTimestamp }
+      if (primaryName && typeof primaryName === 'object' && primaryName.name) {
+        console.log('ArNS Debug - Found primary name:', primaryName.name);
         
         // Update cache
         arnsCache.set(address, {
@@ -73,9 +82,14 @@ export class ArNSService {
         primaryName: '',
         timestamp: Date.now(),
       });
+      console.log('ArNS Debug - No primary name found for address');
       return null;
     } catch (error) {
-      console.error('Error fetching primary ArNS name:', error);
+      console.error('ArNS Debug - Error fetching primary ArNS name:', error);
+      // Check if it's a 404 or name not found error
+      if (error && typeof error === 'object' && 'message' in error) {
+        console.log('ArNS Debug - Error message:', error.message);
+      }
       return null;
     }
   }
@@ -92,10 +106,11 @@ export class ArNSService {
 
       // Wrap the entire operation in a promise
       const recordPromise = (async () => {
-        // Get the ArNS record
-        const record = await this.ario.getArNSRecord({ name });
+        try {
+          // Get the ArNS record
+          const record = await this.ario.getArNSRecord({ name });
 
-        console.log('ArNS Debug - Record for', name, ':', record);
+          console.log('ArNS Debug - Record for', name, ':', record);
 
         if (record && record.processId) {
           // Initialize ANT client for this record
@@ -125,6 +140,10 @@ export class ArNSService {
 
         console.log('ArNS Debug - No record or processId found for', name);
         return { processId: null, logo: null };
+        } catch (error) {
+          console.log('ArNS Debug - Error fetching record for', name, ':', error);
+          return { processId: null, logo: null };
+        }
       })();
 
       // Race between the API calls and timeout
@@ -140,6 +159,12 @@ export class ArNSService {
    */
   async getArNSProfile(address: string): Promise<ArNSProfile> {
     try {
+      // Validate address
+      if (!address || !checkValidAddress(address)) {
+        console.log('ArNS Debug - Invalid address provided:', address);
+        return { name: null, avatar: null };
+      }
+
       // First get the primary name
       const primaryName = await this.getPrimaryNameForAddress(address);
 
@@ -155,7 +180,7 @@ export class ArNSService {
         console.log('ArNS Debug - Using cached logo for', primaryName, ':', cached.logo);
         return { 
           name: primaryName, 
-          avatar: cached.logo ? `https://ardrive.net/${cached.logo}` : null 
+          avatar: cached.logo ? `https://arweave.net/${cached.logo}` : null 
         };
       }
 
@@ -173,7 +198,7 @@ export class ArNSService {
 
       return { 
         name: primaryName, 
-        avatar: logo ? `https://ardrive.net/${logo}` : null 
+        avatar: logo ? `https://arweave.net/${logo}` : null 
       };
     } catch (error) {
       console.error('Error fetching ArNS profile:', error);

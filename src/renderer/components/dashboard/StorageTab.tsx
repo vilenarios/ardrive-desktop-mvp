@@ -53,6 +53,10 @@ interface FileItem {
   children?: FileItem[];
   path: string;
   parentId?: string;
+  // ArDrive/Arweave properties
+  ardriveUrl?: string;
+  dataTxId?: string;
+  metadataTxId?: string;
 }
 
 interface SyncState {
@@ -75,7 +79,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   const [currentPath, setCurrentPath] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'files' | 'folders' | 'downloaded' | 'pending'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'files' | 'folders'>('all');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
@@ -84,14 +88,56 @@ export const StorageTab: React.FC<StorageTabProps> = ({
 
   const selectedDrive = drive;
 
-  // Load drive metadata from cache
+  // Load drive metadata from Arweave permaweb
   const loadDriveMetadata = async () => {
     if (!drive) return;
     
     setIsLoading(true);
     try {
-      const metadata = await window.electronAPI.drive.getMetadata(drive.id);
-      setFileData(metadata);
+      // Fetch real data from permaweb
+      const permawebFiles = await window.electronAPI.drive.getPermawebFiles(drive.id);
+      console.log('Loaded permaweb files:', permawebFiles);
+      
+      // Build folder hierarchy from flat list
+      const rootItems: FileItem[] = [];
+      const itemMap = new Map<string, FileItem>();
+      
+      // First pass: create all items
+      permawebFiles.forEach((item: any) => {
+        const fileItem: FileItem = {
+          id: item.id,
+          name: item.name,
+          type: item.type,
+          size: item.size,
+          modifiedAt: new Date(item.modifiedAt),
+          isDownloaded: false,
+          isUploaded: true,
+          status: 'synced' as const,
+          path: item.path || '/',
+          parentId: item.parentId,
+          children: item.type === 'folder' ? [] : undefined,
+          // Add ArDrive sharing URL
+          ardriveUrl: item.ardriveUrl,
+          dataTxId: item.dataTxId,
+          metadataTxId: item.metadataTxId
+        };
+        itemMap.set(item.id, fileItem);
+      });
+      
+      // Second pass: build hierarchy
+      itemMap.forEach((item) => {
+        if (item.parentId && itemMap.has(item.parentId)) {
+          const parent = itemMap.get(item.parentId);
+          if (parent && parent.children) {
+            parent.children.push(item);
+          }
+        } else if (!item.parentId || item.parentId === drive.rootFolderId) {
+          // Root level items
+          rootItems.push(item);
+        }
+      });
+      
+      setFileData(rootItems);
     } catch (error) {
       console.error('Failed to load drive metadata:', error);
       setFileData([]);
@@ -104,13 +150,8 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   const handleRefresh = async () => {
     if (!drive) return;
     
-    setIsLoading(true);
-    try {
-      await window.electronAPI.drive.refreshMetadata(drive.id);
-      await loadDriveMetadata();
-    } catch (error) {
-      console.error('Failed to refresh metadata:', error);
-    }
+    // Simply reload the data from permaweb
+    await loadDriveMetadata();
   };
 
   // Load real file data from API or sync status
@@ -244,12 +285,6 @@ export const StorageTab: React.FC<StorageTabProps> = ({
       case 'folders':
         currentFiles = currentFiles.filter(item => item.type === 'folder');
         break;
-      case 'downloaded':
-        currentFiles = currentFiles.filter(item => item.isDownloaded);
-        break;
-      case 'pending':
-        currentFiles = currentFiles.filter(item => !item.isDownloaded);
-        break;
     }
 
     return currentFiles.sort((a, b) => {
@@ -374,21 +409,6 @@ export const StorageTab: React.FC<StorageTabProps> = ({
       </div>
 
 
-      {/* Sync Progress Bar (shown when syncing) */}
-      {syncState?.isActive && (
-        <div className="sync-progress-bar">
-          <div className="progress-info">
-            <span>Syncing {syncState.currentFile}</span>
-            <span>{syncState.syncedFiles} / {syncState.totalFiles} files</span>
-          </div>
-          <div className="progress-bar">
-            <div 
-              className="progress-fill"
-              style={{ width: `${syncState.progress}%` }}
-            ></div>
-          </div>
-        </div>
-      )}
 
       {/* File Explorer Controls */}
       <div className="explorer-controls">
@@ -433,8 +453,6 @@ export const StorageTab: React.FC<StorageTabProps> = ({
               <option value="all">All Items</option>
               <option value="files">Files Only</option>
               <option value="folders">Folders Only</option>
-              <option value="downloaded">Downloaded</option>
-              <option value="pending">Pending Download</option>
             </select>
           </div>
 
@@ -456,15 +474,6 @@ export const StorageTab: React.FC<StorageTabProps> = ({
               </button>
             </div>
 
-            {selectedItems.length > 0 && (
-              <button 
-                className="download-button"
-                onClick={handleDownloadSelected}
-              >
-                <Download size={16} />
-                Download Selected ({selectedItems.length})
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -478,7 +487,6 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                 <div className="col-name">Name</div>
                 <div className="col-size">Size</div>
                 <div className="col-modified">Modified</div>
-                <div className="col-status">Status</div>
                 <div className="col-actions">Actions</div>
               </div>
             )}
@@ -512,70 +520,49 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                     <div className="col-modified">
                       {formatDate(item.modifiedAt)}
                     </div>
-                    <div className="col-status">
-                      <div className="status-display">
-                        {getStatusIcon(item)}
-                        {(item.downloadProgress || item.uploadProgress) && (
-                          <div className="mini-progress">
-                            <div 
-                              className="mini-progress-fill"
-                              style={{ width: `${item.downloadProgress || item.uploadProgress}%` }}
-                            ></div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
                     <div className="col-actions">
                       <div className="item-actions">
-                        {!item.isDownloaded && (
-                          <button 
-                            className="action-button"
-                            title="Download"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              console.log('Download', item.name);
-                            }}
-                          >
-                            <Download size={14} />
-                          </button>
-                        )}
                         <button 
                           className="action-button"
-                          title="View details"
-                          onClick={(e) => {
+                          title="View on ArDrive"
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            console.log('View details', item.name);
+                            if (item.ardriveUrl) {
+                              await window.electronAPI.shell.openExternal(item.ardriveUrl);
+                            }
                           }}
                         >
-                          <Eye size={14} />
-                        </button>
-                        <button 
-                          className="action-button"
-                          title="More actions"
-                        >
-                          <MoreHorizontal size={14} />
+                          <ExternalLink size={14} />
                         </button>
                       </div>
                     </div>
                   </>
                 )}
 
-                {viewMode === 'grid' && (
+                {viewMode === 'grid' && item.type === 'file' && (
                   <div className="grid-overlay">
-                    <div className="status-indicator">
-                      {getStatusIcon(item)}
-                    </div>
-                    {!item.isDownloaded && (
-                      <button 
-                        className="download-overlay"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          console.log('Download', item.name);
-                        }}
-                      >
-                        <Download size={16} />
-                      </button>
-                    )}
+                    <button 
+                      className="action-button"
+                      title="View on ArDrive"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (item.ardriveUrl) {
+                          await window.electronAPI.shell.openExternal(item.ardriveUrl);
+                        }
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                        padding: '6px',
+                        borderRadius: '4px',
+                        border: '1px solid var(--gray-300)'
+                      }}
+                    >
+                      <ExternalLink size={14} />
+                    </button>
                   </div>
                 )}
               </div>
@@ -623,7 +610,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                   lineHeight: '1.6'
                 }}>
                   Add files to your sync folder and approve them for upload. 
-                  Once uploaded to Arweave, they'll be permanently stored and accessible here.
+                  {"Once uploaded to Arweave, they'll be permanently stored and accessible here."}
                 </p>
                 <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center' }}>
                   <button

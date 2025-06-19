@@ -4287,6 +4287,17 @@ html, body {
   align-items: center;
   justify-content: center;
   color: var(--gray-600);
+  position: relative;
+  overflow: hidden;
+}
+
+.user-menu-trigger .user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
 .user-menu-trigger .user-name {
@@ -4352,14 +4363,25 @@ html, body {
 }
 
 .profile-avatar {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   background: var(--gray-100);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--gray-600);
+  position: relative;
+  overflow: hidden;
+}
+
+.profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
 .profile-details {
@@ -4479,4 +4501,164 @@ html, body {
   to {
     transform: rotate(360deg);
   }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes successPulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Status Pill Animations */
+.status-spinner {
+  animation: spin 1s linear infinite;
+}
+
+.status-pill {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.status-pill--uploaded {
+  animation: fadeIn 0.3s ease-out, successPulse 0.5s ease-out 0.3s;
+}
+
+/* Smooth transitions for status changes */
+.status-pill--uploading {
+  position: relative;
+  min-width: 80px;
+}
+
+.status-pill--uploaded svg {
+  animation: successPulse 0.5s ease-out;
+}
+
+/* Shimmer effect for uploading files */
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.upload-item--uploading {
+  background: linear-gradient(
+    90deg,
+    transparent 25%,
+    rgba(59, 130, 246, 0.05) 50%,
+    transparent 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Fade out animation for uploaded files */
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+}
+
+.upload-item--uploaded {
+  animation: fadeOut 0.5s ease-out forwards;
+}
+
+/* Expandable details animation */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.upload-details-expanded {
+  animation: slideDown 0.2s ease-out;
+}
+
+/* Success checkmark animation */
+@keyframes checkmark {
+  0% {
+    stroke-dashoffset: 50;
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+.success-checkmark {
+  stroke-dasharray: 50;
+  stroke-dashoffset: 50;
+  animation: checkmark 0.5s ease-out forwards;
+}
+
+/* Drag and drop styles */
+.drag-active {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  transform: scale(1.01);
+}
+
+/* Smooth hover for interactive elements */
+.interactive-hover {
+  transition: all 0.2s ease;
+}
+
+.interactive-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Loading shimmer for file names during upload */
+@keyframes shimmerText {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.uploading-filename {
+  background: linear-gradient(
+    90deg,
+    var(--gray-700) 25%,
+    var(--gray-500) 50%,
+    var(--gray-700) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmerText 2s infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }

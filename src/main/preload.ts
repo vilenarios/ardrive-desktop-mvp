@@ -46,6 +46,8 @@ const api = {
       ipcRenderer.invoke('drive:get-metadata', mappingId),
     refreshMetadata: (mappingId: string) =>
       ipcRenderer.invoke('drive:refresh-metadata', mappingId),
+    getPermawebFiles: (driveId: string) =>
+      ipcRenderer.invoke('drive:get-permaweb-files', driveId),
   },
 
   // Sync operations

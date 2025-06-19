@@ -552,12 +552,12 @@ export class SecureWalletManager {
         name: drive.name,
         privacy: drive.drivePrivacy as 'public' | 'private',
         rootFolderId: drive.rootFolderId === 'ENCRYPTED' ? '' : drive.rootFolderId.toString(),
-        dateCreated: drive.dateCreated || Date.now(),
+        // Convert unixTime (seconds) to milliseconds timestamp, or use current time if not available
+        dateCreated: drive.unixTime ? drive.unixTime * 1000 : Date.now(),
         size: 0, // Will need to calculate this from drive contents
         isPrivate: drive.drivePrivacy === 'private'
       }));
       
-      console.log('Mapped drive infos:', driveInfos);
       return driveInfos;
       
     } catch (error) {

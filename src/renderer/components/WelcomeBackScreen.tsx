@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { HardDrive, Plus, FolderOpen, Calendar, Database, ArrowRight, ChevronRight, SkipForward, ArrowLeft } from 'lucide-react';
-import { DriveInfo } from '../../types';
+import { HardDrive, Plus, FolderOpen, Calendar, Database, ArrowRight, ChevronRight, SkipForward, ArrowLeft, User } from 'lucide-react';
+import { DriveInfo, Profile } from '../../types';
 
 interface WelcomeBackScreenProps {
+  currentProfile?: Profile | null;
   onDriveSelected: (drive: DriveInfo) => void;
   onCreateNewDrive: () => void;
   onSkipSetup: () => void;
@@ -10,6 +11,7 @@ interface WelcomeBackScreenProps {
 }
 
 const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({ 
+  currentProfile,
   onDriveSelected, 
   onCreateNewDrive, 
   onSkipSetup,
@@ -28,6 +30,7 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
     try {
       setLoading(true);
       const driveList = await window.electronAPI.drive.list();
+      console.log('Loaded drives in WelcomeBackScreen:', driveList);
       setDrives(driveList || []);
       
       // Pre-select the most recent drive if there's only one
@@ -61,6 +64,8 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
 
   const handleContinue = () => {
     const selectedDrive = drives.find(d => d.id === selectedDriveId);
+    console.log('Selected drive ID:', selectedDriveId);
+    console.log('Selected drive object:', selectedDrive);
     if (selectedDrive) {
       onDriveSelected(selectedDrive);
     }
@@ -111,8 +116,49 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
           <HardDrive size={48} style={{ color: 'var(--ardrive-primary)', marginBottom: 'var(--space-4)' }} />
+          
+          {/* User Avatar */}
+          {currentProfile && (
+            <div style={{ 
+              width: '64px', 
+              height: '64px', 
+              margin: '0 auto var(--space-4)', 
+              background: 'var(--gray-100)', 
+              borderRadius: '50%', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              position: 'relative', 
+              overflow: 'hidden',
+              border: '3px solid var(--gray-200)'
+            }}>
+              {currentProfile.avatarUrl ? (
+                <img 
+                  src={currentProfile.avatarUrl} 
+                  alt={currentProfile.arnsName || currentProfile.name || 'User'}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0
+                  }}
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const nextElement = e.currentTarget.nextSibling as HTMLElement;
+                    if (nextElement) {
+                      nextElement.style.display = '';
+                    }
+                  }}
+                />
+              ) : null}
+              <User size={32} style={currentProfile.avatarUrl ? { display: 'none' } : { color: 'var(--gray-600)' }} />
+            </div>
+          )}
+          
           <h2 style={{ marginBottom: 'var(--space-3)', fontSize: '32px', fontWeight: '600' }}>
-            Welcome Back!
+            Welcome Back{currentProfile && (currentProfile.arnsName || currentProfile.name) ? `, ${currentProfile.arnsName || currentProfile.name}` : ''}!
           </h2>
           <p style={{ fontSize: '18px', color: 'var(--gray-600)', lineHeight: '1.6' }}>
             Great news! You already have {drives.length} ArDrive{drives.length !== 1 ? 's' : ''} ready to sync.

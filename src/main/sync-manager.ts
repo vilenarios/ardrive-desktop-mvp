@@ -1033,6 +1033,17 @@ export class SyncManager {
 
       console.log(`Adding new file to PENDING APPROVAL queue: ${path.basename(filePath)}`);
       
+      // Ensure the parent folder is tracked in the database
+      const fileDir = path.dirname(filePath);
+      if (fileDir !== this.syncFolderPath) {
+        const folder = await this.databaseManager.getFolderByPath(fileDir);
+        if (!folder) {
+          console.log(`Parent folder not tracked yet, adding: ${fileDir}`);
+          // Add the folder to the database (without Arweave ID for now)
+          await this.handleFolderAdd(fileDir);
+        }
+      }
+      
       // Calculate estimated costs for both AR and Turbo
       // ArDrive uses ~1 winston per byte, convert to AR (1 AR = 1e12 winston)
       const estimatedCostWinc = stats.size; // winston
@@ -1187,86 +1198,90 @@ export class SyncManager {
     console.log(`Uploading ${upload.fileName} with ArDrive Core (method: ${upload.uploadMethod || 'ar'})`);
     
     try {
-      // Get the correct parent folder for this file
+      // Get the correct parent folder for this file (will create folder structure if needed)
       const targetFolderId = await this.getTargetFolderId(upload.localPath);
+      console.log(`Target folder ID for upload: ${targetFolderId}`);
       
       // Wrap file for upload using ArDrive Core
       const wrappedFile = wrapFileOrFolder(upload.localPath);
       
-      // Upload file using ArDrive Core's recommended API
-      const result = await this.arDrive!.uploadAllEntities({
+      // Check if using Turbo and configure appropriately
+      let uploadOptions: any = {
         entitiesToUpload: [
           {
             wrappedEntity: wrappedFile,
             destFolderId: EID(targetFolderId) // Upload to correct folder
           }
         ]
-      });
+      };
+      
+      // If using Turbo, ensure ArDrive is configured for Turbo uploads
+      if (upload.uploadMethod === 'turbo') {
+        console.log('Configuring upload for Turbo payment method');
+        // ArDrive Core will use Turbo automatically if initialized
+      }
+      
+      // Upload file using ArDrive Core's recommended API
+      const result = await this.arDrive!.uploadAllEntities(uploadOptions);
 
       console.log('ArDrive Core upload result:', result);
       
-      // Extract transaction IDs and entity ID
-      let dataTxId: string | undefined;
-      let metadataTxId: string | undefined;
-      let fileId: string | undefined;
-      
-      // ArDrive Core creates multiple transactions for a file upload
-      for (const createdItem of result.created) {
-        if (createdItem.type === 'file') {
-          if (createdItem.dataTxId) {
-            dataTxId = createdItem.dataTxId.toString();
-          }
-          if (createdItem.metadataTxId) {
-            metadataTxId = createdItem.metadataTxId.toString();
-          }
-          if (createdItem.entityId) {
-            fileId = createdItem.entityId.toString();
-          }
-        }
-      }
-
-      // Update as completed
-      upload.status = 'completed';
-      upload.progress = 100;
-      upload.dataTxId = dataTxId;
-      upload.metadataTxId = metadataTxId;
-      upload.transactionId = dataTxId; // Keep legacy field for backward compatibility
-      upload.completedAt = new Date();
-
-      console.log(`ArDrive Core upload completed - Data TX: ${dataTxId}, Metadata TX: ${metadataTxId}, File-ID: ${fileId}`);
-
-      await this.databaseManager.updateUpload(upload.id, {
-        status: 'completed',
-        progress: 100,
-        dataTxId: upload.dataTxId,
-        metadataTxId: upload.metadataTxId,
-        transactionId: upload.transactionId,
-        completedAt: upload.completedAt
-      });
-
-      // Update processed files database with the completed upload
-      try {
-        const content = await fs.readFile(upload.localPath);
-        const hash = crypto.createHash('sha256').update(content).digest('hex');
-        const stats = await fs.stat(upload.localPath);
-        
-        await this.databaseManager.addProcessedFile(
-          hash,
-          path.basename(upload.localPath),
-          stats.size,
-          upload.localPath,
-          'upload',
-          fileId || dataTxId || upload.transactionId // Prefer File-ID, fallback to transaction ID
-        );
-      } catch (hashError) {
-        console.warn('Failed to update processed files for completed ArDrive Core upload:', hashError);
-      }
-
-      this.uploadQueue.delete(upload.id);
+      // Process the upload result
+      await this.processUploadResult(upload, result);
 
     } catch (error) {
       console.error(`ArDrive Core upload failed for ${upload.fileName}:`, error);
-      throw error;
+      
+      // Provide more specific error messages
+      let errorMessage = 'Unknown upload error';
+      if (error instanceof Error) {
+        console.error('Upload error details:', error.message, error.stack);
+        
+        if (error.message.includes('File-ID tag missing')) {
+          // This error typically happens when trying to read back a file that wasn't properly created
+          // It might be a timing issue or folder creation problem
+          errorMessage = 'Upload failed: File entity creation issue. Retrying with folder verification...';
+          
+          // Retry once with explicit folder structure verification
+          try {
+            console.log('Retrying upload after folder structure verification...');
+            await this.ensureFolderStructure(path.dirname(upload.localPath));
+            
+            // Small delay to ensure folder is fully created
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Re-wrap the file and get target folder
+            const retryWrappedFile = wrapFileOrFolder(upload.localPath);
+            const retryTargetFolderId = await this.getTargetFolderId(upload.localPath);
+            
+            // Retry the upload
+            const retryResult = await this.arDrive!.uploadAllEntities({
+              entitiesToUpload: [
+                {
+                  wrappedEntity: retryWrappedFile,
+                  destFolderId: EID(retryTargetFolderId)
+                }
+              ]
+            });
+            
+            // If retry succeeded, process the result
+            console.log('Retry successful:', retryResult);
+            return this.processUploadResult(upload, retryResult);
+            
+          } catch (retryError) {
+            console.error('Retry failed:', retryError);
+            errorMessage = 'Upload failed after retry. Please ensure the parent folder exists on ArDrive.';
+          }
+        } else if (error.message.includes('insufficient')) {
+          errorMessage = 'Upload failed: Insufficient balance for transaction.';
+        } else if (error.message.includes('network')) {
+          errorMessage = 'Upload failed: Network error. Please check your internet connection.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      throw new Error(errorMessage);
     }
   }
 
@@ -1285,11 +1300,180 @@ export class SyncManager {
       return folder.arweaveFolderId;
     }
     
-    // Fallback to root if folder not found
-    console.warn(`No Arweave folder found for ${fileDir}, using root folder`);
+    // If folder doesn't exist on Arweave, create it first
+    console.log(`No Arweave folder found for ${fileDir}, creating folder structure...`);
+    try {
+      await this.ensureFolderStructure(fileDir);
+      
+      // Try to get the folder again after creation
+      const newFolder = await this.databaseManager.getFolderByPath(fileDir);
+      if (newFolder?.arweaveFolderId) {
+        return newFolder.arweaveFolderId;
+      }
+    } catch (error) {
+      console.error(`Failed to create folder structure for ${fileDir}:`, error);
+    }
+    
+    // Final fallback to root if folder creation failed
+    console.warn(`Failed to create folder structure for ${fileDir}, using root folder`);
     return this.rootFolderId!;
   }
 
+  // Ensure folder structure exists on Arweave before uploading files
+  private async ensureFolderStructure(targetPath: string): Promise<void> {
+    if (!this.syncFolderPath || !this.arDrive || !this.rootFolderId) {
+      throw new Error('Sync not properly initialized');
+    }
+    
+    console.log(`Ensuring folder structure for: ${targetPath}`);
+    
+    // Get all parent directories that need to be created
+    const dirsToCreate: string[] = [];
+    let currentPath = targetPath;
+    
+    while (currentPath !== this.syncFolderPath && currentPath !== path.dirname(currentPath)) {
+      const folder = await this.databaseManager.getFolderByPath(currentPath);
+      if (!folder || !folder.arweaveFolderId) {
+        dirsToCreate.unshift(currentPath); // Add to beginning to create parent dirs first
+      } else {
+        console.log(`Folder already exists on Arweave: ${currentPath} (${folder.arweaveFolderId})`);
+      }
+      currentPath = path.dirname(currentPath);
+    }
+    
+    if (dirsToCreate.length === 0) {
+      console.log('All folders already exist on Arweave');
+      return;
+    }
+    
+    console.log(`Creating ${dirsToCreate.length} folders on Arweave...`);
+    
+    // Create folders in order from parent to child
+    for (const dirPath of dirsToCreate) {
+      try {
+        await this.createFolderOnArweave(dirPath);
+      } catch (error) {
+        console.error(`Failed to create folder ${dirPath}:`, error);
+        throw error;
+      }
+    }
+    
+    // Final delay to ensure all folders are ready
+    if (dirsToCreate.length > 0) {
+      console.log('Waiting for folder creation to propagate...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  
+  // Create a single folder on Arweave
+  private async createFolderOnArweave(dirPath: string): Promise<void> {
+    const relativePath = this.versionManager.getRelativePath(dirPath);
+    const parentPath = path.dirname(dirPath);
+    const folderName = path.basename(dirPath);
+    
+    console.log(`Creating folder on Arweave: ${relativePath}`);
+    
+    // Find parent folder ID
+    let parentFolderId = this.rootFolderId!;
+    if (parentPath !== this.syncFolderPath) {
+      const parentFolder = await this.databaseManager.getFolderByPath(parentPath);
+      if (parentFolder?.arweaveFolderId) {
+        parentFolderId = parentFolder.arweaveFolderId;
+      }
+    }
+    
+    try {
+      const result = await this.arDrive!.createPublicFolder({
+        parentFolderId: EID(parentFolderId),
+        folderName: folderName
+      });
+      
+      if (result.created && result.created.length > 0) {
+        const createdFolder = result.created[0];
+        if (createdFolder.type === 'folder' && createdFolder.entityId) {
+          const arweaveFolderId = createdFolder.entityId.toString();
+          console.log(`✓ Folder created on Arweave with ID: ${arweaveFolderId}`);
+          
+          // Add to database
+          await this.databaseManager.addFolder({
+            id: crypto.randomUUID(),
+            folderPath: dirPath,
+            relativePath,
+            parentPath: parentPath !== this.syncFolderPath ? parentPath : undefined,
+            arweaveFolderId
+          });
+          
+          // Small delay to ensure folder is fully propagated
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to create folder ${folderName} on Arweave:`, error);
+      throw error;
+    }
+  }
+  
+  private async processUploadResult(upload: FileUpload, result: any): Promise<void> {
+    // Extract transaction IDs and entity ID
+    let dataTxId: string | undefined;
+    let metadataTxId: string | undefined;
+    let fileId: string | undefined;
+    
+    // ArDrive Core creates multiple transactions for a file upload
+    for (const createdItem of result.created) {
+      if (createdItem.type === 'file') {
+        if (createdItem.dataTxId) {
+          dataTxId = createdItem.dataTxId.toString();
+        }
+        if (createdItem.metadataTxId) {
+          metadataTxId = createdItem.metadataTxId.toString();
+        }
+        if (createdItem.entityId) {
+          fileId = createdItem.entityId.toString();
+        }
+      }
+    }
+
+    // Update as completed
+    upload.status = 'completed';
+    upload.progress = 100;
+    upload.dataTxId = dataTxId;
+    upload.metadataTxId = metadataTxId;
+    upload.transactionId = dataTxId; // Keep legacy field for backward compatibility
+    upload.completedAt = new Date();
+
+    console.log(`ArDrive Core upload completed - Data TX: ${dataTxId}, Metadata TX: ${metadataTxId}, File-ID: ${fileId}`);
+
+    await this.databaseManager.updateUpload(upload.id, {
+      status: 'completed',
+      progress: 100,
+      dataTxId: upload.dataTxId,
+      metadataTxId: upload.metadataTxId,
+      transactionId: upload.transactionId,
+      completedAt: upload.completedAt
+    });
+
+    // Update processed files database with the completed upload
+    try {
+      const content = await fs.readFile(upload.localPath);
+      const hash = crypto.createHash('sha256').update(content).digest('hex');
+      const stats = await fs.stat(upload.localPath);
+      
+      await this.databaseManager.addProcessedFile(
+        hash,
+        path.basename(upload.localPath),
+        stats.size,
+        upload.localPath,
+        'upload',
+        fileId || dataTxId || upload.transactionId // Prefer File-ID, fallback to transaction ID
+      );
+    } catch (hashError) {
+      console.warn('Failed to update processed files for completed ArDrive Core upload:', hashError);
+    }
+
+    this.uploadQueue.delete(upload.id);
+  }
+  
   private getMimeType(fileName: string): string {
     const ext = path.extname(fileName).toLowerCase();
     const mimeTypes: { [key: string]: string } = {
@@ -1325,34 +1509,43 @@ export class SyncManager {
     }
 
     try {
-      // Try to list all files and folders in the drive
-      let allItems: any[] = [];
+      // Use the simple ArDrive Core approach like ardrive-cli
+      console.log('Fetching drive contents via ArDrive Core listPublicFolder...');
       
-      try {
-        // First try the standard ArDrive Core approach
-        console.log('Fetching drive contents via ArDrive Core...');
-        const folders = await this.arDrive!.listPublicFolder({
-          folderId: EID(this.rootFolderId!)
-        });
-        
-        allItems = await this.recursivelyListDriveContents(this.rootFolderId!, '');
-        console.log(`Found ${allItems.length} items in drive`);
-        
-      } catch (error) {
-        console.log('ArDrive Core listing failed, trying direct GraphQL...');
-        // Fallback to direct GraphQL query if ArDrive Core fails
-        allItems = await this.fetchDriveContentsViaGraphQL();
-      }
+      const allItems = await this.arDrive!.listPublicFolder({
+        folderId: EID(this.rootFolderId!),
+        maxDepth: 10, // Get full hierarchy
+        includeRoot: false // Don't include root folder itself
+      });
+      
+      // Sort by path like ardrive-cli does
+      const sortedItems = allItems.sort((a: any, b: any) => {
+        const pathA = a.path || a.name || '';
+        const pathB = b.path || b.name || '';
+        return pathA.localeCompare(pathB);
+      });
+      
+      // Clean up unused properties for folders like ardrive-cli
+      sortedItems.forEach((item: any) => {
+        if (item.entityType === 'folder') {
+          delete item.lastModifiedDate;
+          delete item.size;
+          delete item.dataTxId;
+          delete item.dataContentType;
+        }
+      });
+      
+      console.log(`Found ${sortedItems.length} items in drive`);
 
       // Clear existing cache for this mapping
       await this.databaseManager.clearDriveMetadataCache(mapping.id);
 
       // Process and cache all items
-      for (const item of allItems) {
+      for (const item of sortedItems) {
         const localPath = path.join(this.syncFolderPath!, item.path || item.name);
         let localFileExists = false;
         
-        if (item.type === 'file') {
+        if (item.entityType === 'file') {
           // Check if file exists locally
           try {
             await fs.stat(localPath);
@@ -1365,16 +1558,16 @@ export class SyncManager {
         // Store metadata in cache
         await this.databaseManager.upsertDriveMetadata({
           mappingId: mapping.id,
-          fileId: item.fileId || item.entityId,
-          parentFolderId: item.parentFolderId,
+          fileId: item.entityType === 'file' ? item.fileId?.toString() : item.folderId?.toString(),
+          parentFolderId: item.parentFolderId?.toString(),
           name: item.name,
           path: item.path || item.name,
-          type: item.type || (item.entityType === 'folder' ? 'folder' : 'file'),
-          size: item.size,
-          lastModifiedDate: item.lastModifiedDate,
-          dataTxId: item.dataTxId,
-          metadataTxId: item.metadataTxId,
-          contentType: item.contentType,
+          type: item.entityType === 'folder' ? 'folder' : 'file',
+          size: item.entityType === 'file' ? (item.size ? Number(item.size) : 0) : undefined,
+          lastModifiedDate: item.lastModifiedDate ? Number(item.lastModifiedDate) : undefined,
+          dataTxId: item.dataTxId?.toString(),
+          metadataTxId: (item as any).metaDataTxId?.toString() || (item as any).metadataTxId?.toString(),
+          contentType: item.entityType === 'file' ? item.dataContentType : undefined,
           localPath: localPath,
           localFileExists: localFileExists,
           syncStatus: localFileExists ? 'synced' : 'pending'

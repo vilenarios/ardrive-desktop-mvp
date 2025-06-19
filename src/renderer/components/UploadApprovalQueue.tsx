@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RotateCcw, AlertTriangle, Shuffle, CheckCircle2, Upload, X, Sparkles, Zap, Lightbulb, Tag, FileText, Bookmark, Plus, Edit3, ChevronDown, ChevronRight } from 'lucide-react';
+import { RotateCcw, AlertTriangle, Shuffle, CheckCircle2, Upload, X, Sparkles, Zap, Lightbulb, Tag, FileText, Bookmark, Plus, Edit3, ChevronDown, ChevronRight, Wallet } from 'lucide-react';
 import { PendingUpload, ConflictResolution } from '../../types';
 import { CustomMetadata, MetadataTemplate, FileWithMetadata, MetadataEditContext } from '../../types/metadata';
 import { isTurboFree, formatFileSize } from '../../utils/turbo-utils';
@@ -8,6 +8,7 @@ import MetadataEditor from './MetadataEditor';
 import MetadataTemplateManager from './MetadataTemplateManager';
 import { ExpandableSection } from './common/ExpandableSection';
 import { InfoButton } from './common/InfoButton';
+import StatusPill, { UploadStatus } from './common/StatusPill';
 
 interface UploadApprovalQueueProps {
   pendingUploads: PendingUpload[];
@@ -16,6 +17,11 @@ interface UploadApprovalQueueProps {
   onApproveAll: () => void;
   onRejectAll: () => void;
   onResolveConflict: (resolution: ConflictResolution) => void;
+  walletInfo?: {
+    balance: string;
+    turboBalance?: string;
+    turboWinc?: string;
+  };
 }
 
 const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
@@ -24,11 +30,11 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
   onRejectUpload,
   onApproveAll,
   onRejectAll,
-  onResolveConflict
+  onResolveConflict,
+  walletInfo
 }) => {
   const [selectedUploads, setSelectedUploads] = useState<Set<string>>(new Set());
   const [showConflictResolution, setShowConflictResolution] = useState<string | null>(null);
-  const [selectedMethods, setSelectedMethods] = useState<Map<string, 'ar' | 'turbo'>>(new Map());
   
   // Metadata state
   const [fileMetadata, setFileMetadata] = useState<Map<string, CustomMetadata>>(new Map());
@@ -39,16 +45,63 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
 
   // Progressive disclosure state
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
-  const [showFileDetails, setShowFileDetails] = useState(false);
+  const [showFileDetails, setShowFileDetails] = useState(() => {
+    // Persist user preference
+    const saved = localStorage.getItem('uploadQueue.showFileDetails');
+    return saved ? saved === 'true' : false;
+  });
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+  
+  // Auto-approve mode (default: false for safety - users must explicitly approve uploads)
+  const [autoApprove, setAutoApprove] = useState(() => {
+    const saved = localStorage.getItem('uploadQueue.autoApprove');
+    return saved ? saved === 'true' : false;
+  });
+  
+  // Track uploading state for files
+  const [uploadingFiles, setUploadingFiles] = useState<Map<string, { progress: number; status: UploadStatus }>>(new Map());
+  
+  // Drag and drop state
+  const [isDragging, setIsDragging] = useState(false);
 
-  const totalCost = pendingUploads.reduce((sum, upload) => sum + upload.estimatedCost, 0);
-  const totalTurboCost = pendingUploads.reduce((sum, upload) => {
-    // Don't count free files in the total
-    if (isTurboFree(upload.fileSize)) return sum;
-    return sum + (upload.estimatedTurboCost || 0);
-  }, 0);
-  const freeFileCount = pendingUploads.filter(u => isTurboFree(u.fileSize)).length;
+  // Calculate file categories for upload cost breakdown
+  const getUploadCostBreakdown = () => {
+    let freeFiles = 0;
+    let turboFiles = 0;
+    let arFiles = 0;
+    let totalTurboCredits = 0;
+    let totalArCost = 0;
+    
+    pendingUploads.forEach(upload => {
+      if (upload.conflictType !== 'none') return; // Skip conflicted files
+      
+      if (isTurboFree(upload.fileSize)) {
+        // Files < 100KB are always free via Turbo
+        freeFiles++;
+      } else if (upload.hasSufficientTurboBalance !== false && upload.estimatedTurboCost !== undefined) {
+        // Files >= 100KB with sufficient Turbo balance
+        turboFiles++;
+        totalTurboCredits += upload.estimatedTurboCost || 0;
+      } else {
+        // Files that will use AR (no Turbo credits available)
+        arFiles++;
+        totalArCost += upload.estimatedCost;
+      }
+    });
+    
+    return {
+      freeFiles,
+      turboFiles,
+      arFiles,
+      totalTurboCredits,
+      totalArCost
+    };
+  };
+  
+  const breakdown = getUploadCostBreakdown();
+  const totalCost = breakdown.totalArCost;
+  const totalTurboCost = breakdown.totalTurboCredits;
+  const freeFileCount = breakdown.freeFiles;
   const conflictCount = pendingUploads.filter(u => u.conflictType !== 'none').length;
 
   // Remove local formatFileSize since we import it from turbo-utils
@@ -66,29 +119,14 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
     return `${credits.toFixed(6)} Credits`;
   };
 
-  const getSelectedMethod = (uploadId: string, upload: PendingUpload): 'ar' | 'turbo' => {
-    // If already selected, use that
-    if (selectedMethods.has(uploadId)) {
-      return selectedMethods.get(uploadId)!;
-    }
-    // Default to Turbo for free transactions (under 100KB)
-    if (isTurboFree(upload.fileSize)) {
-      return 'turbo';
-    }
-    // Otherwise use recommended method or fall back to AR
-    return upload.recommendedMethod || 'ar';
-  };
 
-  const handleMethodChange = (uploadId: string, method: 'ar' | 'turbo') => {
-    const newMethods = new Map(selectedMethods);
-    newMethods.set(uploadId, method);
-    setSelectedMethods(newMethods);
-  };
 
   const handleApproveUpload = (uploadId: string) => {
     const upload = pendingUploads.find(u => u.id === uploadId);
     if (upload) {
-      const method = getSelectedMethod(uploadId, upload);
+      // Determine method based on MVP logic
+      const uploadMethod = getFileUploadMethod(upload);
+      const method = uploadMethod.method === 'ar' ? 'ar' : 'turbo';
       const metadata = fileMetadata.get(uploadId);
       onApproveUpload(uploadId, method, metadata);
     }
@@ -206,459 +244,899 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
     return items.slice(0, 2).join(' • ') || 'Custom metadata added';
   };
 
-  const getConflictIcon = (conflictType?: string) => {
-    const iconProps = { size: 16, style: { color: getConflictColor(conflictType) } };
-    switch (conflictType) {
-      case 'duplicate': return <RotateCcw {...iconProps} />;
-      case 'filename_conflict': return <AlertTriangle {...iconProps} />;
-      case 'content_conflict': return <Shuffle {...iconProps} />;
-      default: return <CheckCircle2 {...iconProps} />;
+  const getUploadStatus = (upload: PendingUpload): UploadStatus => {
+    // Check if we're tracking this file's upload state
+    const uploadState = uploadingFiles.get(upload.id);
+    if (uploadState) {
+      return uploadState.status;
+    }
+    
+    // Handle conflict states first
+    if (upload.conflictType && upload.conflictType !== 'none') {
+      return 'conflict';
+    }
+    
+    // Check actual upload status
+    switch (upload.status) {
+      case 'approved':
+        return 'ready';
+      case 'rejected':
+        return 'failed'; // Using failed state for rejected files
+      case 'awaiting_approval':
+        // If auto-approve is on, show as ready, otherwise keep as awaiting
+        return autoApprove ? 'ready' : 'ready'; // Still show as ready for visual consistency
+      default:
+        return 'ready';
     }
   };
-
-  const getConflictColor = (conflictType?: string) => {
-    switch (conflictType) {
-      case 'duplicate': return 'var(--ardrive-warning)';
-      case 'filename_conflict': return 'var(--ardrive-danger)';
-      case 'content_conflict': return 'var(--ardrive-danger)';
-      default: return 'var(--ardrive-secondary)';
+  
+  const getUploadProgress = (uploadId: string): number => {
+    const uploadState = uploadingFiles.get(uploadId);
+    return uploadState?.progress || 0;
+  };
+  
+  // Determine the actual upload method for a file based on MVP logic
+  const getFileUploadMethod = (upload: PendingUpload): { method: 'turbo-free' | 'turbo' | 'ar'; cost: string } => {
+    if (isTurboFree(upload.fileSize)) {
+      return { method: 'turbo-free', cost: 'Free' };
+    } else if (upload.hasSufficientTurboBalance !== false && upload.estimatedTurboCost !== undefined) {
+      return { method: 'turbo', cost: `${upload.estimatedTurboCost.toFixed(4)} Credits` };
+    } else {
+      return { method: 'ar', cost: formatArCost(upload.estimatedCost) };
     }
   };
 
   if (pendingUploads.length === 0) {
     return (
       <div className="card">
-        <h2>Upload Queue</h2>
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <Upload size={48} className="empty-icon" />
-          </div>
-          <div className="empty-state-title">No uploads pending</div>
-          <div className="empty-state-description">
-            Files added to your sync folder will appear here for review before upload.
-          </div>
+        <h2 style={{ margin: '0 0 var(--space-6) 0' }}>Upload Queue</h2>
+        <div style={{
+          textAlign: 'center',
+          padding: 'var(--space-8) var(--space-4)',
+          color: 'var(--gray-500)'
+        }}>
+          <Upload size={40} style={{ 
+            color: 'var(--gray-400)', 
+            marginBottom: 'var(--space-4)' 
+          }} />
+          <p style={{ 
+            fontSize: '16px', 
+            color: 'var(--gray-600)',
+            marginBottom: 'var(--space-2)'
+          }}>
+            No files in queue
+          </p>
+          <p style={{ 
+            fontSize: '14px',
+            color: 'var(--gray-500)',
+            maxWidth: '400px',
+            margin: '0 auto'
+          }}>
+            Files added to your sync folder will appear here
+          </p>
         </div>
       </div>
     );
   }
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set to false if we're leaving the entire card
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    // Get dropped files
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      // In a real implementation, this would add files to the sync folder
+      // For now, we'll just show a toast or console log
+      console.log('Files dropped:', files.map(f => f.name));
+      // You could call: window.electronAPI.files.addToSyncFolder(files)
+    }
+  };
+
   return (
-    <div className="card">
+    <div 
+      className={`card ${isDragging ? 'drag-active' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      style={{
+        position: 'relative',
+        transition: 'all 0.3s ease'
+      }}
+    >
+      {/* Drag overlay */}
+      {isDragging && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundColor: 'rgba(var(--ardrive-primary-rgb), 0.05)',
+          border: '2px dashed var(--ardrive-primary)',
+          borderRadius: 'var(--radius-lg)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10,
+          pointerEvents: 'none'
+        }}>
+          <Upload size={48} style={{ color: 'var(--ardrive-primary)', marginBottom: 'var(--space-3)' }} />
+          <p style={{ fontSize: '16px', fontWeight: '500', color: 'var(--ardrive-primary)' }}>
+            Drop files here to add to queue
+          </p>
+          <p style={{ fontSize: '14px', color: 'var(--gray-600)', marginTop: 'var(--space-1)' }}>
+            Files will be added to your sync folder
+          </p>
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <h2>Upload Queue</h2>
-          <span style={{ 
-            background: 'var(--ardrive-primary-light)', 
-            color: 'var(--ardrive-primary)', 
-            padding: '2px 8px', 
-            borderRadius: '12px', 
-            fontSize: '12px', 
-            fontWeight: '600' 
-          }}>
-            {pendingUploads.length}
-          </span>
-          <InfoButton tooltip="Review and approve files before upload. Add metadata or choose upload method." />
+          <h2 style={{ margin: 0 }}>Upload Queue ({pendingUploads.length})</h2>
         </div>
-        <div className="text-sm text-gray-600">
-          Cost: <span className="font-semibold">{formatArCost(totalCost)}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+          <span style={{ fontSize: '13px', color: 'var(--gray-600)', fontWeight: '500' }}>Est. Cost:</span>
+          {breakdown.freeFiles > 0 && (
+            <div style={{ fontSize: '12px', color: 'var(--success-600)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span>✅</span>
+              <span>{breakdown.freeFiles} {breakdown.freeFiles === 1 ? 'file' : 'files'} free via Turbo</span>
+            </div>
+          )}
+          {breakdown.turboFiles > 0 && (
+            <div style={{ fontSize: '12px', color: 'var(--info-600)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span>🌀</span>
+              <span>{breakdown.turboFiles} {breakdown.turboFiles === 1 ? 'file' : 'files'} using Turbo Credits ({breakdown.totalTurboCredits.toFixed(4)})</span>
+            </div>
+          )}
+          {breakdown.arFiles > 0 && (
+            <div style={{ fontSize: '12px', color: 'var(--gray-700)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span>🧱</span>
+              <span>{breakdown.arFiles} {breakdown.arFiles === 1 ? 'file' : 'files'} using AR ({formatArCost(breakdown.totalArCost)})</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Quick Action Bar */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 'var(--space-4)',
-        padding: 'var(--space-3)',
-        backgroundColor: 'var(--gray-50)',
-        borderRadius: 'var(--radius-md)',
-        border: '1px solid var(--gray-200)'
-      }}>
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          <button className="button primary small" onClick={onApproveAll}>
-            <CheckCircle2 size={14} />
-            Approve All
-          </button>
-          <button className="button secondary small" onClick={onRejectAll}>
-            <X size={14} />
-            Reject All
-          </button>
-        </div>
-        
-        <button 
-          className="button outline small"
-          onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
-          style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}
-        >
-          {showAdvancedOptions ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          Advanced Options
-        </button>
-      </div>
-
-      {/* Notifications and Warnings */}
-      {freeFileCount > 0 && (
-        <div style={{
-          padding: 'var(--space-3)',
-          backgroundColor: 'var(--success-50)',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--success-200)',
-          marginBottom: 'var(--space-4)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-3)'
-        }}>
-          <Zap size={20} style={{ color: 'var(--success-600)', flexShrink: 0 }} />
-          <div>
-            <div style={{ fontWeight: '600', color: 'var(--success-900)' }}>
-              {freeFileCount} {freeFileCount === 1 ? 'file is' : 'files are'} free with Turbo!
-            </div>
-            <div style={{ fontSize: '14px', color: 'var(--success-700)' }}>
-              Files under 100KB upload instantly at no cost when using Turbo.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {conflictCount > 0 && (
+      {/* Only show conflict warnings if ALL files have conflicts */}
+      {conflictCount > 0 && conflictCount === pendingUploads.length && (
         <div style={{ 
-          backgroundColor: '#fef2f2', 
-          border: '1px solid var(--ardrive-danger)',
+          backgroundColor: 'var(--warning-50)', 
           borderRadius: 'var(--radius-md)',
-          marginBottom: 'var(--space-4)',
-          padding: 'var(--space-3)'
+          marginBottom: 'var(--space-3)',
+          padding: 'var(--space-3)',
+          fontSize: '14px',
+          color: 'var(--warning-700)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <AlertTriangle size={20} style={{ color: 'var(--ardrive-danger)' }} />
-            <div>
-              <div className="font-semibold" style={{ color: 'var(--ardrive-danger)' }}>
-                {conflictCount} conflicts need review
-              </div>
-              <div className="text-sm text-gray-600">
-                Review conflicted files before uploading to avoid data loss or unnecessary costs.
-              </div>
-            </div>
+            <AlertTriangle size={16} />
+            <span>All files have conflicts that need to be resolved</span>
           </div>
         </div>
       )}
 
-      {/* Advanced Options - Progressive Disclosure */}
-      {showAdvancedOptions && (
-        <ExpandableSection 
-          title="Metadata & Upload Options" 
-          summary="Add metadata, manage templates, and configure upload settings"
-          variant="bordered"
-          defaultExpanded={true}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                <Tag size={16} color="var(--gray-600)" />
-                <span style={{ fontSize: '14px', fontWeight: '500', color: 'var(--gray-700)' }}>
-                  Metadata Tools
-                </span>
-                <InfoButton tooltip="Add custom metadata to files to improve searchability and organization" />
-              </div>
-              {selectedForBulkMetadata.size > 0 && (
-                <span style={{ fontSize: '13px', color: 'var(--blue-600)' }}>
-                  {selectedForBulkMetadata.size} files selected for bulk editing
-                </span>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <button
-                className="button secondary small"
-                onClick={() => setShowTemplateManager(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}
-              >
-                <Bookmark size={14} />
-                Templates
-              </button>
-              {selectedForBulkMetadata.size > 0 && (
+      {/* Payment Summary and Balance Display */}
+      {pendingUploads.length > 0 && conflictCount < pendingUploads.length && (
+        <div style={{
+          backgroundColor: 'var(--gray-50)',
+          borderRadius: 'var(--radius-md)',
+          padding: 'var(--space-3)',
+          marginBottom: 'var(--space-3)',
+          fontSize: '13px'
+        }}>
+          {/* Payment method summary */}
+          <div style={{ 
+            color: 'var(--gray-700)',
+            marginBottom: walletInfo ? 'var(--space-2)' : 0,
+            fontSize: '13px',
+            lineHeight: '1.5'
+          }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              Files under 100KB will upload instantly and free via Turbo. Larger files will use your Turbo Credits or AR tokens automatically.
+              <InfoButton 
+                tooltip="ArDrive automatically selects the best upload method. Small files (< 100KB) always use Turbo for free. Larger files use Turbo Credits if available, otherwise AR tokens from your wallet." 
+              />
+            </span>
+          </div>
+          
+          {/* Balance display */}
+          {walletInfo && (
+            <div style={{ 
+              color: 'var(--gray-600)',
+              fontSize: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-3)'
+            }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                AR Balance: <strong>{parseFloat(walletInfo.balance).toFixed(6)}</strong>
+                <InfoButton 
+                  tooltip="Used for on-chain (L1) uploads. Required if Turbo credits are unavailable." 
+                />
+              </span>
+              {walletInfo.turboBalance && (
                 <>
-                  <button
-                    className="button small"
-                    onClick={handleBulkMetadataEdit}
-                    style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}
-                  >
-                    <Edit3 size={14} />
-                    Edit {selectedForBulkMetadata.size} Files
-                  </button>
-                  <button
-                    className="button secondary small"
-                    onClick={() => setSelectedForBulkMetadata(new Set())}
-                  >
-                    Clear Selection
-                  </button>
+                  <span style={{ color: 'var(--gray-400)' }}>•</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    Turbo Balance: <strong>{walletInfo.turboBalance}</strong>
+                    <InfoButton 
+                      tooltip="Used for fast Layer 2 uploads. Small files under 100KB upload free." 
+                    />
+                  </span>
                 </>
               )}
             </div>
-          </div>
-        </ExpandableSection>
+          )}
+        </div>
       )}
 
-      {/* File List Summary */}
+      {/* File list separator line */}
       <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 'var(--space-3)',
-        paddingBottom: 'var(--space-2)',
-        borderBottom: '1px solid var(--gray-200)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>Files to Upload</h3>
-          <InfoButton tooltip="Review each file individually or use bulk actions above" />
-        </div>
-        <button 
-          className="button outline small"
-          onClick={() => setShowFileDetails(!showFileDetails)}
-          style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}
-        >
-          {showFileDetails ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          {showFileDetails ? 'Hide Details' : 'Show Details'}
-        </button>
-      </div>
+        height: '1px',
+        backgroundColor: 'var(--gray-200)',
+        marginBottom: 'var(--space-3)'
+      }} />
 
       <div className="upload-list" style={{ marginBottom: 'var(--space-4)' }}>
         {pendingUploads.map((upload) => {
-          const isExpanded = expandedFiles.has(upload.id);
+          const isExpanded = showFileDetails && expandedFiles.has(upload.id);
+          const uploadStatus = getUploadStatus(upload);
+          const isUploading = uploadStatus === 'uploading' || uploadStatus === 'uploaded';
           
           return (
-            <div key={upload.id} className="upload-item" style={{
-              border: '1px solid var(--gray-200)',
-              borderRadius: 'var(--radius-md)',
-              marginBottom: 'var(--space-3)',
-              overflow: 'hidden'
-            }}>
-              {/* File Header - Always Visible */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: 'var(--space-3)',
-                backgroundColor: upload.conflictType !== 'none' ? 'var(--orange-50)' : 'white'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flex: 1, minWidth: 0 }}>
-                  {showAdvancedOptions && (
-                    <input
-                      type="checkbox"
-                      checked={selectedForBulkMetadata.has(upload.id)}
-                      onChange={() => toggleBulkMetadataSelection(upload.id)}
-                      style={{ marginRight: 'var(--space-2)' }}
-                    />
-                  )}
-                  
-                  <span style={{ color: getConflictColor(upload.conflictType) }}>
-                    {getConflictIcon(upload.conflictType)}
+            <React.Fragment key={upload.id}>
+              <div 
+                className={`
+                  ${getUploadStatus(upload) === 'uploading' ? 'upload-item--uploading' : ''}
+                  ${getUploadStatus(upload) === 'uploaded' ? 'upload-item--uploaded' : ''}
+                `.trim()}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '12px 16px',
+                  borderBottom: '1px solid var(--gray-100)',
+                  backgroundColor: upload.conflictType !== 'none' ? 'var(--warning-50)' : 'transparent',
+                  transition: 'all 0.3s ease',
+                  position: 'relative',
+                  cursor: showFileDetails && !isUploading ? 'pointer' : 'default'
+                }}
+                onMouseEnter={(e) => {
+                  if (showFileDetails && !isUploading && upload.conflictType === 'none') {
+                    e.currentTarget.style.backgroundColor = 'var(--gray-50)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (showFileDetails && !isUploading && upload.conflictType === 'none') {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }
+                }}>
+              {/* File icon */}
+              <FileText size={16} style={{ color: 'var(--gray-500)', marginRight: 'var(--space-3)' }} />
+              
+              {/* File info */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 'var(--space-3)',
+                  fontSize: '14px'
+                }}>
+                  <span 
+                    className={uploadStatus === 'uploading' ? 'uploading-filename' : ''}
+                    style={{ 
+                      fontWeight: '500',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      flex: '0 1 auto'
+                    }}
+                  >
+                    {upload.fileName}
+                  </span>
+                  <span style={{ 
+                    fontSize: '13px',
+                    color: 'var(--gray-500)',
+                    flexShrink: 0
+                  }}>
+                    {formatFileSize(upload.fileSize)}
                   </span>
                   
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: '500', fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {upload.fileName}
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--gray-600)' }}>
-                      {formatFileSize(upload.fileSize)}
-                      {upload.conflictType !== 'none' && (
-                        <span style={{ color: 'var(--ardrive-danger)', marginLeft: 'var(--space-2)' }}>
-                          • {upload.conflictDetails}
-                        </span>
-                      )}
-                      {hasMetadata(upload.id) && (
-                        <span style={{ color: 'var(--blue-600)', marginLeft: 'var(--space-2)' }}>
-                          • Has metadata
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Quick method indicator */}
-                  <div style={{ fontSize: '12px', color: 'var(--gray-600)' }}>
-                    {getSelectedMethod(upload.id, upload) === 'turbo' ? (
-                      <span style={{ color: 'var(--success-600)' }}>
-                        <Zap size={12} style={{ display: 'inline', marginRight: '2px' }} />
-                        Turbo
-                      </span>
-                    ) : (
-                      <span>AR</span>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  {(showFileDetails || upload.conflictType !== 'none') && (
-                    <button
-                      className="button outline small"
-                      onClick={() => {
-                        const newExpanded = new Set(expandedFiles);
-                        if (isExpanded) {
-                          newExpanded.delete(upload.id);
-                        } else {
-                          newExpanded.add(upload.id);
-                        }
-                        setExpandedFiles(newExpanded);
-                      }}
-                      style={{ padding: 'var(--space-1)', minWidth: 'auto' }}
-                    >
-                      {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                    </button>
-                  )}
-                  
-                  <button
-                    className="button primary small"
-                    onClick={() => handleApproveUpload(upload.id)}
-                  >
-                    <CheckCircle2 size={14} />
-                    Approve
-                  </button>
-                  
-                  <button
-                    className="button secondary small"
-                    onClick={() => onRejectUpload(upload.id)}
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Expanded Details - Progressive Disclosure */}
-              {(isExpanded || upload.conflictType !== 'none') && (
-                <div style={{
-                  padding: 'var(--space-3)',
-                  borderTop: '1px solid var(--gray-200)',
-                  backgroundColor: 'var(--gray-50)'
-                }}>
-                  {/* Upload Method Selection */}
-                  <div style={{ marginBottom: 'var(--space-3)' }}>
-                    <div style={{ fontSize: '13px', fontWeight: '500', marginBottom: 'var(--space-2)', color: 'var(--gray-700)' }}>
-                      Upload Method:
-                    </div>
-                    <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
-                        <input
-                          type="radio"
-                          name={`method-${upload.id}`}
-                          checked={getSelectedMethod(upload.id, upload) === 'ar'}
-                          onChange={() => handleMethodChange(upload.id, 'ar')}
-                        />
-                        <span style={{ fontSize: '13px' }}>AR ({formatArCost(upload.estimatedCost)})</span>
-                      </label>
-                      {upload.estimatedTurboCost !== undefined && (
-                        <label style={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: 'var(--space-1)', 
-                          cursor: upload.hasSufficientTurboBalance !== false ? 'pointer' : 'not-allowed',
-                          opacity: upload.hasSufficientTurboBalance !== false ? 1 : 0.7
+                  {/* Upload method tag */}
+                  {upload.conflictType === 'none' && (
+                    (() => {
+                      const uploadMethod = getFileUploadMethod(upload);
+                      return (
+                        <span style={{
+                          fontSize: '11px',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontWeight: '500',
+                          flexShrink: 0,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          ...(uploadMethod.method === 'turbo-free' ? {
+                            backgroundColor: 'var(--success-50)',
+                            color: 'var(--success-700)',
+                            border: '1px solid var(--success-200)'
+                          } : uploadMethod.method === 'turbo' ? {
+                            backgroundColor: 'var(--info-50)',
+                            color: 'var(--info-700)',
+                            border: '1px solid var(--info-200)'
+                          } : {
+                            backgroundColor: 'var(--gray-50)',
+                            color: 'var(--gray-700)',
+                            border: '1px solid var(--gray-200)'
+                          })
                         }}>
-                          <input
-                            type="radio"
-                            name={`method-${upload.id}`}
-                            checked={getSelectedMethod(upload.id, upload) === 'turbo'}
-                            onChange={() => handleMethodChange(upload.id, 'turbo')}
-                            disabled={upload.hasSufficientTurboBalance === false}
-                          />
-                          <span style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-                            <Zap size={12} />
-                            Turbo {isTurboFree(upload.fileSize) ? '(Free)' : `(${formatFileSize(upload.estimatedTurboCost || 0)} Credits)`}
+                          {uploadMethod.method === 'turbo-free' && '✅'}
+                          {uploadMethod.method === 'turbo' && '🌀'}
+                          {uploadMethod.method === 'ar' && '🧱'}
+                          <span>
+                            {uploadMethod.method === 'turbo-free' ? 'Turbo (Free)' : 
+                             uploadMethod.method === 'turbo' ? `Turbo (${uploadMethod.cost})` : 
+                             `AR (${uploadMethod.cost})`}
                           </span>
-                        </label>
-                      )}
-                    </div>
+                        </span>
+                      );
+                    })()
+                  )}
+                </div>
+                
+                {/* Show conflict details inline if present */}
+                {upload.conflictType !== 'none' && (
+                  <div style={{ 
+                    fontSize: '12px', 
+                    color: 'var(--ardrive-danger)', 
+                    marginTop: '2px' 
+                  }}>
+                    {upload.conflictDetails}
                   </div>
-
-                  {/* Metadata section */}
-                  <div style={{ marginBottom: 'var(--space-3)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-                      <div style={{ fontSize: '13px', fontWeight: '500', color: 'var(--gray-700)' }}>
-                        Metadata:
-                      </div>
-                      <button
-                        className="button outline small"
-                        onClick={() => handleOpenMetadataEditor([upload.id], 'single')}
-                        style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}
-                      >
-                        <Tag size={12} />
-                        {hasMetadata(upload.id) ? 'Edit' : 'Add'}
-                      </button>
-                    </div>
-                    
-                    {hasMetadata(upload.id) ? (
-                      <div style={{
-                        padding: 'var(--space-2)',
-                        backgroundColor: 'var(--blue-50)',
+                )}
+              </div>
+              
+              {/* Status pill */}
+              <div style={{ marginRight: 'var(--space-3)' }}>
+                <StatusPill 
+                  status={getUploadStatus(upload)} 
+                  progress={getUploadProgress(upload.id)}
+                />
+              </div>
+              
+              {/* Action buttons */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                {/* Expand button - only show when details mode is on */}
+                {showFileDetails && upload.conflictType === 'none' && !isUploading && (
+                  <button
+                    onClick={() => {
+                      const newExpanded = new Set(expandedFiles);
+                      if (isExpanded) {
+                        newExpanded.delete(upload.id);
+                      } else {
+                        newExpanded.add(upload.id);
+                      }
+                      setExpandedFiles(newExpanded);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px',
+                      cursor: 'pointer',
+                      color: 'var(--gray-400)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 'var(--radius-sm)',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--gray-100)';
+                      e.currentTarget.style.color = 'var(--gray-600)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--gray-400)';
+                    }}
+                  >
+                    {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                )}
+                
+                {/* Remove button */}
+                <button
+                  onClick={() => onRejectUpload(upload.id)}
+                  disabled={isUploading}
+                  style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 'var(--space-2)',
+                  cursor: getUploadStatus(upload) === 'uploading' || getUploadStatus(upload) === 'uploaded' ? 'not-allowed' : 'pointer',
+                  color: 'var(--gray-400)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 'var(--radius-sm)',
+                  transition: 'all 0.2s ease',
+                  opacity: getUploadStatus(upload) === 'uploading' || getUploadStatus(upload) === 'uploaded' ? 0.5 : 1
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--gray-100)';
+                  e.currentTarget.style.color = 'var(--gray-600)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = 'var(--gray-400)';
+                }}
+                aria-label="Remove file"
+              >
+                <X size={18} />
+              </button>
+              </div>
+            </div>
+            
+            {/* Expandable Details Section */}
+            {(isExpanded || upload.conflictType !== 'none') && (
+              <div 
+                className="upload-details-expanded"
+                style={{
+                  padding: '12px 16px 12px 48px',
+                  backgroundColor: 'var(--gray-50)',
+                  borderBottom: '1px solid var(--gray-100)',
+                  fontSize: '13px',
+                  color: 'var(--gray-600)'
+                }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '12px', alignItems: 'start' }}>
+                  {/* File size */}
+                  <span style={{ fontWeight: '500' }}>File size:</span>
+                  <span>{formatFileSize(upload.fileSize)}</span>
+                  
+                  {/* Upload method */}
+                  <span style={{ fontWeight: '500' }}>Upload method:</span>
+                  <div>
+                    {(() => {
+                      const uploadMethod = getFileUploadMethod(upload);
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {uploadMethod.method === 'turbo-free' && (
+                            <>
+                              <span>✅</span>
+                              <span>Turbo (Free) - This file will upload instantly at no cost</span>
+                            </>
+                          )}
+                          {uploadMethod.method === 'turbo' && (
+                            <>
+                              <span>🌀</span>
+                              <span>Turbo ({uploadMethod.cost}) - Fast upload using your Turbo Credits</span>
+                            </>
+                          )}
+                          {uploadMethod.method === 'ar' && (
+                            <>
+                              <span>🧱</span>
+                              <span>AR ({uploadMethod.cost}) - On-chain upload using AR tokens</span>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  
+                  {/* File path */}
+                  <span style={{ fontWeight: '500' }}>Path:</span>
+                  <span style={{ 
+                    fontFamily: 'monospace', 
+                    fontSize: '12px',
+                    wordBreak: 'break-all' 
+                  }}>
+                    {upload.localPath}
+                  </span>
+                  
+                  {/* Metadata */}
+                  {hasMetadata(upload.id) && (
+                    <>
+                      <span style={{ fontWeight: '500' }}>Metadata:</span>
+                      <span>{getMetadataPreview(upload.id)}</span>
+                    </>
+                  )}
+                </div>
+                
+                {/* Add metadata button */}
+                {!hasMetadata(upload.id) && showAdvancedOptions && (
+                  <div style={{ marginTop: '12px' }}>
+                    <button
+                      onClick={() => handleOpenMetadataEditor([upload.id], 'single')}
+                      style={{
+                        padding: '4px 12px',
+                        border: '1px solid var(--gray-300)',
+                        backgroundColor: 'white',
                         borderRadius: 'var(--radius-sm)',
                         fontSize: '12px',
-                        color: 'var(--blue-700)'
-                      }}>
-                        {getMetadataPreview(upload.id)}
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '12px', color: 'var(--gray-500)', fontStyle: 'italic' }}>
-                        No custom metadata added
-                      </div>
-                    )}
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <Tag size={12} />
+                      Add metadata
+                    </button>
                   </div>
-
-                  {/* Conflict resolution */}
-                  {upload.conflictType !== 'none' && (
-                    <div style={{
-                      padding: 'var(--space-3)',
-                      backgroundColor: 'var(--orange-50)',
-                      border: '1px solid var(--orange-200)',
-                      borderRadius: 'var(--radius-sm)'
+                )}
+                
+                {/* Conflict Resolution */}
+                {upload.conflictType !== 'none' && (
+                  <div style={{
+                    marginTop: '12px',
+                    padding: '12px',
+                    backgroundColor: 'var(--warning-50)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--warning-200)'
+                  }}>
+                    <div style={{ 
+                      fontWeight: '500', 
+                      color: 'var(--warning-700)',
+                      marginBottom: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
                     }}>
-                      <div style={{ fontSize: '13px', fontWeight: '500', color: 'var(--orange-800)', marginBottom: 'var(--space-2)' }}>
-                        Conflict Resolution Required:
-                      </div>
-                      <div style={{ fontSize: '12px', color: 'var(--orange-700)', marginBottom: 'var(--space-2)' }}>
-                        {upload.conflictDetails}
-                      </div>
-                      <button
-                        className="button secondary small"
-                        onClick={() => setShowConflictResolution(upload.id)}
-                      >
-                        Resolve Conflict
-                      </button>
+                      <AlertTriangle size={14} />
+                      Conflict Resolution Required
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
+                    <div style={{ marginBottom: '12px', color: 'var(--warning-600)' }}>
+                      {upload.conflictDetails}
+                    </div>
+                    <button
+                      onClick={() => setShowConflictResolution(upload.id)}
+                      style={{
+                        padding: '6px 16px',
+                        backgroundColor: 'var(--warning-600)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: '13px',
+                        fontWeight: '500',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Resolve Conflict
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            </React.Fragment>
           );
         })}
       </div>
 
-      <div className="sync-controls">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flex: 1 }}>
-          <div className="text-sm text-gray-600">
-            <div>Total: {pendingUploads.length} files</div>
-            <div>AR Cost: {formatArCost(totalCost)}</div>
-            <div style={{ color: 'var(--ardrive-primary)' }}>
-              Turbo Cost: {totalTurboCost > 0 ? `${totalTurboCost.toFixed(6)} Credits` : freeFileCount > 0 ? `FREE (${freeFileCount} files under 100KB)` : '0 Credits'}
+      {/* Show Details Toggle */}
+      <div style={{ 
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 'var(--space-3)' 
+      }}>
+        <button 
+          onClick={() => {
+            const newValue = !showFileDetails;
+            setShowFileDetails(newValue);
+            localStorage.setItem('uploadQueue.showFileDetails', String(newValue));
+          }}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: '4px 8px',
+            cursor: 'pointer',
+            color: 'var(--gray-600)',
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            borderRadius: 'var(--radius-sm)',
+            transition: 'background-color 0.2s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--gray-100)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+        >
+          {showFileDetails ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {showFileDetails ? 'Hide' : 'Show'} details
+        </button>
+        
+        {/* Cost summary shown inline when details are hidden */}
+        {!showFileDetails && (
+          <div style={{ 
+            fontSize: '13px', 
+            color: 'var(--gray-600)' 
+          }}>
+            <span>Total: {pendingUploads.length} {pendingUploads.length === 1 ? 'file' : 'files'}</span>
+            {freeFileCount === pendingUploads.length && (
+              <span style={{ color: 'var(--success-600)', marginLeft: 'var(--space-3)' }}>• Free with Turbo</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Cost Summary - Only shown when details are expanded */}
+      {showFileDetails && (
+        <div style={{
+          padding: 'var(--space-3)',
+          backgroundColor: 'var(--gray-50)',
+          borderRadius: 'var(--radius-md)',
+          marginBottom: 'var(--space-4)',
+          fontSize: '13px',
+          color: 'var(--gray-600)',
+          border: '1px solid var(--gray-200)'
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 'var(--space-3) var(--space-4)', alignItems: 'center' }}>
+            <span>Total:</span>
+            <span style={{ fontWeight: '500', color: 'var(--gray-800)' }}>{pendingUploads.length} {pendingUploads.length === 1 ? 'file' : 'files'}</span>
+            
+            <span>AR Cost:</span>
+            <span style={{ fontWeight: '500', color: 'var(--gray-800)' }}>{formatArCost(totalCost)}</span>
+            
+            {(totalTurboCost > 0 || freeFileCount > 0) && (
+              <>
+                <span>Turbo:</span>
+                <span style={{ 
+                  fontWeight: '500', 
+                  color: freeFileCount > 0 ? 'var(--success-600)' : 'var(--gray-800)' 
+                }}>
+                  {freeFileCount > 0 ? 
+                    `Free (${freeFileCount} ${freeFileCount === 1 ? 'file' : 'files'} under 100KB)` : 
+                    `${totalTurboCost.toFixed(6)} Credits`
+                  }
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Advanced Options Link - More subtle placement */}
+      <div style={{ 
+        textAlign: 'center',
+        marginTop: 'var(--space-2)',
+        marginBottom: 'var(--space-3)'
+      }}>
+        <button
+          onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: '2px 8px',
+            cursor: 'pointer',
+            color: 'var(--gray-500)',
+            fontSize: '12px',
+            transition: 'color 0.2s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--gray-700)';
+            e.currentTarget.style.textDecoration = 'underline';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--gray-500)';
+            e.currentTarget.style.textDecoration = 'none';
+          }}
+        >
+          Advanced options
+        </button>
+      </div>
+
+      {/* Advanced Options Panel */}
+      {showAdvancedOptions && (
+        <div style={{
+          padding: 'var(--space-4)',
+          backgroundColor: 'var(--gray-50)',
+          borderRadius: 'var(--radius-md)',
+          marginBottom: 'var(--space-4)',
+          border: '1px solid var(--gray-200)'
+        }}>
+          <h4 style={{ 
+            fontSize: '14px', 
+            fontWeight: '600', 
+            marginBottom: 'var(--space-3)',
+            color: 'var(--gray-700)'
+          }}>
+            Advanced Options
+          </h4>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            {/* Auto-approve Mode */}
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
+              cursor: 'pointer',
+              fontSize: '13px'
+            }}>
+              <input
+                type="checkbox"
+                checked={autoApprove}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setAutoApprove(checked);
+                  localStorage.setItem('uploadQueue.autoApprove', String(checked));
+                }}
+              />
+              <span>Auto-approve uploads</span>
+              <InfoButton tooltip="Automatically start uploading files without manual approval (use with caution)" />
+            </label>
+            
+            {/* Metadata Tools */}
+            <div style={{ paddingLeft: '24px', opacity: 0.7 }}>
+              <p style={{ fontSize: '12px', color: 'var(--gray-600)', marginBottom: '8px' }}>
+                Metadata tools available when viewing file details
+              </p>
+              <button
+                onClick={() => setShowTemplateManager(true)}
+                style={{
+                  padding: '4px 12px',
+                  border: '1px solid var(--gray-300)',
+                  backgroundColor: 'white',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <Bookmark size={12} />
+                Manage templates
+              </button>
+            </div>
+            
+            {/* Future options placeholder */}
+            <div style={{ 
+              paddingTop: 'var(--space-2)', 
+              borderTop: '1px solid var(--gray-200)' 
+            }}>
+              <p style={{
+                fontSize: '12px',
+                color: 'var(--gray-500)',
+                fontStyle: 'italic'
+              }}>
+                More options coming soon: batch processing, encryption, custom rules...
+              </p>
             </div>
           </div>
-          {conflictCount > 0 && (
-            <div className="text-sm" style={{ color: 'var(--ardrive-danger)' }}>
-              {conflictCount} conflicts
-            </div>
-          )}
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-          <button 
-            className="button secondary"
-            onClick={onRejectAll}
-          >
-            Reject All
-          </button>
-          <button 
-            className="button"
-            onClick={onApproveAll}
-            disabled={conflictCount > 0}
-          >
-{conflictCount > 0 ? 'Resolve Conflicts First' : 'Upload All'}
-          </button>
-        </div>
+      )}
+
+      {/* Action buttons bar */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+        gap: 'var(--space-3)',
+        paddingTop: 'var(--space-4)',
+        borderTop: '1px solid var(--gray-200)',
+        marginTop: 'var(--space-4)'
+      }}>
+        <button 
+          onClick={onRejectAll}
+          style={{
+            padding: '8px 16px',
+            border: '1px solid var(--gray-300)',
+            backgroundColor: 'white',
+            borderRadius: 'var(--radius-md)',
+            fontSize: '14px',
+            fontWeight: '500',
+            color: 'var(--gray-700)',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--gray-50)';
+            e.currentTarget.style.borderColor = 'var(--gray-400)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'white';
+            e.currentTarget.style.borderColor = 'var(--gray-300)';
+          }}
+        >
+          Clear all
+        </button>
+        
+        <button 
+          className="interactive-hover"
+          onClick={() => {
+            // Start upload process with animations
+            if (autoApprove) {
+              pendingUploads.forEach(upload => {
+                if (upload.conflictType === 'none') {
+                  // Set to uploading state
+                  const newUploadingFiles = new Map(uploadingFiles);
+                  newUploadingFiles.set(upload.id, { progress: 0, status: 'uploading' });
+                  setUploadingFiles(newUploadingFiles);
+                  
+                  // Simulate upload progress (in real app, this would track actual upload)
+                  let progress = 0;
+                  const progressInterval = setInterval(() => {
+                    progress += Math.random() * 20;
+                    if (progress >= 100) {
+                      progress = 100;
+                      clearInterval(progressInterval);
+                      
+                      // Set to uploaded state
+                      setTimeout(() => {
+                        const finalUploadingFiles = new Map(uploadingFiles);
+                        finalUploadingFiles.set(upload.id, { progress: 100, status: 'uploaded' });
+                        setUploadingFiles(finalUploadingFiles);
+                        
+                        // Remove from queue after animation
+                        setTimeout(() => {
+                          const uploadMethod = getFileUploadMethod(upload);
+                          const method = uploadMethod.method === 'ar' ? 'ar' : 'turbo';
+                          const metadata = fileMetadata.get(upload.id);
+                          onApproveUpload(upload.id, method, metadata);
+                        }, 1000);
+                      }, 500);
+                    } else {
+                      const updatedFiles = new Map(uploadingFiles);
+                      updatedFiles.set(upload.id, { progress, status: 'uploading' });
+                      setUploadingFiles(updatedFiles);
+                    }
+                  }, 200);
+                }
+              });
+            } else {
+              onApproveAll();
+            }
+          }}
+          disabled={conflictCount > 0 && conflictCount === pendingUploads.length}
+          style={{ 
+            padding: '10px 24px',
+            backgroundColor: conflictCount > 0 && conflictCount === pendingUploads.length ? 'var(--gray-300)' : 'var(--ardrive-primary)',
+            color: 'white',
+            border: 'none',
+            borderRadius: 'var(--radius-md)',
+            fontSize: '14px',
+            fontWeight: '500',
+            cursor: conflictCount > 0 && conflictCount === pendingUploads.length ? 'not-allowed' : 'pointer',
+            transition: 'all 0.2s ease',
+            opacity: conflictCount > 0 && conflictCount === pendingUploads.length ? 0.7 : 1
+          }}
+          onMouseEnter={(e) => {
+            if (!(conflictCount > 0 && conflictCount === pendingUploads.length)) {
+              e.currentTarget.style.backgroundColor = 'var(--ardrive-primary-hover)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!(conflictCount > 0 && conflictCount === pendingUploads.length)) {
+              e.currentTarget.style.backgroundColor = 'var(--ardrive-primary)';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = 'none';
+            }
+          }}
+        >
+          {conflictCount > 0 && conflictCount === pendingUploads.length ? 
+            'Resolve conflicts first' : 
+            autoApprove ? 'Start upload' : 'Approve & Upload'
+          }
+        </button>
       </div>
 
       {/* Metadata Editor Modal */}

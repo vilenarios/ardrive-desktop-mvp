@@ -72,10 +72,23 @@ const UserMenu: React.FC<UserMenuProps> = ({
         onClick={() => setIsOpen(!isOpen)}
       >
         <div className="user-avatar">
-          <User size={16} />
+          {currentProfile.avatarUrl ? (
+            <img 
+              src={currentProfile.avatarUrl} 
+              alt={currentProfile.arnsName || currentProfile.name || 'User'}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                const nextElement = e.currentTarget.nextSibling as HTMLElement;
+                if (nextElement) {
+                  nextElement.style.display = '';
+                }
+              }}
+            />
+          ) : null}
+          <User size={16} style={currentProfile.avatarUrl ? { display: 'none' } : {}} />
         </div>
         <span className="user-name">
-          {currentProfile.name || `${currentProfile.address.slice(0, 4)}...${currentProfile.address.slice(-4)}`}
+          {currentProfile.arnsName || currentProfile.name || `${currentProfile.address.slice(0, 4)}...${currentProfile.address.slice(-4)}`}
         </span>
         <ChevronDown size={16} className={`chevron ${isOpen ? 'rotated' : ''}`} />
       </button>
@@ -87,11 +100,24 @@ const UserMenu: React.FC<UserMenuProps> = ({
             <div className="profile-info">
               <div className="profile-header">
                 <div className="profile-avatar">
-                  <User size={20} />
+                  {currentProfile.avatarUrl ? (
+                    <img 
+                      src={currentProfile.avatarUrl} 
+                      alt={currentProfile.arnsName || currentProfile.name || 'User'}
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const nextElement = e.currentTarget.nextSibling as HTMLElement;
+                        if (nextElement) {
+                          nextElement.style.display = '';
+                        }
+                      }}
+                    />
+                  ) : null}
+                  <User size={24} style={currentProfile.avatarUrl ? { display: 'none' } : {}} />
                 </div>
                 <div className="profile-details">
                   <div className="profile-name">
-                    {currentProfile.name || 'Arweave User'}
+                    {currentProfile.arnsName || currentProfile.name || 'Arweave User'}
                   </div>
                   {currentProfile.arnsName && (
                     <div className="profile-arns">

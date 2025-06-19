@@ -711,6 +711,86 @@ class ArDriveApp {
       return selectedDrive;
     }));
 
+    // Get permaweb files for a drive
+    ipcMain.handle('drive:get-permaweb-files', safeIpcHandler(async (_, driveId: string) => {
+      console.log('Getting permaweb files for drive:', driveId);
+      
+      // Validate drive ID
+      const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+      
+      // Get the drive info to find root folder
+      const drives = await this.walletManager.listDrives();
+      const drive = drives.find(d => d.id === validatedDriveId);
+      
+      if (!drive) {
+        throw new Error('Drive not found');
+      }
+      
+      if (!drive.rootFolderId) {
+        throw new Error('Drive has no root folder ID');
+      }
+      
+      const arDrive = this.walletManager.getArDrive();
+      if (!arDrive) {
+        throw new Error('ArDrive not initialized');
+      }
+      
+      try {
+        // Import needed types
+        const { EntityID } = require('ardrive-core-js');
+        
+        // MVP: Only support public drives for now
+        if (drive.privacy !== 'public') {
+          throw new Error('Private drives are not supported in this version');
+        }
+        
+        // List public folder contents
+        const entities = await arDrive.listPublicFolder({
+          folderId: new EntityID(drive.rootFolderId),
+          maxDepth: 10, // Get full hierarchy
+          includeRoot: false // Don't include root folder itself
+        });
+        
+        console.log(`Found ${entities.length} entities in drive ${drive.name}`);
+        
+        // Transform to our FileItem format with ArDrive sharing links
+        const fileItems = entities.map((entity: any) => {
+          const isFile = entity.entityType === 'file';
+          // Use the appropriate ID based on entity type
+          const entityId = isFile ? entity.fileId : entity.folderId;
+          
+          return {
+            id: entityId,
+            name: entity.name || 'Unnamed',
+            type: isFile ? 'file' : 'folder',
+            size: isFile ? entity.size : undefined,
+            modifiedAt: entity.lastModifiedDate ? new Date(entity.lastModifiedDate) : new Date(),
+            isDownloaded: false, // Not relevant for permaweb view
+            isUploaded: true, // Everything in permaweb is uploaded
+            status: 'synced' as const,
+            path: entity.path || '/',
+            parentId: entity.parentFolderId,
+            // ArDrive sharing links (only for files, not folders)
+            ardriveUrl: isFile 
+              ? `https://app.ardrive.io/#/file/${entityId}/view`
+              : undefined,
+            // Also include transaction IDs for direct Arweave access if needed
+            dataTxId: entity.dataTxId,
+            metadataTxId: entity.metadataTxId || entity.metaDataTxId,
+            // Additional metadata that might be useful
+            contentType: isFile ? entity.contentType : undefined,
+            driveId: drive.id,
+            privacy: drive.privacy
+          };
+        });
+        
+        return fileItems;
+      } catch (error) {
+        console.error('Failed to fetch drive entities:', error);
+        throw error;
+      }
+    }));
+
     // Sync operations
     ipcMain.handle('sync:set-folder', async (_, driveId: string, folderPath: string) => {
       try {

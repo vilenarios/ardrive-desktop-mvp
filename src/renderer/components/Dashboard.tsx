@@ -247,8 +247,9 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const handleApproveUpload = async (uploadId: string, uploadMethod?: 'ar' | 'turbo') => {
+  const handleApproveUpload = async (uploadId: string, uploadMethod?: 'ar' | 'turbo', metadata?: any) => {
     try {
+      // TODO: Handle metadata parameter when API supports it
       await window.electronAPI.uploads.approve(uploadId, uploadMethod);
       await loadPendingUploads();
       await refreshDriveState();
@@ -845,6 +846,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   onApproveAll={handleApproveAll}
                   onRejectAll={handleRejectAll}
                   onResolveConflict={handleResolveConflict}
+                  walletInfo={walletInfo}
                 />
               ) : (
                 <div className="empty-queue" style={{

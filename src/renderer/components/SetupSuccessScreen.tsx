@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { CheckCircle, FolderOpen, Globe, Zap, ArrowRight, ChevronDown, ChevronUp, Copy, ExternalLink } from 'lucide-react';
+import { Profile } from '../../types';
 
 interface SetupSuccessScreenProps {
+  currentProfile?: Profile | null;
   driveName: string;
   driveType: string;
   localSyncFolder: string;
@@ -13,6 +15,7 @@ interface SetupSuccessScreenProps {
 }
 
 const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
+  currentProfile,
   driveName,
   driveType,
   localSyncFolder,
@@ -78,7 +81,7 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
           marginBottom: 'var(--space-6)',
           color: 'var(--gray-900)'
         }}>
-          🎉 Your Drive Is Ready!
+          🎉 Your Drive Is Ready{currentProfile && (currentProfile.arnsName || currentProfile.name) ? `, ${currentProfile.arnsName || currentProfile.name}` : ''}!
         </h1>
 
         {/* Summary Box */}
