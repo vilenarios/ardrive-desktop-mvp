@@ -4,11 +4,13 @@ import { Eye, EyeOff, Copy, CheckCircle } from 'lucide-react';
 interface SeedPhraseDisplayProps {
   seedPhrase: string;
   showByDefault?: boolean;
+  allowCopyWhenHidden?: boolean; // New prop to enable copy without reveal
 }
 
 export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({ 
   seedPhrase, 
-  showByDefault = false 
+  showByDefault = false,
+  allowCopyWhenHidden = false 
 }) => {
   const [showSeedPhrase, setShowSeedPhrase] = useState(showByDefault);
   const [copied, setCopied] = useState(false);
@@ -94,35 +96,45 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
         </div>
       </div>
 
-      {showSeedPhrase && (
+      {/* Copy and Hide buttons */}
+      {(showSeedPhrase || allowCopyWhenHidden) && (
         <div style={{
           position: 'absolute',
           top: 'var(--space-3)',
           right: 'var(--space-3)',
           display: 'flex',
-          gap: 'var(--space-2)'
+          gap: 'var(--space-2)',
+          zIndex: 2
         }}>
-          <button
-            className="button outline"
-            onClick={() => setShowSeedPhrase(false)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)'
-            }}
-            title="Hide recovery phrase"
-          >
-            <EyeOff size={16} />
-            Hide
-          </button>
+          {showSeedPhrase && (
+            <button
+              className="button outline"
+              onClick={() => setShowSeedPhrase(false)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+                backgroundColor: 'white',
+                border: '1px solid var(--gray-300)'
+              }}
+              title="Hide recovery phrase"
+            >
+              <EyeOff size={16} />
+              Hide
+            </button>
+          )}
           <button
             className="button outline"
             onClick={handleCopy}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 'var(--space-2)'
+              gap: 'var(--space-2)',
+              backgroundColor: showSeedPhrase ? 'white' : 'rgba(255, 255, 255, 0.9)',
+              border: '1px solid var(--gray-300)',
+              color: showSeedPhrase ? 'var(--gray-700)' : 'var(--gray-800)'
             }}
+            title="Copy recovery phrase to clipboard"
           >
             {copied ? (
               <>

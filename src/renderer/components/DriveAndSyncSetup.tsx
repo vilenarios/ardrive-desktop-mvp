@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Cloud, FolderOpen, HardDrive, Info, Globe, Zap, X, HelpCircle, CheckCircle, Trash2, AlertCircle } from 'lucide-react';
 import { ClientInputValidator } from '../input-validator';
 import { InfoButton } from './common/InfoButton';
+import SetupSuccessScreen from './SetupSuccessScreen';
 
 interface DriveAndSyncSetupProps {
   onSetupComplete: () => void;
@@ -16,6 +17,14 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
   const [driveNameError, setDriveNameError] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
   const [enableAutoSync, setEnableAutoSync] = useState(true);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [createdDriveInfo, setCreatedDriveInfo] = useState<{
+    driveName: string;
+    localFolder: string;
+    driveId?: string;
+    rootFolderId?: string;
+    driveTxId?: string;
+  } | null>(null);
 
   const handleSelectFolder = async () => {
     try {
@@ -89,7 +98,6 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
   };
 
   const handleSetup = async () => {
-
     setLoading(true);
     setError(null);
     setSetupProgress('');
@@ -103,30 +111,70 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
       }
 
       // Create drive
-      setSetupProgress('Creating your drive on Arweave (free with Turbo!)...');
+      setSetupProgress('Creating your drive on Arweave...');
       const drive = await window.electronAPI.drive.create(driveName.trim(), 'public');
       
       if (!drive || !drive.id) {
         throw new Error('Failed to create drive. Please try again.');
       }
       
-      // Set sync folder
-      setSetupProgress('Configuring sync folder...');
-      await window.electronAPI.sync.setFolder(syncFolder);
+      // Create local folder inside selected sync directory
+      const driveFolderName = driveName.trim();
+      // Use platform-appropriate path separator
+      const pathSeparator = syncFolder.includes('\\') ? '\\' : '/';
+      const driveFolderPath = `${syncFolder}${syncFolder.endsWith(pathSeparator) ? '' : pathSeparator}${driveFolderName}`;
       
-      // Start sync if enabled
+      setSetupProgress('Creating local folder...');
+      // The sync.setFolder should handle creating the subfolder
+      await window.electronAPI.sync.setFolder(driveFolderPath);
+      
+      // Save drive metadata and config
+      setSetupProgress('Saving configuration...');
+      
+      // Create drive mapping using the drive data from ardrive-core-js
+      const driveMapping = {
+        id: drive.id, // Use the drive ID as the mapping ID for simplicity
+        driveId: drive.id,
+        driveName: drive.name,
+        drivePrivacy: drive.privacy,
+        localFolderPath: driveFolderPath,
+        rootFolderId: drive.rootFolderId,
+        isActive: true,
+        syncSettings: {
+          syncDirection: 'bidirectional' as const,
+          uploadPriority: 0
+        }
+      };
+      
+      // Add the drive mapping via IPC
+      await window.electronAPI.driveMappings.add(driveMapping);
+      
+      // Initialize sync engine
       if (enableAutoSync) {
-        setSetupProgress('Starting sync...');
+        setSetupProgress('Starting sync engine...');
         await window.electronAPI.sync.start();
+      } else {
+        setSetupProgress('Sync engine ready (manual start required)...');
       }
       
       // Mark first run as complete
       await window.electronAPI.config.markFirstRunComplete();
       
+      // Store created drive info for success screen
+      setCreatedDriveInfo({
+        driveName: driveFolderName,
+        localFolder: driveFolderPath,
+        driveId: drive.id,
+        rootFolderId: drive.rootFolderId,
+        driveTxId: drive.metadataTxId // Transaction ID from drive creation
+      });
+      
       setSetupProgress('Setup complete! 🎉');
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      onSetupComplete();
+      // Show success screen instead of calling onSetupComplete
+      setShowSuccess(true);
+      setLoading(false);
     } catch (err) {
       console.error('Setup error:', err);
       setError(err instanceof Error ? err.message : 'Setup failed');
@@ -134,6 +182,22 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
       setLoading(false);
     }
   };
+
+  // Show success screen if setup is complete
+  if (showSuccess && createdDriveInfo) {
+    return (
+      <SetupSuccessScreen
+        driveName={createdDriveInfo.driveName}
+        driveType="Public Drive"
+        localSyncFolder={createdDriveInfo.localFolder}
+        autoSyncEnabled={enableAutoSync}
+        driveId={createdDriveInfo.driveId}
+        rootFolderId={createdDriveInfo.rootFolderId}
+        driveTxId={createdDriveInfo.driveTxId}
+        onOpenDashboard={onSetupComplete}
+      />
+    );
+  }
 
   return (
     <div className="drive-setup-container" style={{
@@ -221,6 +285,16 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
                 </div>
               </div>
             </div>
+            
+            {/* Reassurance text */}
+            <p style={{
+              marginTop: 'var(--space-4)',
+              fontSize: '14px',
+              color: 'var(--gray-500)',
+              textAlign: 'center'
+            }}>
+              You can update these settings later.
+            </p>
 
           </div>
         ) : (
@@ -295,7 +369,7 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
               <Globe size={16} style={{ flexShrink: 0, marginTop: '2px', color: 'var(--warning-600)' }} />
               <div style={{ flex: 1 }}>
                 <span style={{ color: 'var(--gray-800)' }}>
-                  🌐 This is a public drive. Your files will be permanently visible on the Arweave permaweb.
+                  This is a public drive. Your files will be permanently visible on the Arweave permaweb.
                 </span>
                 <InfoButton 
                   tooltip="Arweave is a decentralized permanent storage network. Once uploaded, files cannot be deleted and are publicly accessible by anyone."

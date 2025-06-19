@@ -40,6 +40,7 @@ export interface DriveInfo {
   name: string;
   privacy: 'public' | 'private';
   rootFolderId: string;
+  metadataTxId?: string;
 }
 
 export interface FileUpload {

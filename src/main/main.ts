@@ -767,38 +767,26 @@ class ArDriveApp {
         }
       }
       
-      // Get drive information with retry logic
-      let selectedDrive = null;
-      let retries = 3;
+      // Get drive mapping instead of querying Arweave
+      const driveMappings = await databaseManager.getDriveMappings();
+      console.log('Available drive mappings:', driveMappings);
       
-      while (retries > 0 && !selectedDrive) {
-        const drives = await this.walletManager.listDrives();
-        console.log('Available drives:', drives);
-        
-        // Get the first (and only) drive
-        if (drives.length > 0) {
-          selectedDrive = drives[0];
-          break;
-        }
-        
-        if (retries > 1) {
-          console.log(`No drives found, retrying... (${retries - 1} retries left)`);
-          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-          retries--;
-        } else {
-          break;
-        }
+      // Get the primary (active) drive mapping
+      const primaryMapping = driveMappings.find(m => m.isActive) || driveMappings[0];
+      
+      if (!primaryMapping) {
+        throw new Error('No drive mappings found. Please complete setup first.');
       }
       
-      console.log('Selected drive:', selectedDrive);
+      console.log('Using drive mapping:', primaryMapping);
       
-      if (!selectedDrive) {
-        throw new Error(`No drives found. Please create a drive first.`);
-      }
-      
-      // Set ArDrive instance and start sync with drive name
+      // Set ArDrive instance and start sync with drive mapping
       this.syncManager.setArDrive(arDrive);
-      return await this.syncManager.startSync(selectedDrive.id, selectedDrive.rootFolderId, selectedDrive.name);
+      return await this.syncManager.startSync(
+        primaryMapping.driveId, 
+        primaryMapping.rootFolderId, 
+        primaryMapping.driveName
+      );
     }));
 
     ipcMain.handle('sync:stop', safeIpcHandler(async () => {
@@ -815,6 +803,15 @@ class ArDriveApp {
     }));
 
     ipcMain.handle('sync:setFolder', safeIpcHandler(async (_, folderPath: string) => {
+      // Create the folder if it doesn't exist
+      try {
+        await fs.mkdir(folderPath, { recursive: true });
+        console.log('Created sync folder:', folderPath);
+      } catch (error) {
+        console.error('Error creating sync folder:', error);
+        throw new Error('Failed to create sync folder');
+      }
+      
       await configManager.setSyncFolder(folderPath);
       this.syncManager.setSyncFolder(folderPath);
       return true;
@@ -1313,6 +1310,36 @@ class ArDriveApp {
         throw error;
       }
     });
+
+    // Drive mappings handlers
+    ipcMain.handle('drive-mappings:add', safeIpcHandler(async (_, driveMapping: any) => {
+      console.log('Adding drive mapping:', driveMapping);
+      await databaseManager.addDriveMapping(driveMapping);
+      return true;
+    }));
+
+    ipcMain.handle('drive-mappings:list', safeIpcHandler(async () => {
+      return await databaseManager.getDriveMappings();
+    }));
+
+    ipcMain.handle('drive-mappings:update', safeIpcHandler(async (_, mappingId: string, updates: any) => {
+      await databaseManager.updateDriveMapping(mappingId, updates);
+      return true;
+    }));
+
+    ipcMain.handle('drive-mappings:remove', safeIpcHandler(async (_, mappingId: string) => {
+      await databaseManager.removeDriveMapping(mappingId);
+      return true;
+    }));
+
+    ipcMain.handle('drive-mappings:get-by-id', safeIpcHandler(async (_, mappingId: string) => {
+      return await databaseManager.getDriveMappingById(mappingId);
+    }));
+
+    ipcMain.handle('drive-mappings:get-primary', safeIpcHandler(async () => {
+      const mappings = await databaseManager.getDriveMappings();
+      return mappings.find(m => m.isActive) || mappings[0] || null;
+    }));
 
     // Error reporting handler
     ipcMain.handle('error:report', async (_, errorData: {

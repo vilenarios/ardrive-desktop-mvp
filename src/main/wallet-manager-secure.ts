@@ -600,7 +600,8 @@ export class SecureWalletManager {
         id: driveId,
         name,
         privacy: 'public' as const,
-        rootFolderId: rootFolderId
+        rootFolderId: rootFolderId,
+        metadataTxId: result.created[0].metadataTxId?.toString() // Add transaction ID
       };
 
       console.log('Created drive:', driveInfo);

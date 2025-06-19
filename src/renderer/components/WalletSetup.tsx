@@ -484,6 +484,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
               <SeedPhraseDisplay 
                 seedPhrase={generatedSeedPhrase} 
                 showByDefault={false}
+                allowCopyWhenHidden={true}
               />
             </div>
 
