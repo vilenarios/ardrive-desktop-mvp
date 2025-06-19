@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Wallet, Shield, ArrowRight, FileText, Key, Hexagon, Copy, CheckCircle } from 'lucide-react';
+import { Wallet, Shield, ArrowRight, FileText, Key, Hexagon, Copy, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { InfoButton } from './common/InfoButton';
 import { PasswordForm } from './common/PasswordForm';
 import { SeedPhraseDisplay } from './common/SeedPhraseDisplay';
@@ -25,6 +25,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
   const [generatedAddress, setGeneratedAddress] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [copiedPath, setCopiedPath] = useState(false);
+  const [showSeedPhraseText, setShowSeedPhraseText] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Confirmation state
@@ -680,39 +681,101 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
             {/* Seed Phrase Import */}
             {importMethod === 'seedphrase' && (
               <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
-                <label style={{ marginBottom: 'var(--space-2)' }}>
+                <label style={{ marginBottom: 'var(--space-2)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                   Enter Recovery Phrase
                   <InfoButton 
                     tooltip="Enter your 12-word recovery phrase, separated by spaces"
-                    />
+                  />
                 </label>
-                <textarea
-                  value={seedPhrase}
-                  onChange={(e) => {
-                    setSeedPhrase(e.target.value);
-                    // Auto-expand based on content
-                    e.target.style.height = 'auto';
-                    e.target.style.height = e.target.scrollHeight + 'px';
-                  }}
-                  onFocus={(e) => {
-                    // Ensure proper height on focus
-                    e.target.style.height = 'auto';
-                    e.target.style.height = Math.max(80, e.target.scrollHeight) + 'px';
-                  }}
-                  placeholder="e.g. stove skate notice turtle crisp ..."
-                  style={{ 
-                    resize: 'none',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '14px',
-                    lineHeight: '1.6',
-                    minHeight: '80px',
-                    transition: 'height 0.2s ease',
-                    padding: 'var(--space-3)',
-                    backgroundColor: 'var(--gray-50)',
-                    border: `1px solid ${seedPhrase && !validateSeedPhrase(seedPhrase).isValid ? 'var(--danger-500)' : 'var(--gray-300)'}`,
-                    borderRadius: 'var(--radius-md)'
-                  }}
-                />
+                
+                {/* Enhanced Seed Phrase Input */}
+                <div style={{ position: 'relative' }}>
+                  {/* Privacy Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setShowSeedPhraseText(!showSeedPhraseText)}
+                    style={{
+                      position: 'absolute',
+                      top: 'var(--space-3)',
+                      right: 'var(--space-3)',
+                      padding: 'var(--space-2)',
+                      backgroundColor: 'white',
+                      border: '1px solid var(--gray-300)',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-1)',
+                      fontSize: '13px',
+                      color: 'var(--gray-600)',
+                      zIndex: 1,
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--gray-50)';
+                      e.currentTarget.style.borderColor = 'var(--gray-400)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'white';
+                      e.currentTarget.style.borderColor = 'var(--gray-300)';
+                    }}
+                  >
+                    {showSeedPhraseText ? (
+                      <>
+                        <EyeOff size={16} />
+                        Hide
+                      </>
+                    ) : (
+                      <>
+                        <Eye size={16} />
+                        Show
+                      </>
+                    )}
+                  </button>
+
+                  <textarea
+                    value={seedPhrase}
+                    onChange={(e) => {
+                      setSeedPhrase(e.target.value);
+                      // Auto-expand based on content
+                      e.target.style.height = 'auto';
+                      e.target.style.height = e.target.scrollHeight + 'px';
+                    }}
+                    onFocus={(e) => {
+                      // Ensure proper height on focus
+                      e.target.style.height = 'auto';
+                      e.target.style.height = Math.max(120, e.target.scrollHeight) + 'px';
+                    }}
+                    placeholder="Enter your 12-word recovery phrase separated by spaces"
+                    style={{ 
+                      resize: 'none',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '16px',
+                      lineHeight: '1.8',
+                      minHeight: '120px',
+                      transition: 'all 0.2s ease',
+                      padding: 'var(--space-4)',
+                      paddingRight: '100px', // Space for the privacy toggle
+                      backgroundColor: 'white',
+                      border: `2px solid ${seedPhrase && !validateSeedPhrase(seedPhrase).isValid ? 'var(--danger-400)' : 'var(--gray-300)'}`,
+                      borderRadius: 'var(--radius-md)',
+                      // @ts-ignore - WebKit specific property
+                      WebkitTextSecurity: showSeedPhraseText ? 'none' : 'disc',
+                      color: showSeedPhraseText ? 'var(--gray-900)' : 'var(--gray-600)'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!seedPhrase || validateSeedPhrase(seedPhrase).isValid) {
+                        e.currentTarget.style.borderColor = 'var(--gray-400)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!seedPhrase || validateSeedPhrase(seedPhrase).isValid) {
+                        e.currentTarget.style.borderColor = 'var(--gray-300)';
+                      }
+                    }}
+                  />
+                </div>
+
                 {seedPhrase && !validateSeedPhrase(seedPhrase).isValid && (
                   <div style={{ 
                     fontSize: '13px', 
@@ -723,9 +786,19 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                     gap: 'var(--space-1)'
                   }}>
                     <Shield size={14} />
-                    Your recovery phrase must contain exactly 12 words.
+                    Your recovery phrase must contain exactly 12 words
                   </div>
                 )}
+
+                {/* Help text */}
+                <div style={{
+                  marginTop: 'var(--space-2)',
+                  fontSize: '13px',
+                  color: 'var(--gray-500)',
+                  lineHeight: '1.5'
+                }}>
+                  Your recovery phrase is case-sensitive and should be entered exactly as it was provided to you.
+                </div>
               </div>
             )}
 
@@ -740,6 +813,27 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                 showStrength={true}
                 autoFocus={false}
               />
+            </div>
+
+            {/* Security Warning - Same as Create Wallet */}
+            <div style={{ 
+              backgroundColor: 'var(--warning-50)', 
+              padding: 'var(--space-4)', 
+              borderRadius: 'var(--radius-md)',
+              marginTop: 'var(--space-4)',
+              border: '1px solid var(--warning-200)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                <Shield size={20} style={{ color: 'var(--warning-600)', flexShrink: 0, marginTop: '2px' }} />
+                <div>
+                  <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: 'var(--space-1)', color: 'var(--warning-900)' }}>
+                    Important Security Notice
+                  </h4>
+                  <p style={{ fontSize: '13px', color: 'var(--warning-800)', lineHeight: '1.5' }}>
+                    There is no way to recover this password if you forget it. Make sure to store it somewhere safe.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>

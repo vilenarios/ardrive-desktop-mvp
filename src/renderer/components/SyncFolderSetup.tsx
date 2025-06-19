@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
-import { FolderOpen, HardDrive, Info, CheckCircle } from 'lucide-react';
+import { FolderOpen, HardDrive, Info, CheckCircle, Calendar, Database, ArrowLeft, SkipForward } from 'lucide-react';
 import { ClientInputValidator } from '../input-validator';
 import { DriveInfo } from '../../types';
 
 interface SyncFolderSetupProps {
   drive: DriveInfo;
   onSetupComplete: () => void;
+  onBack?: () => void;
+  onSkipSetup?: () => void;
 }
 
-const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplete }) => {
+const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplete, onBack, onSkipSetup }) => {
   const [syncFolder, setSyncFolder] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,9 +41,36 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
     setSetupProgress('');
 
     try {
-      // Set sync folder
-      setSetupProgress('Configuring sync folder...');
-      await window.electronAPI.sync.setFolder(syncFolder);
+      // Create local folder inside selected sync directory
+      const driveFolderName = drive.name;
+      // Use platform-appropriate path separator
+      const pathSeparator = syncFolder.includes('\\') ? '\\' : '/';
+      const driveFolderPath = `${syncFolder}${syncFolder.endsWith(pathSeparator) ? '' : pathSeparator}${driveFolderName}`;
+      
+      setSetupProgress('Creating local folder...');
+      // The sync.setFolder should handle creating the subfolder
+      await window.electronAPI.sync.setFolder(driveFolderPath);
+      
+      // Save drive metadata and config
+      setSetupProgress('Saving configuration...');
+      
+      // Create drive mapping using the existing drive data
+      const driveMapping = {
+        id: drive.id, // Use the drive ID as the mapping ID for simplicity
+        driveId: drive.id,
+        driveName: drive.name,
+        drivePrivacy: (drive.isPrivate || drive.privacy === 'private') ? 'private' : 'public',
+        localFolderPath: driveFolderPath,
+        rootFolderId: drive.rootFolderId,
+        isActive: true,
+        syncSettings: {
+          syncDirection: 'bidirectional' as const,
+          uploadPriority: 0
+        }
+      };
+      
+      // Add the drive mapping via IPC
+      await window.electronAPI.driveMappings.add(driveMapping);
       
       // Start sync
       setSetupProgress('Starting sync...');
@@ -83,10 +112,10 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
         <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
           <HardDrive size={48} style={{ color: 'var(--ardrive-primary)', marginBottom: 'var(--space-4)' }} />
           <h2 style={{ marginBottom: 'var(--space-3)', fontSize: '28px' }}>
-            Welcome Back!
+            Set Up Sync Folder
           </h2>
           <p className="text-gray-600" style={{ fontSize: '16px', lineHeight: '1.6' }}>
-            Let's set up syncing for your existing drive
+            Choose where to sync your ArDrive files locally
           </p>
         </div>
 
@@ -96,25 +125,45 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
           </div>
         )}
 
-        {/* Selected Drive Info */}
+        {/* Selected Drive Info - Enhanced */}
         <div style={{
-          padding: 'var(--space-4)',
+          padding: 'var(--space-5)',
           backgroundColor: 'var(--primary-50)',
           borderRadius: 'var(--radius-md)',
           border: '1px solid var(--ardrive-primary)',
-          marginBottom: 'var(--space-6)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-3)'
+          marginBottom: 'var(--space-6)'
         }}>
-          <CheckCircle size={20} style={{ color: 'var(--ardrive-primary)', flexShrink: 0 }} />
-          <div>
-            <p style={{ fontWeight: '600', color: 'var(--gray-900)', marginBottom: 'var(--space-1)' }}>
-              Using existing drive: {drive.name}
-            </p>
-            <p style={{ fontSize: '14px', color: 'var(--gray-700)' }}>
-              Drive ID: {drive.id.slice(0, 8)}...
-            </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+            <HardDrive size={24} style={{ color: 'var(--ardrive-primary)', flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <h3 style={{ fontWeight: '600', color: 'var(--gray-900)', fontSize: '18px', marginBottom: '4px' }}>
+                {drive.name}
+              </h3>
+              <p style={{ fontSize: '14px', color: 'var(--gray-600)' }}>
+                {(drive.isPrivate || drive.privacy === 'private') ? 'Private Drive' : 'Public Drive'}
+              </p>
+            </div>
+          </div>
+          
+          <div style={{ 
+            display: 'flex', 
+            gap: 'var(--space-4)',
+            fontSize: '13px',
+            color: 'var(--gray-600)',
+            paddingLeft: 'calc(24px + var(--space-3))'
+          }}>
+            {drive.dateCreated && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                <Calendar size={14} />
+                Created {new Date(drive.dateCreated).toLocaleDateString()}
+              </div>
+            )}
+            {drive.size > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                <Database size={14} />
+                {formatFileSize(drive.size)}
+              </div>
+            )}
           </div>
         </div>
 
@@ -143,7 +192,12 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
             {syncFolder ? (
               <>
                 <FolderOpen size={32} style={{ color: 'var(--ardrive-primary)', marginBottom: 'var(--space-2)' }} />
-                <p style={{ fontWeight: '600', marginBottom: 'var(--space-2)' }}>{syncFolder}</p>
+                <p style={{ fontWeight: '600', marginBottom: 'var(--space-2)', wordBreak: 'break-all' }}>
+                  {syncFolder}
+                </p>
+                <p style={{ fontSize: '13px', color: 'var(--gray-600)', marginBottom: 'var(--space-3)' }}>
+                  A folder named "{drive.name}" will be created here
+                </p>
                 <button
                   className="button small outline"
                   onClick={handleSelectFolder}
@@ -191,31 +245,78 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
           </div>
         </div>
 
-        {/* Action Button and Progress */}
+        {/* Action Buttons and Progress */}
         <div>
-          <button
-            className="button large"
-            onClick={handleSetup}
-            disabled={loading || !syncFolder}
-            style={{ width: '100%', fontSize: '16px', padding: 'var(--space-4)', marginBottom: loading ? 'var(--space-3)' : 0 }}
-          >
-            {loading ? (
-              <>
-                <div style={{ 
-                  width: '16px', 
-                  height: '16px', 
-                  border: '2px solid rgba(255,255,255,0.3)',
-                  borderTop: '2px solid white',
-                  borderRadius: '50%',
-                  animation: 'spin 1s linear infinite',
-                  marginRight: 'var(--space-2)'
-                }} />
-                Setting up...
-              </>
-            ) : (
-              'Start Syncing'
+          <div style={{ 
+            display: 'flex', 
+            gap: 'var(--space-3)',
+            marginBottom: loading ? 'var(--space-3)' : 0
+          }}>
+            {(onBack || onSkipSetup) && (
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                {onBack && (
+                  <button
+                    className="button outline"
+                    onClick={onBack}
+                    disabled={loading}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)'
+                    }}
+                  >
+                    <ArrowLeft size={16} />
+                    Back
+                  </button>
+                )}
+                {onSkipSetup && (
+                  <button
+                    className="button outline"
+                    onClick={onSkipSetup}
+                    disabled={loading}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)'
+                    }}
+                  >
+                    <SkipForward size={16} />
+                    Skip Setup
+                  </button>
+                )}
+              </div>
             )}
-          </button>
+            
+            <button
+              className="button large"
+              onClick={handleSetup}
+              disabled={loading || !syncFolder}
+              style={{ 
+                flex: 1,
+                fontSize: '16px', 
+                padding: 'var(--space-4)',
+                opacity: (!syncFolder || loading) ? 0.6 : 1,
+                cursor: (!syncFolder || loading) ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {loading ? (
+                <>
+                  <div style={{ 
+                    width: '16px', 
+                    height: '16px', 
+                    border: '2px solid rgba(255,255,255,0.3)',
+                    borderTop: '2px solid white',
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite',
+                    marginRight: 'var(--space-2)'
+                  }} />
+                  Setting up...
+                </>
+              ) : (
+                'Start Syncing'
+              )}
+            </button>
+          </div>
           
           {/* Progress indicator */}
           {loading && setupProgress && (
@@ -251,6 +352,14 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
       </div>
     </div>
   );
+};
+
+const formatFileSize = (bytes: number) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
 export default SyncFolderSetup;

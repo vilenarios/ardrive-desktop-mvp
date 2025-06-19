@@ -531,7 +531,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       )}
 
 
-      {/* Drive Header or Empty State */}
+      {/* Empty State - No Drive */}
       {!selectedDrive ? (
         <div className="empty-drive-state" style={{
           textAlign: 'center',
@@ -562,128 +562,83 @@ const Dashboard: React.FC<DashboardProps> = ({
             No drive configured. Please restart the application.
           </div>
         </div>
-      ) : (
-        <div className="drive-header">
-          <div className="drive-info">
-            <div className="drive-icon">
-              <Cloud size={24} />
-            </div>
-            <div className="drive-text">
-              <h1>{selectedDrive.name}</h1>
-              <p className="drive-status">
-                {selectedDrive.privacy === 'public' ? '🌐 Public Drive' : '🔒 Private Drive'}
-                {syncStatus?.isActive && <span className="sync-indicator">• Syncing...</span>}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      ) : null}
 
       {/* Main Content - Tabbed Dashboard */}
-      <div className="dashboard-content">
-        {/* Drive Context Bar */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: 'var(--space-4) var(--space-6)',
-          backgroundColor: 'var(--gray-50)',
-          borderBottom: '1px solid var(--gray-200)',
-          marginBottom: 'var(--space-4)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-            {/* Drive Icon/Avatar */}
-            <div style={{
-              width: '40px',
-              height: '40px',
-              backgroundColor: 'var(--primary-100)',
-              borderRadius: 'var(--radius-md)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '20px'
-            }}>
-              {drive?.name ? drive.name.charAt(0).toUpperCase() : '📁'}
-            </div>
-            
-            {/* Drive Info */}
-            <div>
-              <h3 style={{ 
-                fontSize: '16px', 
-                fontWeight: '600', 
-                marginBottom: '2px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)'
-              }}>
-                {drive?.name || 'My Drive'}
-                {drive?.privacy === 'public' && (
-                  <span style={{
-                    fontSize: '12px',
-                    padding: '2px 8px',
-                    backgroundColor: 'var(--warning-100)',
-                    color: 'var(--warning-700)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontWeight: '500'
+      {selectedDrive && (
+        <div className="dashboard-content">
+          {/* Unified Drive Identity Bar */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: 'var(--space-5) var(--space-6)',
+            backgroundColor: 'white',
+            borderBottom: '2px solid var(--gray-100)',
+            marginBottom: 'var(--space-4)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+              {/* Drive Icon */}
+              <FolderOpen size={24} style={{ color: 'var(--gray-600)' }} />
+              
+              {/* Drive Info */}
+              <div>
+                <div style={{ 
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  marginBottom: '4px'
+                }}>
+                  <h2 style={{ 
+                    fontSize: '18px', 
+                    fontWeight: '600',
+                    margin: 0,
+                    color: 'var(--gray-900)'
                   }}>
-                    Public
-                  </span>
-                )}
-              </h3>
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 'var(--space-3)',
-                fontSize: '14px',
-                color: 'var(--gray-600)'
-              }}>
+                    {drive?.name || 'My Drive'}
+                  </h2>
+                  {drive?.privacy === 'public' && (
+                    <span style={{
+                      fontSize: '12px',
+                      padding: '2px 8px',
+                      backgroundColor: 'var(--warning-100)',
+                      color: 'var(--warning-700)',
+                      borderRadius: 'var(--radius-sm)',
+                      fontWeight: '500'
+                    }}>
+                      Public
+                    </span>
+                  )}
+                </div>
+                
                 {/* Sync Status */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                <div style={{ 
+                  fontSize: '14px',
+                  color: 'var(--gray-600)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-1)'
+                }}>
                   {syncStatus?.isActive ? (
                     <>
-                      <div style={{
-                        width: '8px',
-                        height: '8px',
-                        backgroundColor: 'var(--success-500)',
-                        borderRadius: '50%',
-                        animation: 'pulse 2s infinite'
+                      <RefreshCw size={14} style={{ 
+                        color: 'var(--success-600)',
+                        animation: 'spin 2s linear infinite'
                       }} />
-                      <span>Syncing</span>
+                      <span>Syncing...</span>
                     </>
                   ) : (
                     <>
-                      <div style={{
-                        width: '8px',
-                        height: '8px',
-                        backgroundColor: 'var(--gray-400)',
-                        borderRadius: '50%'
-                      }} />
+                      <Pause size={14} style={{ color: 'var(--gray-500)' }} />
                       <span>Paused</span>
                     </>
                   )}
                 </div>
-                
-                {/* Separator */}
-                <span style={{ color: 'var(--gray-300)' }}>•</span>
-                
-                {/* Folder Path */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-                  <FolderOpen size={14} />
-                  <span style={{ 
-                    maxWidth: '300px',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
-                  }}>
-                    {config.syncFolder?.split(/[/\\]/).pop() || 'No folder'}
-                  </span>
-                </div>
               </div>
             </div>
-          </div>
-          
-          {/* Drive Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            
+            {/* Drive Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             {/* Sync Toggle */}
             {syncStatus?.isActive ? (
               <button
@@ -1018,8 +973,8 @@ const Dashboard: React.FC<DashboardProps> = ({
           )}
         </div>
       </div>
+      )}
 
-      
       {/* Wallet Export Modal */}
       {showWalletExport && (
         <WalletExport

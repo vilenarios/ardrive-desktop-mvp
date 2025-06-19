@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Cloud, FolderOpen, HardDrive, Info, Globe, Zap, X, HelpCircle, CheckCircle, Trash2, AlertCircle } from 'lucide-react';
+import { Cloud, FolderOpen, HardDrive, Info, Globe, Zap, X, HelpCircle, CheckCircle, Trash2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { ClientInputValidator } from '../input-validator';
 import { InfoButton } from './common/InfoButton';
 import SetupSuccessScreen from './SetupSuccessScreen';
 
 interface DriveAndSyncSetupProps {
   onSetupComplete: () => void;
+  isReturningUser?: boolean;
+  onBack?: () => void;
 }
 
-const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }) => {
-  const [driveName, setDriveName] = useState('My Files');
+const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete, isReturningUser = false, onBack }) => {
+  const [driveName, setDriveName] = useState(isReturningUser ? '' : 'My Files');
   const [syncFolder, setSyncFolder] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -220,10 +222,16 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
         <div style={{ textAlign: 'center', marginBottom: 'var(--space-6)' }}>
           <HardDrive size={48} style={{ color: 'var(--ardrive-primary)', marginBottom: 'var(--space-3)' }} />
           <h2 style={{ marginBottom: 'var(--space-2)', fontSize: '28px' }}>
-            {showSummary ? 'Review Your Setup' : 'Let\'s Set Up Your Storage'}
+            {showSummary ? 'Review Your Setup' : (isReturningUser ? 'Create a New Drive' : 'Let\'s Set Up Your Storage')}
           </h2>
           <p className="text-gray-600" style={{ fontSize: '16px', lineHeight: '1.5' }}>
-            {showSummary ? 'Please review your configuration before completing setup' : 'Create your first drive and choose a folder to sync'}
+            {showSummary ? 
+              'Please review your configuration before completing setup' : 
+              (isReturningUser ? 
+                'Set up a new ArDrive and choose a local folder to sync. Your existing drives will remain available.' :
+                'Create your first drive and choose a folder to sync'
+              )
+            }
           </p>
         </div>
 
@@ -496,6 +504,23 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
         <div>
           {showSummary ? (
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              {isReturningUser && onBack && (
+                <button
+                  className="button outline"
+                  onClick={onBack}
+                  disabled={loading}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-2)',
+                    fontSize: '16px',
+                    padding: '12px 20px'
+                  }}
+                >
+                  <ArrowLeft size={18} />
+                  Back to Existing Drives
+                </button>
+              )}
               <button
                 className="button outline large"
                 onClick={() => setShowSummary(false)}
@@ -529,20 +554,38 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ onSetupComplete }
               </button>
             </div>
           ) : (
-            <button
-              className="button large"
-              onClick={handleProceedToSummary}
-              disabled={!driveName.trim() || !syncFolder || !!driveNameError || driveName.length > 32}
-              style={{ 
-                width: '100%', 
-                fontSize: '16px', 
-                padding: 'var(--space-4)',
-                opacity: (!driveName.trim() || !syncFolder || !!driveNameError) ? 0.6 : 1,
-                cursor: (!driveName.trim() || !syncFolder || !!driveNameError) ? 'not-allowed' : 'pointer'
-              }}
-            >
-              Continue to Review
-            </button>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+              {isReturningUser && onBack && (
+                <button
+                  className="button outline"
+                  onClick={onBack}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-2)',
+                    fontSize: '16px',
+                    padding: '12px 20px'
+                  }}
+                >
+                  <ArrowLeft size={18} />
+                  Back to Existing Drives
+                </button>
+              )}
+              <button
+                className="button large"
+                onClick={handleProceedToSummary}
+                disabled={!driveName.trim() || !syncFolder || !!driveNameError || driveName.length > 32}
+                style={{ 
+                  flex: 1,
+                  fontSize: '16px', 
+                  padding: 'var(--space-4)',
+                  opacity: (!driveName.trim() || !syncFolder || !!driveNameError) ? 0.6 : 1,
+                  cursor: (!driveName.trim() || !syncFolder || !!driveNameError) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Continue to Review
+              </button>
+            </div>
           )}
           
           {/* Progress indicator */}

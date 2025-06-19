@@ -551,7 +551,10 @@ export class SecureWalletManager {
         id: drive.driveId.toString(),
         name: drive.name,
         privacy: drive.drivePrivacy as 'public' | 'private',
-        rootFolderId: drive.rootFolderId === 'ENCRYPTED' ? '' : drive.rootFolderId.toString()
+        rootFolderId: drive.rootFolderId === 'ENCRYPTED' ? '' : drive.rootFolderId.toString(),
+        dateCreated: drive.dateCreated || Date.now(),
+        size: 0, // Will need to calculate this from drive contents
+        isPrivate: drive.drivePrivacy === 'private'
       }));
       
       console.log('Mapped drive infos:', driveInfos);
@@ -601,7 +604,10 @@ export class SecureWalletManager {
         name,
         privacy: 'public' as const,
         rootFolderId: rootFolderId,
-        metadataTxId: result.created[0].metadataTxId?.toString() // Add transaction ID
+        metadataTxId: result.created[0].metadataTxId?.toString(), // Add transaction ID
+        dateCreated: Date.now(),
+        size: 0,
+        isPrivate: false
       };
 
       console.log('Created drive:', driveInfo);

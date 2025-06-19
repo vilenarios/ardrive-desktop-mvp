@@ -3,13 +3,14 @@ import { AppConfig, DriveInfo, WalletInfo, SyncStatus, FileUpload, Profile } fro
 import WalletSetup from './components/WalletSetup';
 import DriveAndSyncSetup from './components/DriveAndSyncSetup';
 import SyncFolderSetup from './components/SyncFolderSetup';
+import WelcomeBackScreen from './components/WelcomeBackScreen';
 import Dashboard from './components/Dashboard';
 import ToastContainer from './components/ToastContainer';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { useToast } from './hooks/useToast';
 
 // Simple app states
-type AppState = 'loading' | 'wallet-setup' | 'drive-setup' | 'sync-setup' | 'dashboard';
+type AppState = 'loading' | 'wallet-setup' | 'drive-setup' | 'sync-setup' | 'welcome-back' | 'dashboard';
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('loading');
@@ -19,6 +20,7 @@ const App: React.FC = () => {
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [uploads, setUploads] = useState<FileUpload[]>([]);
   const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
+  const [isReturningUser, setIsReturningUser] = useState(false);
   const { toasts, toast, removeToast } = useToast();
 
   useEffect(() => {
@@ -118,23 +120,47 @@ const App: React.FC = () => {
         // No existing drives, go to drive setup
         setAppState('drive-setup');
       } else {
-        // Has existing drives, check if sync folder is configured
-        const config = await window.electronAPI.config.get();
-        if (!config.syncFolder) {
-          // Has drives but no sync folder, need to set up sync
-          // For now, select the first drive and go to sync setup
-          await window.electronAPI.drive.select(drives[0].id);
-          setDrive(drives[0]);
-          setAppState('sync-setup'); // Show sync folder setup for existing drive
-        } else {
-          // Has drives and sync folder, go to dashboard
-          await initializeApp();
-        }
+        // Has existing drives, show welcome back screen for drive selection
+        setIsReturningUser(true);
+        setAppState('welcome-back');
       }
     } catch (error) {
       console.error('Error checking drives:', error);
       toast.error('Failed to check existing drives');
       setAppState('drive-setup');
+    }
+  };
+
+  const handleDriveSelectedFromWelcomeBack = async (selectedDrive: DriveInfo) => {
+    try {
+      // Select the drive and set it up for syncing
+      await window.electronAPI.drive.select(selectedDrive.id);
+      setDrive(selectedDrive);
+      
+      // Check if sync folder is configured
+      const config = await window.electronAPI.config.get();
+      if (!config.syncFolder) {
+        // Need to set up sync folder
+        setAppState('sync-setup');
+      } else {
+        // Everything is configured, go to dashboard
+        await initializeApp();
+      }
+    } catch (error) {
+      console.error('Error selecting drive:', error);
+      toast.error('Failed to select drive');
+    }
+  };
+
+  const handleSkipSetup = async () => {
+    // Skip setup and go directly to dashboard
+    // Mark first run as complete so we don't show onboarding again
+    try {
+      await window.electronAPI.config.markFirstRunComplete();
+      await initializeApp();
+    } catch (error) {
+      console.error('Error skipping setup:', error);
+      toast.error('Failed to skip setup');
     }
   };
 
@@ -193,11 +219,34 @@ const App: React.FC = () => {
         return <WalletSetup onWalletImported={handleWalletImported} />;
 
       case 'drive-setup':
-        return <DriveAndSyncSetup onSetupComplete={handleDriveSetupComplete} />;
+        return (
+          <DriveAndSyncSetup 
+            onSetupComplete={handleDriveSetupComplete}
+            isReturningUser={isReturningUser}
+            onBack={isReturningUser ? () => setAppState('welcome-back') : undefined}
+          />
+        );
+
+      case 'welcome-back':
+        return (
+          <WelcomeBackScreen
+            onDriveSelected={handleDriveSelectedFromWelcomeBack}
+            onCreateNewDrive={() => {
+              setIsReturningUser(true);
+              setAppState('drive-setup');
+            }}
+            onSkipSetup={handleSkipSetup}
+          />
+        );
 
       case 'sync-setup':
         return drive ? (
-          <SyncFolderSetup drive={drive} onSetupComplete={handleDriveSetupComplete} />
+          <SyncFolderSetup 
+            drive={drive} 
+            onSetupComplete={handleDriveSetupComplete}
+            onBack={() => setAppState('welcome-back')}
+            onSkipSetup={handleSkipSetup}
+          />
         ) : (
           <DriveAndSyncSetup onSetupComplete={handleDriveSetupComplete} />
         );

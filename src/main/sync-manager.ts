@@ -19,6 +19,8 @@ export class SyncManager {
   private versionManager: VersionManager;
   private pendingDeletes = new Map<string, NodeJS.Timeout>();
   private isDownloading = false; // Flag to indicate when downloads are in progress
+  private fileProcessingQueue = new Map<string, NodeJS.Timeout>(); // Debounce file events
+  private processingFiles = new Set<string>(); // Track files currently being processed
 
   constructor(private databaseManager: DatabaseManager) {
     this.versionManager = new VersionManager(databaseManager);
@@ -48,23 +50,9 @@ export class SyncManager {
       throw new Error('Sync folder and ArDrive instance must be set');
     }
 
-    // If we have a drive name, create a subfolder for this drive
-    // This ensures consistency - we only watch the drive folder, not the parent
-    if (driveName) {
-      const driveFolderPath = path.join(this.syncFolderPath, driveName);
-      
-      // Ensure the drive folder exists
-      try {
-        await fs.mkdir(driveFolderPath, { recursive: true });
-        console.log(`Created/verified drive folder: ${driveFolderPath}`);
-      } catch (error) {
-        throw new Error(`Failed to create drive folder: ${driveFolderPath}`);
-      }
-      
-      // Update sync folder to the drive-specific folder
-      this.syncFolderPath = driveFolderPath;
-      this.versionManager.setSyncFolder(driveFolderPath);
-    }
+    // Note: The drive folder is already created in DriveAndSyncSetup.tsx
+    // We should NOT create another nested folder here
+    console.log(`Starting sync for folder: ${this.syncFolderPath}`);
 
     this.driveId = driveId;
     this.rootFolderId = rootFolderId;
@@ -145,6 +133,16 @@ export class SyncManager {
       await this.watcher.close();
       this.watcher = null;
     }
+
+    // Clear all pending file processing timeouts
+    for (const [filePath, timeout] of this.fileProcessingQueue) {
+      clearTimeout(timeout);
+      console.log(`Cleared pending timeout for: ${filePath}`);
+    }
+    this.fileProcessingQueue.clear();
+    
+    // Clear processing files set
+    this.processingFiles.clear();
 
     return true;
   }
@@ -768,7 +766,36 @@ export class SyncManager {
       console.log(`Skipping file add event during download: ${filePath}`);
       return;
     }
-    await this.handleFileWithVersioning(filePath, 'create');
+
+    // Clear any existing timeout for this file
+    const existingTimeout = this.fileProcessingQueue.get(filePath);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+      console.log(`Cleared existing timeout for: ${filePath}`);
+    }
+
+    // Debounce file events - wait 500ms before processing
+    const timeout = setTimeout(async () => {
+      this.fileProcessingQueue.delete(filePath);
+      
+      // Check if file is already being processed
+      if (this.processingFiles.has(filePath)) {
+        console.log(`File already being processed, skipping: ${filePath}`);
+        return;
+      }
+
+      // Mark file as being processed
+      this.processingFiles.add(filePath);
+      
+      try {
+        await this.handleFileWithVersioning(filePath, 'create');
+      } finally {
+        // Remove from processing set when done
+        this.processingFiles.delete(filePath);
+      }
+    }, 500);
+
+    this.fileProcessingQueue.set(filePath, timeout);
   }
 
   private async handleFileChange(filePath: string) {
@@ -777,7 +804,36 @@ export class SyncManager {
       console.log(`Skipping file change event during download: ${filePath}`);
       return;
     }
-    await this.handleFileWithVersioning(filePath, 'update');
+
+    // Clear any existing timeout for this file
+    const existingTimeout = this.fileProcessingQueue.get(filePath);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+      console.log(`Cleared existing timeout for: ${filePath}`);
+    }
+
+    // Debounce file events - wait 500ms before processing
+    const timeout = setTimeout(async () => {
+      this.fileProcessingQueue.delete(filePath);
+      
+      // Check if file is already being processed
+      if (this.processingFiles.has(filePath)) {
+        console.log(`File already being processed, skipping: ${filePath}`);
+        return;
+      }
+
+      // Mark file as being processed
+      this.processingFiles.add(filePath);
+      
+      try {
+        await this.handleFileWithVersioning(filePath, 'update');
+      } finally {
+        // Remove from processing set when done
+        this.processingFiles.delete(filePath);
+      }
+    }, 500);
+
+    this.fileProcessingQueue.set(filePath, timeout);
   }
 
   private async handleFileDelete(filePath: string) {
@@ -962,6 +1018,17 @@ export class SyncManager {
       if (isAlreadyProcessed) {
         console.log(`✓ File already processed, skipping: ${filePath}`);
         return; // Already processed
+      }
+
+      // Check if there's already a pending upload for this exact file path
+      const pendingUploads = await this.databaseManager.getPendingUploads();
+      const existingPending = pendingUploads.find(u => 
+        u.localPath === filePath && u.status === 'awaiting_approval'
+      );
+      
+      if (existingPending) {
+        console.log(`✓ File already in pending queue, skipping: ${filePath}`);
+        return;
       }
 
       console.log(`Adding new file to PENDING APPROVAL queue: ${path.basename(filePath)}`);

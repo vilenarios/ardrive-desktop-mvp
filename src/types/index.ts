@@ -41,6 +41,9 @@ export interface DriveInfo {
   privacy: 'public' | 'private';
   rootFolderId: string;
   metadataTxId?: string;
+  dateCreated: number;  // Timestamp
+  size: number;         // Total size in bytes
+  isPrivate?: boolean;  // Alternative to privacy field
 }
 
 export interface FileUpload {
