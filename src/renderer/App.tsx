@@ -4,13 +4,14 @@ import WalletSetup from './components/WalletSetup';
 import DriveAndSyncSetup from './components/DriveAndSyncSetup';
 import SyncFolderSetup from './components/SyncFolderSetup';
 import WelcomeBackScreen from './components/WelcomeBackScreen';
+import ProfileManagement from './components/ProfileManagement';
 import Dashboard from './components/Dashboard';
 import ToastContainer from './components/ToastContainer';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { useToast } from './hooks/useToast';
 
 // Simple app states
-type AppState = 'loading' | 'wallet-setup' | 'drive-setup' | 'sync-setup' | 'welcome-back' | 'dashboard';
+type AppState = 'loading' | 'profile-management' | 'wallet-setup' | 'drive-setup' | 'sync-setup' | 'welcome-back' | 'dashboard';
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('loading');
@@ -33,10 +34,19 @@ const App: React.FC = () => {
       const appConfig = await window.electronAPI.config.get();
       setConfig(appConfig);
 
-      // Check if wallet exists
-      const hasWallet = await window.electronAPI.wallet.hasStoredWallet();
-      if (!hasWallet) {
+      // Check if we have any profiles first
+      const profiles = await window.electronAPI.profiles.list();
+      if (!profiles || profiles.length === 0) {
         setAppState('wallet-setup');
+        return;
+      }
+
+      // Check if there's an active profile with a loaded wallet
+      const activeProfile = await window.electronAPI.profile.getActive();
+      const hasWallet = await window.electronAPI.wallet.hasStoredWallet();
+      
+      if (!activeProfile || !hasWallet) {
+        setAppState('profile-management');
         return;
       }
 
@@ -277,7 +287,14 @@ const App: React.FC = () => {
       setDrive(null);
       setSyncStatus(null);
       setUploads([]);
-      setAppState('wallet-setup');
+      
+      // Check if we have multiple profiles to show profile management
+      const profiles = await window.electronAPI.profiles.list();
+      if (profiles && profiles.length > 0) {
+        setAppState('profile-management');
+      } else {
+        setAppState('wallet-setup');
+      }
     } catch (error) {
       console.error('Failed to logout:', error);
       toast.error('Failed to logout');
@@ -288,6 +305,21 @@ const App: React.FC = () => {
     // Drive was deleted, need to set up a new one
     setDrive(null);
     setAppState('drive-setup');
+  };
+
+  const handleProfileSelected = async (profile: Profile, password: string) => {
+    try {
+      // Profile is already switched via the ProfileManagement component
+      // Just need to load the app state
+      await initializeApp();
+    } catch (error) {
+      console.error('Failed to initialize app after profile selection:', error);
+      toast.error('Failed to load profile');
+    }
+  };
+
+  const handleCreateNewProfile = () => {
+    setAppState('wallet-setup');
   };
 
   // Render based on app state
@@ -313,6 +345,14 @@ const App: React.FC = () => {
             }} />
             <p style={{ color: 'var(--gray-600)' }}>Loading ArDrive...</p>
           </div>
+        );
+
+      case 'profile-management':
+        return (
+          <ProfileManagement 
+            onProfileSelected={handleProfileSelected}
+            onCreateNewProfile={handleCreateNewProfile}
+          />
         );
 
       case 'wallet-setup':

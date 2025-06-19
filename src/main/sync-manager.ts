@@ -560,8 +560,26 @@ export class SyncManager {
         path: fileData.path
       });
 
-      const relativePath = fileData.path || fileData.name;
-      const localFilePath = path.join(this.syncFolderPath!, relativePath);
+      // Normalize the path to remove drive name prefix if present
+      let relativePath = fileData.path || fileData.name;
+      
+      // If the path starts with the drive name, remove it to avoid duplication
+      // ArDrive paths might look like "/MyMobilePublic/iosFolder/file.txt" but our sync folder is already "MyMobilePublic"
+      const driveName = path.basename(this.syncFolderPath!);
+      if (relativePath.startsWith(`/${driveName}/`) || relativePath.startsWith(`${driveName}/`)) {
+        // Remove the drive name prefix
+        relativePath = relativePath.replace(new RegExp(`^/?${driveName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`), '');
+      } else if (relativePath === `/${driveName}` || relativePath === driveName) {
+        // If the path is exactly the drive name, treat as root
+        relativePath = '';
+      }
+      
+      // Ensure we don't have empty paths or leading slashes
+      if (relativePath.startsWith('/')) {
+        relativePath = relativePath.substring(1);
+      }
+      
+      const localFilePath = relativePath ? path.join(this.syncFolderPath!, relativePath) : path.join(this.syncFolderPath!, fileData.name);
       
       console.log(`Download paths:`, {
         relativePath,
@@ -1542,7 +1560,25 @@ export class SyncManager {
 
       // Process and cache all items
       for (const item of sortedItems) {
-        const localPath = path.join(this.syncFolderPath!, item.path || item.name);
+        // Normalize the path to remove drive name prefix if present
+        let itemPath = item.path || item.name;
+        
+        // If the path starts with the drive name, remove it to avoid duplication
+        const driveName = path.basename(this.syncFolderPath!);
+        if (itemPath.startsWith(`/${driveName}/`) || itemPath.startsWith(`${driveName}/`)) {
+          // Remove the drive name prefix
+          itemPath = itemPath.replace(new RegExp(`^/?${driveName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`), '');
+        } else if (itemPath === `/${driveName}` || itemPath === driveName) {
+          // If the path is exactly the drive name, treat as root
+          itemPath = '';
+        }
+        
+        // Ensure we don't have empty paths or leading slashes
+        if (itemPath.startsWith('/')) {
+          itemPath = itemPath.substring(1);
+        }
+        
+        const localPath = itemPath ? path.join(this.syncFolderPath!, itemPath) : path.join(this.syncFolderPath!, item.name);
         let localFileExists = false;
         
         if (item.entityType === 'file') {
