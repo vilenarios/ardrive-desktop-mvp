@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { RotateCcw, AlertTriangle, Shuffle, CheckCircle2, Upload, X, Sparkles, Zap, Lightbulb, Tag, FileText, Bookmark, Plus, Edit3, ChevronDown, ChevronRight, Wallet } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { RotateCcw, AlertTriangle, Shuffle, CheckCircle2, Upload, X, Sparkles, Zap, Lightbulb, Tag, FileText, Bookmark, Plus, Edit3, ChevronDown, ChevronRight, Wallet, Loader2, RefreshCw } from 'lucide-react';
 import { PendingUpload, ConflictResolution } from '../../types';
 import { CustomMetadata, MetadataTemplate, FileWithMetadata, MetadataEditContext } from '../../types/metadata';
 import { isTurboFree, formatFileSize } from '../../utils/turbo-utils';
@@ -17,6 +17,7 @@ interface UploadApprovalQueueProps {
   onApproveAll: () => void;
   onRejectAll: () => void;
   onResolveConflict: (resolution: ConflictResolution) => void;
+  onRefreshBalance?: () => void;
   walletInfo?: {
     balance: string;
     turboBalance?: string;
@@ -31,6 +32,7 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
   onApproveAll,
   onRejectAll,
   onResolveConflict,
+  onRefreshBalance,
   walletInfo
 }) => {
   const [selectedUploads, setSelectedUploads] = useState<Set<string>>(new Set());
@@ -59,10 +61,82 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
   });
   
   // Track uploading state for files
-  const [uploadingFiles, setUploadingFiles] = useState<Map<string, { progress: number; status: UploadStatus }>>(new Map());
+  const [uploadingFiles, setUploadingFiles] = useState<Map<string, { progress: number; status: UploadStatus; error?: string }>>(new Map());
+  
+  // Track files that are actively being processed
+  const [processingFiles, setProcessingFiles] = useState<Set<string>>(new Set());
+  
+  // Track successfully uploaded files for auto-removal
+  const [completedUploads, setCompletedUploads] = useState<Set<string>>(new Set());
   
   // Drag and drop state
   const [isDragging, setIsDragging] = useState(false);
+  
+  // Setup upload progress event listeners
+  useEffect(() => {
+    const handleUploadProgress = (data: { uploadId: string; progress: number; status: 'uploading' | 'completed' | 'failed'; error?: string }) => {
+      setUploadingFiles(prev => {
+        const newMap = new Map(prev);
+        newMap.set(data.uploadId, {
+          progress: data.progress,
+          status: data.status as UploadStatus,
+          error: data.error
+        });
+        return newMap;
+      });
+      
+      // Handle completion
+      if (data.status === 'completed') {
+        // Add to completed set
+        setCompletedUploads(prev => new Set(prev).add(data.uploadId));
+        
+        // Success notification would go here
+        const upload = pendingUploads.find(u => u.id === data.uploadId);
+        if (upload) {
+          console.log(`Uploaded ${upload.fileName}`, isTurboFree(upload.fileSize) ? 'Free upload via Turbo' : undefined);
+        }
+        
+        // Remove from pending uploads after a delay
+        setTimeout(() => {
+          onRejectUpload(data.uploadId); // This removes it from the queue
+          setUploadingFiles(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(data.uploadId);
+            return newMap;
+          });
+          setCompletedUploads(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(data.uploadId);
+            return newSet;
+          });
+        }, 2000); // Show success state for 2 seconds before removing
+        
+        // Refresh balance after successful upload
+        if (onRefreshBalance) {
+          onRefreshBalance();
+        }
+      } else if (data.status === 'failed') {
+        // Error notification would go here
+        const upload = pendingUploads.find(u => u.id === data.uploadId);
+        if (upload) {
+          console.error(`Failed to upload ${upload.fileName}`, data.error || 'Unknown error');
+        }
+        setProcessingFiles(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(data.uploadId);
+          return newSet;
+        });
+      }
+    };
+    
+    // Register event listeners
+    window.electronAPI.onUploadProgress(handleUploadProgress);
+    
+    // Cleanup
+    return () => {
+      window.electronAPI.removeUploadProgressListener();
+    };
+  }, [pendingUploads, onRejectUpload, onRefreshBalance]);
 
   // Calculate file categories for upload cost breakdown
   const getUploadCostBreakdown = () => {
@@ -121,15 +195,117 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
 
 
 
-  const handleApproveUpload = (uploadId: string) => {
+  const handleApproveUpload = async (uploadId: string) => {
     const upload = pendingUploads.find(u => u.id === uploadId);
-    if (upload) {
-      // Determine method based on MVP logic
-      const uploadMethod = getFileUploadMethod(upload);
-      const method = uploadMethod.method === 'ar' ? 'ar' : 'turbo';
-      const metadata = fileMetadata.get(uploadId);
-      onApproveUpload(uploadId, method, metadata);
+    if (upload && !processingFiles.has(uploadId)) {
+      // Add to processing set
+      setProcessingFiles(prev => new Set(prev).add(uploadId));
+      
+      // Set initial uploading state
+      setUploadingFiles(prev => {
+        const newMap = new Map(prev);
+        newMap.set(uploadId, { progress: 0, status: 'uploading' });
+        return newMap;
+      });
+      
+      try {
+        // Determine method based on MVP logic
+        const uploadMethod = getFileUploadMethod(upload);
+        const method = uploadMethod.method === 'ar' ? 'ar' : 'turbo';
+        const metadata = fileMetadata.get(uploadId);
+        
+        // Start the upload
+        await onApproveUpload(uploadId, method, metadata);
+        
+        // For instant uploads (Turbo free), simulate quick progress
+        if (isTurboFree(upload.fileSize)) {
+          // Simulate instant upload progress for free files
+          for (let progress = 0; progress <= 100; progress += 20) {
+            setTimeout(() => {
+              setUploadingFiles(prev => {
+                const newMap = new Map(prev);
+                const current = newMap.get(uploadId);
+                if (current && current.status === 'uploading') {
+                  newMap.set(uploadId, { ...current, progress });
+                }
+                return newMap;
+              });
+            }, progress * 10); // Very fast progress for free uploads
+          }
+        }
+      } catch (error) {
+        // Handle error
+        setUploadingFiles(prev => {
+          const newMap = new Map(prev);
+          newMap.set(uploadId, { 
+            progress: 0, 
+            status: 'failed', 
+            error: error instanceof Error ? error.message : 'Upload failed' 
+          });
+          return newMap;
+        });
+        
+        // Remove from processing
+        setProcessingFiles(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(uploadId);
+          return newSet;
+        });
+        
+        console.error(`Failed to upload ${upload.fileName}`, error instanceof Error ? error.message : 'Unknown error');
+      }
     }
+  };
+  
+  // Retry failed upload
+  const handleRetryUpload = (uploadId: string) => {
+    // Clear error state
+    setUploadingFiles(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(uploadId);
+      return newMap;
+    });
+    
+    // Retry the upload
+    handleApproveUpload(uploadId);
+  };
+  
+  // Cancel upload
+  const handleCancelUpload = async (uploadId: string) => {
+    try {
+      await window.electronAPI.uploads.cancel(uploadId);
+      
+      // Remove from tracking
+      setUploadingFiles(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(uploadId);
+        return newMap;
+      });
+      
+      setProcessingFiles(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(uploadId);
+        return newSet;
+      });
+      
+      const upload = pendingUploads.find(u => u.id === uploadId);
+      if (upload) {
+        console.log(`Cancelled upload of ${upload.fileName}`);
+      }
+    } catch (error) {
+      console.error('Failed to cancel upload:', error);
+    }
+  };
+  
+  // Retry all failed uploads
+  const handleRetryAllFailed = () => {
+    const failedUploads = Array.from(uploadingFiles.entries())
+      .filter(([_, state]) => state.status === 'failed')
+      .map(([id]) => id);
+    
+    failedUploads.forEach(uploadId => {
+      handleRetryUpload(uploadId);
+    });
   };
 
   // Metadata functions
@@ -431,58 +607,39 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
         </div>
       )}
 
-      {/* Payment Summary and Balance Display */}
-      {pendingUploads.length > 0 && conflictCount < pendingUploads.length && (
+      {/* Balance Display - Only show when user has paid files */}
+      {walletInfo && pendingUploads.length > 0 && conflictCount < pendingUploads.length && (breakdown.turboFiles > 0 || breakdown.arFiles > 0) && (
         <div style={{
           backgroundColor: 'var(--gray-50)',
           borderRadius: 'var(--radius-md)',
           padding: 'var(--space-3)',
           marginBottom: 'var(--space-3)',
-          fontSize: '13px'
+          fontSize: '12px'
         }}>
-          {/* Payment method summary */}
           <div style={{ 
-            color: 'var(--gray-700)',
-            marginBottom: walletInfo ? 'var(--space-2)' : 0,
-            fontSize: '13px',
-            lineHeight: '1.5'
+            color: 'var(--gray-600)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-3)'
           }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              Files under 100KB will upload instantly and free via Turbo. Larger files will use your Turbo Credits or AR tokens automatically.
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              AR Balance: <strong>{parseFloat(walletInfo.balance).toFixed(6)}</strong>
               <InfoButton 
-                tooltip="ArDrive automatically selects the best upload method. Small files (< 100KB) always use Turbo for free. Larger files use Turbo Credits if available, otherwise AR tokens from your wallet." 
+                tooltip="Used for on-chain (L1) uploads. Required if Turbo credits are unavailable. Files under 100KB upload instantly and for free via Turbo." 
               />
             </span>
+            {walletInfo.turboBalance && (
+              <>
+                <span style={{ color: 'var(--gray-400)' }}>•</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  Turbo Balance: <strong>{walletInfo.turboBalance}</strong>
+                  <InfoButton 
+                    tooltip="Used for fast Layer 2 uploads. Files under 100KB upload free." 
+                  />
+                </span>
+              </>
+            )}
           </div>
-          
-          {/* Balance display */}
-          {walletInfo && (
-            <div style={{ 
-              color: 'var(--gray-600)',
-              fontSize: '12px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-3)'
-            }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                AR Balance: <strong>{parseFloat(walletInfo.balance).toFixed(6)}</strong>
-                <InfoButton 
-                  tooltip="Used for on-chain (L1) uploads. Required if Turbo credits are unavailable." 
-                />
-              </span>
-              {walletInfo.turboBalance && (
-                <>
-                  <span style={{ color: 'var(--gray-400)' }}>•</span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    Turbo Balance: <strong>{walletInfo.turboBalance}</strong>
-                    <InfoButton 
-                      tooltip="Used for fast Layer 2 uploads. Small files under 100KB upload free." 
-                    />
-                  </span>
-                </>
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -572,9 +729,9 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
                           alignItems: 'center',
                           gap: '3px',
                           ...(uploadMethod.method === 'turbo-free' ? {
-                            backgroundColor: 'var(--success-50)',
-                            color: 'var(--success-700)',
-                            border: '1px solid var(--success-200)'
+                            backgroundColor: 'transparent',
+                            color: 'var(--gray-600)',
+                            border: 'none'
                           } : uploadMethod.method === 'turbo' ? {
                             backgroundColor: 'var(--info-50)',
                             color: 'var(--info-700)',
@@ -585,14 +742,26 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
                             border: '1px solid var(--gray-200)'
                           })
                         }}>
-                          {uploadMethod.method === 'turbo-free' && '✅'}
-                          {uploadMethod.method === 'turbo' && '🌀'}
-                          {uploadMethod.method === 'ar' && '🧱'}
-                          <span>
-                            {uploadMethod.method === 'turbo-free' ? 'Turbo (Free)' : 
-                             uploadMethod.method === 'turbo' ? `Turbo (${uploadMethod.cost})` : 
-                             `AR (${uploadMethod.cost})`}
-                          </span>
+                          {uploadMethod.method === 'turbo-free' && (
+                            <span 
+                              title="Uploaded via Turbo (Free under 100KB)"
+                              style={{ cursor: 'help', fontSize: '14px' }}
+                            >
+                              ⚡
+                            </span>
+                          )}
+                          {uploadMethod.method === 'turbo' && (
+                            <>
+                              <span>🌀</span>
+                              <span>Turbo ({uploadMethod.cost})</span>
+                            </>
+                          )}
+                          {uploadMethod.method === 'ar' && (
+                            <>
+                              <span>🧱</span>
+                              <span>AR ({uploadMethod.cost})</span>
+                            </>
+                          )}
                         </span>
                       );
                     })()
@@ -621,8 +790,72 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
               
               {/* Action buttons */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                {/* Cancel button for uploading files */}
+                {uploadStatus === 'uploading' && (
+                  <button
+                    onClick={() => handleCancelUpload(upload.id)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px 8px',
+                      cursor: 'pointer',
+                      color: 'var(--warning-600)',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      borderRadius: 'var(--radius-sm)',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--warning-50)';
+                      e.currentTarget.style.color = 'var(--warning-700)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--warning-600)';
+                    }}
+                  >
+                    <X size={14} />
+                    Cancel
+                  </button>
+                )}
+                
+                {/* Retry button for failed files */}
+                {uploadStatus === 'failed' && (
+                  <button
+                    onClick={() => handleRetryUpload(upload.id)}
+                    style={{
+                      background: 'none',
+                      border: '1px solid var(--ardrive-primary)',
+                      padding: '4px 8px',
+                      cursor: 'pointer',
+                      color: 'var(--ardrive-primary)',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      borderRadius: 'var(--radius-sm)',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--ardrive-primary)';
+                      e.currentTarget.style.color = 'white';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--ardrive-primary)';
+                    }}
+                  >
+                    <RefreshCw size={14} />
+                    Retry
+                  </button>
+                )}
+                
                 {/* Expand button - only show when details mode is on */}
-                {showFileDetails && upload.conflictType === 'none' && !isUploading && (
+                {showFileDetails && upload.conflictType === 'none' && uploadStatus !== 'uploading' && uploadStatus !== 'uploaded' && (
                   <button
                     onClick={() => {
                       const newExpanded = new Set(expandedFiles);
@@ -658,35 +891,35 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
                   </button>
                 )}
                 
-                {/* Remove button */}
-                <button
-                  onClick={() => onRejectUpload(upload.id)}
-                  disabled={isUploading}
-                  style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: 'var(--space-2)',
-                  cursor: getUploadStatus(upload) === 'uploading' || getUploadStatus(upload) === 'uploaded' ? 'not-allowed' : 'pointer',
-                  color: 'var(--gray-400)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: 'var(--radius-sm)',
-                  transition: 'all 0.2s ease',
-                  opacity: getUploadStatus(upload) === 'uploading' || getUploadStatus(upload) === 'uploaded' ? 0.5 : 1
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'var(--gray-100)';
-                  e.currentTarget.style.color = 'var(--gray-600)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = 'var(--gray-400)';
-                }}
-                aria-label="Remove file"
-              >
-                <X size={18} />
-              </button>
+                {/* Remove button - hide for uploading/uploaded files */}
+                {uploadStatus !== 'uploading' && uploadStatus !== 'uploaded' && (
+                  <button
+                    onClick={() => onRejectUpload(upload.id)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 'var(--space-2)',
+                      cursor: 'pointer',
+                      color: 'var(--gray-400)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 'var(--radius-sm)',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--gray-100)';
+                      e.currentTarget.style.color = 'var(--gray-600)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--gray-400)';
+                    }}
+                    aria-label="Remove file"
+                  >
+                    <X size={18} />
+                  </button>
+                )}
               </div>
             </div>
             
@@ -715,8 +948,8 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           {uploadMethod.method === 'turbo-free' && (
                             <>
-                              <span>✅</span>
-                              <span>Turbo (Free) - This file will upload instantly at no cost</span>
+                              <span title="Free upload via Turbo" style={{ cursor: 'help' }}>⚡</span>
+                              <span>Free upload via Turbo</span>
                             </>
                           )}
                           {uploadMethod.method === 'turbo' && (
@@ -870,13 +1103,13 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
           }}>
             <span>Total: {pendingUploads.length} {pendingUploads.length === 1 ? 'file' : 'files'}</span>
             {freeFileCount === pendingUploads.length && (
-              <span style={{ color: 'var(--success-600)', marginLeft: 'var(--space-3)' }}>• Free with Turbo</span>
+              <span style={{ color: 'var(--success-600)', marginLeft: 'var(--space-3)' }}>• Free upload</span>
             )}
           </div>
         )}
       </div>
 
-      {/* Cost Summary - Only shown when details are expanded */}
+      {/* Cost Summary - Streamlined version */}
       {showFileDetails && (
         <div style={{
           padding: 'var(--space-3)',
@@ -887,28 +1120,36 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
           color: 'var(--gray-600)',
           border: '1px solid var(--gray-200)'
         }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 'var(--space-3) var(--space-4)', alignItems: 'center' }}>
-            <span>Total:</span>
-            <span style={{ fontWeight: '500', color: 'var(--gray-800)' }}>{pendingUploads.length} {pendingUploads.length === 1 ? 'file' : 'files'}</span>
-            
-            <span>AR Cost:</span>
-            <span style={{ fontWeight: '500', color: 'var(--gray-800)' }}>{formatArCost(totalCost)}</span>
-            
-            {(totalTurboCost > 0 || freeFileCount > 0) && (
-              <>
-                <span>Turbo:</span>
-                <span style={{ 
-                  fontWeight: '500', 
-                  color: freeFileCount > 0 ? 'var(--success-600)' : 'var(--gray-800)' 
-                }}>
-                  {freeFileCount > 0 ? 
-                    `Free (${freeFileCount} ${freeFileCount === 1 ? 'file' : 'files'} under 100KB)` : 
-                    `${totalTurboCost.toFixed(6)} Credits`
-                  }
-                </span>
-              </>
-            )}
-          </div>
+          {/* Simple message when all files are free */}
+          {freeFileCount === pendingUploads.length ? (
+            <div style={{ textAlign: 'center', color: 'var(--success-600)', fontWeight: '500' }}>
+              Free upload
+            </div>
+          ) : (
+            /* Detailed breakdown only when there are costs */
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 'var(--space-3) var(--space-4)', alignItems: 'center' }}>
+              <span>Total:</span>
+              <span style={{ fontWeight: '500', color: 'var(--gray-800)' }}>{pendingUploads.length} {pendingUploads.length === 1 ? 'file' : 'files'}</span>
+              
+              <span>AR Cost:</span>
+              <span style={{ fontWeight: '500', color: 'var(--gray-800)' }}>{formatArCost(totalCost)}</span>
+              
+              {(totalTurboCost > 0 || freeFileCount > 0) && (
+                <>
+                  <span>Turbo:</span>
+                  <span style={{ 
+                    fontWeight: '500', 
+                    color: freeFileCount > 0 ? 'var(--success-600)' : 'var(--gray-800)' 
+                  }}>
+                    {freeFileCount > 0 ? 
+                      `Free (${freeFileCount} ${freeFileCount === 1 ? 'file' : 'files'} under 100KB)` : 
+                      `${totalTurboCost.toFixed(6)} Credits`
+                    }
+                  </span>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1026,82 +1267,102 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
       {/* Action buttons bar */}
       <div style={{ 
         display: 'flex', 
-        justifyContent: 'flex-end',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        gap: 'var(--space-3)',
         paddingTop: 'var(--space-4)',
         borderTop: '1px solid var(--gray-200)',
         marginTop: 'var(--space-4)'
       }}>
-        <button 
-          onClick={onRejectAll}
-          style={{
-            padding: '8px 16px',
-            border: '1px solid var(--gray-300)',
-            backgroundColor: 'white',
-            borderRadius: 'var(--radius-md)',
-            fontSize: '14px',
-            fontWeight: '500',
-            color: 'var(--gray-700)',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--gray-50)';
-            e.currentTarget.style.borderColor = 'var(--gray-400)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'white';
-            e.currentTarget.style.borderColor = 'var(--gray-300)';
-          }}
-        >
-          Clear all
-        </button>
+        {/* Left side - Retry all button */}
+        <div>
+          {Array.from(uploadingFiles.values()).some(state => state.status === 'failed') && (
+            <button 
+              onClick={handleRetryAllFailed}
+              style={{
+                padding: '8px 16px',
+                border: '1px solid var(--ardrive-primary)',
+                backgroundColor: 'white',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: 'var(--ardrive-primary)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--ardrive-primary)';
+                e.currentTarget.style.color = 'white';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'white';
+                e.currentTarget.style.color = 'var(--ardrive-primary)';
+              }}
+            >
+              <RefreshCw size={16} />
+              Retry All Failed
+            </button>
+          )}
+        </div>
+        
+        {/* Right side - Clear all and Approve buttons */}
+        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+          <button 
+            onClick={onRejectAll}
+            style={{
+              padding: '8px 16px',
+              border: '1px solid var(--gray-300)',
+              backgroundColor: 'white',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '14px',
+              fontWeight: '500',
+              color: 'var(--gray-700)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--gray-50)';
+              e.currentTarget.style.borderColor = 'var(--gray-400)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'white';
+              e.currentTarget.style.borderColor = 'var(--gray-300)';
+            }}
+          >
+            Clear all
+          </button>
         
         <button 
           className="interactive-hover"
-          onClick={() => {
-            // Start upload process with animations
-            if (autoApprove) {
-              pendingUploads.forEach(upload => {
-                if (upload.conflictType === 'none') {
-                  // Set to uploading state
-                  const newUploadingFiles = new Map(uploadingFiles);
-                  newUploadingFiles.set(upload.id, { progress: 0, status: 'uploading' });
-                  setUploadingFiles(newUploadingFiles);
-                  
-                  // Simulate upload progress (in real app, this would track actual upload)
-                  let progress = 0;
-                  const progressInterval = setInterval(() => {
-                    progress += Math.random() * 20;
-                    if (progress >= 100) {
-                      progress = 100;
-                      clearInterval(progressInterval);
-                      
-                      // Set to uploaded state
-                      setTimeout(() => {
-                        const finalUploadingFiles = new Map(uploadingFiles);
-                        finalUploadingFiles.set(upload.id, { progress: 100, status: 'uploaded' });
-                        setUploadingFiles(finalUploadingFiles);
-                        
-                        // Remove from queue after animation
-                        setTimeout(() => {
-                          const uploadMethod = getFileUploadMethod(upload);
-                          const method = uploadMethod.method === 'ar' ? 'ar' : 'turbo';
-                          const metadata = fileMetadata.get(upload.id);
-                          onApproveUpload(upload.id, method, metadata);
-                        }, 1000);
-                      }, 500);
-                    } else {
-                      const updatedFiles = new Map(uploadingFiles);
-                      updatedFiles.set(upload.id, { progress, status: 'uploading' });
-                      setUploadingFiles(updatedFiles);
-                    }
-                  }, 200);
+          onClick={async () => {
+            try {
+              // Get all non-conflicted uploads
+              const uploadsToProcess = pendingUploads.filter(u => u.conflictType === 'none');
+              
+              if (uploadsToProcess.length === 0) {
+                console.warn('No files to upload', 'All files have conflicts that need to be resolved');
+                return;
+              }
+              
+              // Log upload start
+              console.log(`Starting upload of ${uploadsToProcess.length} ${uploadsToProcess.length === 1 ? 'file' : 'files'}`);
+              
+              // Call the approve all handler which will handle balance checking
+              await onApproveAll();
+              
+              // Process each upload
+              for (const upload of uploadsToProcess) {
+                if (!processingFiles.has(upload.id)) {
+                  // Small delay between uploads to avoid overwhelming the system
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                  handleApproveUpload(upload.id);
                 }
-              });
-            } else {
-              onApproveAll();
+              }
+            } catch (error) {
+              console.error('Failed to approve all uploads:', error);
+              console.error('Failed to start uploads', error instanceof Error ? error.message : 'Unknown error');
             }
           }}
           disabled={conflictCount > 0 && conflictCount === pendingUploads.length}
@@ -1136,7 +1397,8 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
             'Resolve conflicts first' : 
             autoApprove ? 'Start upload' : 'Approve & Upload'
           }
-        </button>
+          </button>
+        </div>
       </div>
 
       {/* Metadata Editor Modal */}

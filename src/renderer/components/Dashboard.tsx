@@ -6,11 +6,13 @@ import FileMetadataModal from './FileMetadataModal';
 import UserMenu from './UserMenu';
 import WalletExport from './WalletExport';
 import StoredFilesBrowser from './StoredFilesBrowser';
+import ProfileSwitcher from './ProfileSwitcher';
 import { SecurityStatus } from './SecurityStatus';
 import { TabNavigation } from './common/TabNavigation';
 import { OverviewTab } from './dashboard/OverviewTab';
 import { ActivityTab } from './dashboard/ActivityTab';
 import { StorageTab } from './dashboard/StorageTab';
+import { DownloadQueueTab } from './dashboard/DownloadQueueTab';
 import { 
   Play, 
   Pause, 
@@ -56,6 +58,11 @@ interface DashboardProps {
   uploads: FileUpload[];
   onLogout: () => void;
   onDriveDeleted: () => void;
+  toast?: {
+    success: (message: string) => void;
+    error: (message: string) => void;
+    info: (message: string) => void;
+  };
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -73,6 +80,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [showTurboManager, setShowTurboManager] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileUpload | null>(null);
   const [downloads, setDownloads] = useState<any[]>([]);
+  const [downloadRefreshInterval, setDownloadRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'uploads' | 'downloads' | 'stored'>('uploads');
   const [dashboardTab, setDashboardTab] = useState<'overview' | 'upload-queue' | 'download-queue' | 'permaweb'>('overview');
   const [showSettings, setShowSettings] = useState(false);
@@ -82,6 +91,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'pending' | 'failed'>('all');
   const [showDriveMenu, setShowDriveMenu] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [profileCount, setProfileCount] = useState(1);
+  const [showProfileSwitcher, setShowProfileSwitcher] = useState(false);
   
   // Handler to fix type mismatch
   const handleStatusFilterChange = (filter: string) => {
@@ -89,6 +100,11 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
   const [showWalletExport, setShowWalletExport] = useState(false);
   const selectedDrive = drive;
+  
+  // Permaweb cache state - lifted to Dashboard to persist across tab switches
+  const [permawebCache, setPermawebCache] = useState<any[]>([]);
+  const [permawebCacheTime, setPermawebCacheTime] = useState<Date | null>(null);
+  const [permawebCacheValid, setPermawebCacheValid] = useState(false);
 
   // Filter uploads based on search and status
   const filteredUploads = uploads.filter(upload => {
@@ -193,6 +209,24 @@ const Dashboard: React.FC<DashboardProps> = ({
     try {
       const downloadList = await window.electronAPI.files.getDownloads();
       setDownloads(downloadList);
+      
+      // Check if there are any active downloads
+      const hasActiveDownloads = downloadList.some((d: any) => d.status === 'downloading');
+      
+      // Manage refresh interval based on active downloads
+      if (hasActiveDownloads && !downloadRefreshInterval) {
+        // Start refreshing every 2 seconds when downloads are active
+        console.log('Starting download refresh interval - active downloads detected');
+        const interval = setInterval(() => {
+          loadDownloads();
+        }, 2000); // Faster refresh during active downloads
+        setDownloadRefreshInterval(interval);
+      } else if (!hasActiveDownloads && downloadRefreshInterval) {
+        // Stop refreshing when no downloads are active
+        console.log('Stopping download refresh interval - no active downloads');
+        clearInterval(downloadRefreshInterval);
+        setDownloadRefreshInterval(null);
+      }
     } catch (err) {
       console.error('Failed to load downloads:', err);
     }
@@ -200,20 +234,26 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const refreshDriveState = async () => {
     // Refresh drive info is handled by App.tsx through event listeners
-    // Just trigger a refresh of pending uploads and downloads
+    // Just trigger a refresh of pending uploads
     await loadPendingUploads();
-    await loadDownloads();
+    // Downloads manage their own refresh based on active status
   };
 
   useEffect(() => {
     loadPendingUploads();
-    loadDownloads();
+    loadDownloads(); // Initial load will set up its own interval if needed
     
     const interval = setInterval(() => {
       refreshDriveState();
     }, 5000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      // Clean up download refresh interval if it exists
+      if (downloadRefreshInterval) {
+        clearInterval(downloadRefreshInterval);
+      }
+    };
   }, []);
 
   // Close dropdown when clicking outside
@@ -227,23 +267,76 @@ const Dashboard: React.FC<DashboardProps> = ({
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showDriveMenu]);
+  
+  // Load downloads when switching to download queue tab
+  useEffect(() => {
+    if (dashboardTab === 'download-queue') {
+      console.log('Switched to download queue tab, loading downloads...');
+      loadDownloads();
+    }
+  }, [dashboardTab]);
 
+  // Load profile count for profile management
+  useEffect(() => {
+    const loadProfileCount = async () => {
+      try {
+        const profiles = await window.electronAPI.profiles.list();
+        setProfileCount(profiles.length);
+      } catch (error) {
+        console.error('Failed to load profile count:', error);
+      }
+    };
+    
+    loadProfileCount();
+  }, [currentProfile]);
+
+  // Profile management handlers
+  const handleSwitchProfile = () => {
+    setShowProfileSwitcher(true);
+  };
+
+  const handleAddProfile = () => {
+    // Navigate to wallet setup for adding new profile
+    window.location.reload(); // This will trigger the app's profile selection logic
+  };
 
   const handleStopSync = async () => {
     try {
-      await window.electronAPI.sync.stop();
+      console.log('Dashboard: Stopping sync...');
+      const result = await window.electronAPI.sync.stop();
+      console.log('Dashboard: Stop sync result:', result);
+      
+      if (result.success) {
+        console.log('Dashboard: Sync stopped successfully');
+      } else {
+        console.error('Dashboard: Failed to stop sync:', result.error);
+        alert(`Failed to stop sync: ${result.error || 'Unknown error'}`);
+      }
+      
       await refreshDriveState();
     } catch (err) {
-      console.error('Failed to stop sync:', err);
+      console.error('Dashboard: Error stopping sync:', err);
+      alert(`Error stopping sync: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
   const handleStartSync = async () => {
     try {
-      await window.electronAPI.sync.start();
+      console.log('Dashboard: Starting sync...');
+      const result = await window.electronAPI.sync.start();
+      console.log('Dashboard: Start sync result:', result);
+      
+      if (result.success) {
+        console.log('Dashboard: Sync started successfully');
+      } else {
+        console.error('Dashboard: Failed to start sync:', result.error);
+        alert(`Failed to start sync: ${result.error || 'Unknown error'}`);
+      }
+      
       await refreshDriveState();
     } catch (err) {
-      console.error('Failed to start sync:', err);
+      console.error('Dashboard: Error starting sync:', err);
+      alert(`Error starting sync: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -251,8 +344,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     try {
       // TODO: Handle metadata parameter when API supports it
       await window.electronAPI.uploads.approve(uploadId, uploadMethod);
-      await loadPendingUploads();
-      await refreshDriveState();
+      // Don't reload pending uploads immediately - let upload progress events handle state updates
+      // The file should remain visible with progress indicators until completion
     } catch (err) {
       console.error('Failed to approve upload:', err);
     }
@@ -280,8 +373,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         console.log(`Successfully approved ${result.approvedCount} uploads`);
       }
       
-      await loadPendingUploads();
-      await refreshDriveState();
+      // Don't reload pending uploads immediately - let upload progress events handle state updates
+      // The files should remain visible with progress indicators until completion
     } catch (err) {
       console.error('Failed to approve all uploads:', err);
       alert(`Failed to approve uploads: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -301,19 +394,35 @@ const Dashboard: React.FC<DashboardProps> = ({
     console.log('Conflict resolution:', resolution);
   };
 
+  const handleRefreshBalance = async () => {
+    try {
+      // Force refresh wallet info to get updated balance
+      await window.electronAPI.wallet.getInfo(true);
+    } catch (err) {
+      console.error('Failed to refresh wallet balance:', err);
+    }
+  };
+
   const handleRedownloadFiles = async () => {
     try {
-      console.log('Triggering re-download of all files...');
+      setIsRefreshing(true);
+      console.log('Checking for new files from ArDrive...');
       const result = await window.electronAPI.files.redownloadAll();
       if (result.success) {
-        console.log('Re-download completed successfully');
+        console.log('File check completed successfully');
         await loadDownloads();
         await refreshDriveState();
+        // Switch to download queue tab to show results
+        setDashboardTab('download-queue');
       } else {
-        console.error('Re-download failed:', result.error);
+        console.error('File check failed:', result.error);
+        alert(`Failed to check for new files: ${result.error}`);
       }
     } catch (err) {
-      console.error('Failed to trigger re-download:', err);
+      console.error('Failed to check for new files:', err);
+      alert('Failed to check for new files. Please try again.');
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -451,6 +560,9 @@ const Dashboard: React.FC<DashboardProps> = ({
             onShowTurboManager={() => setShowTurboManager(true)}
             onShowWalletExport={() => setShowWalletExport(true)}
             onLogout={onLogout}
+            onSwitchProfile={handleSwitchProfile}
+            onAddProfile={handleAddProfile}
+            profileCount={profileCount}
           />
         </div>
       </div>
@@ -612,47 +724,52 @@ const Dashboard: React.FC<DashboardProps> = ({
                   )}
                 </div>
                 
-                {/* Sync Status */}
-                <div style={{ 
-                  fontSize: '14px',
-                  color: 'var(--gray-600)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-1)'
-                }}>
-                  {syncStatus?.isActive ? (
-                    <>
-                      <RefreshCw size={14} style={{ 
-                        color: 'var(--success-600)',
-                        animation: 'spin 2s linear infinite'
-                      }} />
-                      <span>Syncing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Pause size={14} style={{ color: 'var(--gray-500)' }} />
-                      <span>Paused</span>
-                    </>
-                  )}
-                </div>
+                {/* Dynamic Status - Only show when something is happening */}
+                {(syncStatus?.isActive || isRefreshing) && (
+                  <div style={{ 
+                    fontSize: '13px',
+                    color: 'var(--gray-600)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-1)'
+                  }}>
+                    {isRefreshing ? (
+                      <>
+                        <Download size={12} className="animate-spin" style={{ color: 'var(--primary-600)' }} />
+                        <span>Checking for new files...</span>
+                      </>
+                    ) : syncStatus?.isActive ? (
+                      <>
+                        <Upload size={12} className="animate-pulse" style={{ color: 'var(--success-600)' }} />
+                        <span>
+                          Monitoring for uploads
+                          {syncStatus.currentFile && ` • Uploading ${syncStatus.currentFile}`}
+                        </span>
+                      </>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
             
             {/* Drive Actions */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            {/* Sync Toggle */}
+            {/* Upload Monitor Toggle */}
             {syncStatus?.isActive ? (
               <button
-                className="button small outline"
+                className="button small"
                 onClick={handleStopSync}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 'var(--space-1)'
+                  gap: 'var(--space-1)',
+                  backgroundColor: 'var(--error-50)',
+                  color: 'var(--error-700)',
+                  border: '1px solid var(--error-200)'
                 }}
               >
                 <Pause size={14} />
-                Pause Sync
+                Stop Monitoring
               </button>
             ) : (
               <button
@@ -661,13 +778,39 @@ const Dashboard: React.FC<DashboardProps> = ({
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 'var(--space-1)'
+                  gap: 'var(--space-1)',
+                  backgroundColor: 'var(--success-50)',
+                  color: 'var(--success-700)',
+                  border: '1px solid var(--success-200)'
                 }}
               >
-                <Play size={14} />
-                Start Sync
+                <Upload size={14} />
+                <span style={{ paddingRight: '2px' }}>↑</span>
+                Start Upload Monitor
               </button>
             )}
+            
+            {/* Check for Updates Button */}
+            <button
+              className="button small"
+              onClick={handleRedownloadFiles}
+              disabled={isRefreshing || syncStatus?.isActive}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-1)',
+                backgroundColor: isRefreshing ? 'var(--gray-100)' : 'var(--primary-50)',
+                color: isRefreshing ? 'var(--gray-600)' : 'var(--primary-700)',
+                border: `1px solid ${isRefreshing ? 'var(--gray-200)' : 'var(--primary-200)'}`,
+                opacity: syncStatus?.isActive ? 0.5 : 1,
+                cursor: syncStatus?.isActive ? 'not-allowed' : 'pointer'
+              }}
+              title={syncStatus?.isActive ? 'Stop upload monitoring first' : ''}
+            >
+              <Download size={14} className={isRefreshing ? 'animate-spin' : ''} />
+              <span style={{ paddingRight: '2px' }}>↓</span>
+              {isRefreshing ? 'Checking...' : 'Check for Updates'}
+            </button>
             
             {/* Drive Options Dropdown */}
             <div style={{ position: 'relative' }}>
@@ -758,35 +901,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                     backgroundColor: 'var(--gray-200)',
                     margin: 'var(--space-1) 0'
                   }} />
-                  
-                  <button
-                    onClick={() => {
-                      setShowDriveMenu(false);
-                      if (confirm('Are you sure you want to delete this drive? This action cannot be undone.')) {
-                        // TODO: Implement delete
-                        alert('Delete drive feature coming soon');
-                      }
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-2)',
-                      padding: 'var(--space-3) var(--space-4)',
-                      width: '100%',
-                      border: 'none',
-                      background: 'none',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      textAlign: 'left',
-                      color: 'var(--error-600)',
-                      transition: 'background-color 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--error-50)'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <Trash2 size={16} />
-                    Delete Drive
-                  </button>
                 </div>
               )}
             </div>
@@ -846,6 +960,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   onApproveAll={handleApproveAll}
                   onRejectAll={handleRejectAll}
                   onResolveConflict={handleResolveConflict}
+                  onRefreshBalance={handleRefreshBalance}
                   walletInfo={walletInfo}
                 />
               ) : (
@@ -904,62 +1019,14 @@ const Dashboard: React.FC<DashboardProps> = ({
           )}
 
           {dashboardTab === 'download-queue' && (
-            <div className="download-queue-tab">
-              {downloads.filter(d => d.status === 'downloading').length > 0 ? (
-                <div className="downloads-list">
-                  <h2>Active Downloads</h2>
-                  {/* TODO: Create proper download queue component */}
-                  <p>Download queue functionality coming soon...</p>
-                </div>
-              ) : (
-                <div className="empty-queue" style={{
-                  textAlign: 'center',
-                  padding: 'var(--space-12) var(--space-8)',
-                  color: 'var(--gray-600)'
-                }}>
-                  <div style={{
-                    width: '80px',
-                    height: '80px',
-                    margin: '0 auto var(--space-6)',
-                    backgroundColor: 'var(--success-50)',
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <Download size={40} style={{ color: 'var(--success-600)' }} />
-                  </div>
-                  <h3 style={{ 
-                    fontSize: '20px', 
-                    fontWeight: '600', 
-                    marginBottom: 'var(--space-3)',
-                    color: 'var(--gray-900)'
-                  }}>
-                    No Active Downloads
-                  </h3>
-                  <p style={{ 
-                    fontSize: '15px', 
-                    marginBottom: 'var(--space-6)',
-                    maxWidth: '400px',
-                    margin: '0 auto var(--space-6)'
-                  }}>
-                    Files being synced from your ArDrive to your local folder will appear here.
-                  </p>
-                  <button
-                    className="button outline"
-                    onClick={() => setDashboardTab('permaweb')}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-2)'
-                    }}
-                  >
-                    <Cloud size={16} />
-                    Browse Permaweb Files
-                  </button>
-                </div>
-              )}
-            </div>
+            <DownloadQueueTab
+              downloads={downloads}
+              onRefresh={loadDownloads}
+              onOpenFolder={async (filePath) => {
+                // Pass the file path to the shell API, which will extract the directory
+                await window.electronAPI.shell.openPath(filePath);
+              }}
+            />
           )}
 
           {dashboardTab === 'permaweb' && (
@@ -970,6 +1037,14 @@ const Dashboard: React.FC<DashboardProps> = ({
               onDriveDeleted={onDriveDeleted}
               onViewDriveDetails={(drive) => {
                 console.log('View drive details:', drive);
+              }}
+              cachedData={permawebCache}
+              lastRefreshTime={permawebCacheTime}
+              cacheValid={permawebCacheValid}
+              onCacheUpdate={(data, time, valid) => {
+                setPermawebCache(data);
+                setPermawebCacheTime(time);
+                setPermawebCacheValid(valid);
               }}
             />
           )}
@@ -1099,6 +1174,25 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Profile Switcher Modal */}
+      {showProfileSwitcher && (
+        <ProfileSwitcher
+          currentProfile={currentProfile}
+          onProfileSwitch={(profileId) => {
+            setShowProfileSwitcher(false);
+            // The profile switch will trigger app reload via main process
+          }}
+          onAddProfile={() => {
+            setShowProfileSwitcher(false);
+            handleAddProfile();
+          }}
+          onManageProfiles={() => {
+            setShowProfileSwitcher(false);
+            // Could open a profile management screen in the future
+          }}
+        />
       )}
     </div>
   );

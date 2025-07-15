@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DriveInfo, AppConfig, SyncStatus } from '../../../types';
+import { DriveInfo, AppConfig, SyncStatus, FileUpload } from '../../../types';
 import { InfoButton } from '../common/InfoButton';
 import { 
   Folder,
@@ -37,6 +37,10 @@ interface StorageTabProps {
   syncStatus: SyncStatus | null;
   onDriveDeleted: () => void;
   onViewDriveDetails?: (drive: DriveInfo) => void;
+  cachedData?: FileItem[];
+  lastRefreshTime?: Date | null;
+  cacheValid?: boolean;
+  onCacheUpdate?: (data: FileItem[], time: Date | null, valid: boolean) => void;
 }
 
 interface FileItem {
@@ -74,7 +78,11 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   config,
   syncStatus,
   onDriveDeleted,
-  onViewDriveDetails
+  onViewDriveDetails,
+  cachedData,
+  lastRefreshTime,
+  cacheValid,
+  onCacheUpdate
 }) => {
   const [currentPath, setCurrentPath] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -83,20 +91,35 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
-  const [fileData, setFileData] = useState<FileItem[]>([]);
+  const [fileData, setFileData] = useState<FileItem[]>(cachedData || []);
   const [syncState, setSyncState] = useState<SyncState | null>(null);
+  const [isNewDrive, setIsNewDrive] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 
   const selectedDrive = drive;
 
   // Load drive metadata from Arweave permaweb
   const loadDriveMetadata = async () => {
-    if (!drive) return;
+    if (!drive) {
+      console.log('No drive selected, skipping metadata load');
+      return;
+    }
     
+    console.log('Loading permaweb files for drive:', drive.name, drive.id);
     setIsLoading(true);
+    setLoadError(null);
+    setIsNewDrive(false);
+    
     try {
       // Fetch real data from permaweb
       const permawebFiles = await window.electronAPI.drive.getPermawebFiles(drive.id);
       console.log('Loaded permaweb files:', permawebFiles);
+      
+      // Check if drive is empty or newly created
+      if (!permawebFiles || permawebFiles.length === 0) {
+        setIsNewDrive(true);
+      }
       
       // Build folder hierarchy from flat list
       const rootItems: FileItem[] = [];
@@ -125,22 +148,40 @@ export const StorageTab: React.FC<StorageTabProps> = ({
       });
       
       // Second pass: build hierarchy
+      console.log('Building hierarchy. Root folder ID:', drive.rootFolderId);
       itemMap.forEach((item) => {
+        console.log(`Item ${item.name} - parentId: ${item.parentId}`);
         if (item.parentId && itemMap.has(item.parentId)) {
           const parent = itemMap.get(item.parentId);
           if (parent && parent.children) {
             parent.children.push(item);
           }
-        } else if (!item.parentId || item.parentId === drive.rootFolderId) {
-          // Root level items
+        } else if (!item.parentId || item.parentId === drive.rootFolderId || item.parentId === '') {
+          // Root level items (no parent or parent is root folder)
+          console.log(`Adding ${item.name} to root items`);
           rootItems.push(item);
         }
       });
       
       setFileData(rootItems);
-    } catch (error) {
+      
+      // Update cache in parent component
+      if (onCacheUpdate) {
+        const now = new Date();
+        onCacheUpdate(rootItems, now, true);
+        console.log('Permaweb cache updated at:', now.toLocaleTimeString());
+      }
+    } catch (error: any) {
       console.error('Failed to load drive metadata:', error);
       setFileData([]);
+      
+      // Check if this is a newly created drive that hasn't propagated yet
+      if (error?.message?.includes('not found') || error?.message?.includes('Entity with Folder-Id')) {
+        setIsNewDrive(true);
+        setLoadError('Your drive is being created on Arweave. This may take a few moments. Please try refreshing in a minute.');
+      } else {
+        setLoadError('Failed to load drive contents. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -150,16 +191,42 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   const handleRefresh = async () => {
     if (!drive) return;
     
+    console.log('Manual refresh requested, invalidating cache');
+    
+    // Invalidate cache in parent component
+    if (onCacheUpdate && lastRefreshTime) {
+      onCacheUpdate(fileData, lastRefreshTime, false);
+    }
+    
     // Simply reload the data from permaweb
     await loadDriveMetadata();
+  };
+
+  // Check if cache is still valid
+  const isCacheValid = (): boolean => {
+    if (!lastRefreshTime || !cacheValid) return false;
+    const now = new Date();
+    const elapsed = now.getTime() - lastRefreshTime.getTime();
+    return elapsed < CACHE_DURATION;
   };
 
   // Load real file data from API or sync status
   useEffect(() => {
     if (!selectedDrive) return;
 
-    // Load metadata from cache
-    loadDriveMetadata();
+    // Initialize with cached data from parent if available
+    if (cachedData && cachedData.length > 0 && fileData.length === 0) {
+      console.log('Initializing with cached data from parent');
+      setFileData(cachedData);
+    }
+
+    // Only load if cache is invalid or we don't have data
+    if (!isCacheValid() || fileData.length === 0) {
+      console.log('Cache invalid or empty, loading drive metadata');
+      loadDriveMetadata();
+    } else {
+      console.log('Using cached permaweb data');
+    }
 
     // Set real sync state based on syncStatus prop
     if (syncStatus?.isActive) {
@@ -185,11 +252,103 @@ export const StorageTab: React.FC<StorageTabProps> = ({
     }
   }, [selectedDrive, syncStatus]);
 
+  // Set up auto-refresh timer
+  useEffect(() => {
+    if (!cacheValid || !lastRefreshTime) return;
+    
+    const checkCacheExpiry = () => {
+      if (!isCacheValid()) {
+        console.log('Cache expired, auto-refreshing permaweb data');
+        loadDriveMetadata();
+      }
+    };
+    
+    // Check every minute if cache needs refresh
+    const interval = setInterval(checkCacheExpiry, 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, [cacheValid, lastRefreshTime]);
+
+  // Listen for file upload completion events to update cache
+  useEffect(() => {
+    const handleUploadComplete = (uploadData: any) => {
+      console.log('File upload completed, updating permaweb cache:', uploadData);
+      
+      // Add the new file to our cached data optimistically
+      if (uploadData && uploadData.fileId) {
+        const newFileItem: FileItem = {
+          id: uploadData.fileId,
+          name: uploadData.fileName,
+          type: 'file',
+          size: uploadData.fileSize,
+          modifiedAt: new Date(),
+          isDownloaded: true,
+          isUploaded: true,
+          status: 'synced' as const,
+          path: uploadData.path || '/',
+          parentId: uploadData.parentFolderId || '',
+          ardriveUrl: `https://app.ardrive.io/#/file/${uploadData.fileId}/view`,
+          dataTxId: uploadData.dataTxId,
+          metadataTxId: uploadData.metadataTxId
+        };
+        
+        // Add to appropriate location in hierarchy
+        setFileData(prevData => {
+          const newData = [...prevData];
+          
+          // If it has a parent, find the parent and add to its children
+          if (uploadData.parentFolderId) {
+            const addToParent = (items: FileItem[]): boolean => {
+              for (const item of items) {
+                if (item.id === uploadData.parentFolderId && item.children) {
+                  item.children.push(newFileItem);
+                  return true;
+                }
+                if (item.children && addToParent(item.children)) {
+                  return true;
+                }
+              }
+              return false;
+            };
+            
+            if (!addToParent(newData)) {
+              // Parent not found, add to root
+              newData.push(newFileItem);
+            }
+          } else {
+            // No parent, add to root
+            newData.push(newFileItem);
+          }
+          
+          return newData;
+        });
+      }
+    };
+    
+    // Listen for upload completion to refresh permaweb data
+    const handleUploadProgress = (progressData: { uploadId: string; progress: number; status: 'uploading' | 'completed' | 'failed'; error?: string }) => {
+      if (progressData.status === 'completed') {
+        console.log('File upload completed, refreshing permaweb data');
+        // Refresh the permaweb data to include newly uploaded files
+        loadDriveMetadata();
+      }
+    };
+    
+    window.electronAPI.onUploadProgress(handleUploadProgress);
+    
+    return () => {
+      // Note: The preload API doesn't expose a remove listener method
+      // This would need to be added to properly clean up
+    };
+  }, []);
+
   const getFileIcon = (item: FileItem) => {
+    const iconStyle = { width: '16px', height: '16px', flexShrink: 0 };
+    
     if (item.type === 'folder') {
       return expandedFolders.has(item.id) ? 
-        <FolderOpen size={16} className="folder-icon open" /> : 
-        <Folder size={16} className="folder-icon" />;
+        <FolderOpen size={16} style={iconStyle} className="folder-icon open" /> : 
+        <Folder size={16} style={iconStyle} className="folder-icon" />;
     }
 
     const ext = item.name.toLowerCase().split('.').pop();
@@ -199,27 +358,39 @@ export const StorageTab: React.FC<StorageTabProps> = ({
       case 'png':
       case 'gif':
       case 'webp':
-        return <Image size={16} className="file-icon image" />;
+      case 'svg':
+      case 'ico':
+        return <Image size={16} style={iconStyle} className="file-icon image" />;
       case 'mp4':
       case 'mov':
       case 'avi':
       case 'mkv':
-        return <Video size={16} className="file-icon video" />;
+      case 'webm':
+        return <Video size={16} style={iconStyle} className="file-icon video" />;
       case 'mp3':
       case 'wav':
       case 'flac':
-        return <Music size={16} className="file-icon audio" />;
+      case 'ogg':
+      case 'm4a':
+        return <Music size={16} style={iconStyle} className="file-icon audio" />;
       case 'pdf':
       case 'doc':
       case 'docx':
+      case 'ppt':
       case 'pptx':
-        return <FileText size={16} className="file-icon document" />;
+      case 'xls':
+      case 'xlsx':
+      case 'txt':
+      case 'md':
+        return <FileText size={16} style={iconStyle} className="file-icon document" />;
       case 'zip':
       case 'rar':
       case '7z':
-        return <Archive size={16} className="file-icon archive" />;
+      case 'tar':
+      case 'gz':
+        return <Archive size={16} style={iconStyle} className="file-icon archive" />;
       default:
-        return <File size={16} className="file-icon default" />;
+        return <File size={16} style={iconStyle} className="file-icon default" />;
     }
   };
 
@@ -249,14 +420,35 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   };
 
   const formatDate = (date: Date): string => {
-    const now = new Date();
-    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    
-    return date.toLocaleDateString();
+    try {
+      // Ensure we have a valid date
+      const dateObj = date instanceof Date ? date : new Date(date);
+      
+      // Check if date is valid
+      if (isNaN(dateObj.getTime())) {
+        return 'Unknown date';
+      }
+      
+      const now = new Date();
+      const diffMs = now.getTime() - dateObj.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      
+      // Handle future dates or very recent past
+      if (diffMs < 0) return 'Just now';
+      if (diffDays === 0) return 'Today';
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 7 && diffDays > 0) return `${diffDays} days ago`;
+      
+      // For older dates, show full date
+      return dateObj.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    } catch (error) {
+      console.error('Date formatting error:', error);
+      return 'Unknown date';
+    }
   };
 
   const getCurrentFiles = (): FileItem[] => {
@@ -370,40 +562,30 @@ export const StorageTab: React.FC<StorageTabProps> = ({
             </div>
           </div>
           
-          <button 
-            className="button small outline"
-            onClick={handleRefresh}
-            disabled={isLoading}
-            title="Refresh file list"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-1)'
-            }}
-          >
-            <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
-            Refresh
-          </button>
-        </div>
-
-        {/* Info Banner */}
-        <div style={{
-          backgroundColor: 'var(--info-50)',
-          border: '1px solid var(--info-200)',
-          borderRadius: 'var(--radius-md)',
-          padding: 'var(--space-3) var(--space-4)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-3)',
-          fontSize: '14px'
-        }}>
-          <ExternalLink size={16} style={{ color: 'var(--info-600)', flexShrink: 0 }} />
-          <div style={{ flex: 1 }}>
-            <span style={{ color: 'var(--gray-700)' }}>
-              Files stored on the Permaweb are permanently accessible and cannot be deleted. 
-              Each file has a unique transaction ID for sharing.
-            </span>
-            <InfoButton tooltip="The Permaweb is a permanent and decentralized web built on top of the Arweave network. Once uploaded, your files will be available forever." />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 'var(--space-2)' }}>
+            <button 
+              className="button small outline"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              title="Refresh file list"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-1)'
+              }}
+            >
+              <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+            {lastRefreshTime && (
+              <span style={{ 
+                fontSize: '11px', 
+                color: 'var(--gray-500)',
+                marginTop: '-4px'
+              }}>
+                Last updated: {lastRefreshTime?.toLocaleTimeString()}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -522,18 +704,32 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                     </div>
                     <div className="col-actions">
                       <div className="item-actions">
-                        <button 
-                          className="action-button"
-                          title="View on ArDrive"
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            if (item.ardriveUrl) {
-                              await window.electronAPI.shell.openExternal(item.ardriveUrl);
-                            }
-                          }}
-                        >
-                          <ExternalLink size={14} />
-                        </button>
+                        {item.type === 'file' && item.dataTxId && (
+                          <button 
+                            className="action-button"
+                            title="Preview on Arweave"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await window.electronAPI.shell.openExternal(`https://arweave.net/${item.dataTxId}`);
+                            }}
+                          >
+                            <Eye size={14} />
+                          </button>
+                        )}
+                        {item.ardriveUrl && (
+                          <button 
+                            className="action-button"
+                            title="View on ArDrive"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (item.ardriveUrl) {
+                                await window.electronAPI.shell.openExternal(item.ardriveUrl);
+                              }
+                            }}
+                          >
+                            <ExternalLink size={14} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </>
@@ -541,28 +737,60 @@ export const StorageTab: React.FC<StorageTabProps> = ({
 
                 {viewMode === 'grid' && item.type === 'file' && (
                   <div className="grid-overlay">
-                    <button 
-                      className="action-button"
-                      title="View on ArDrive"
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        if (item.ardriveUrl) {
-                          await window.electronAPI.shell.openExternal(item.ardriveUrl);
-                        }
-                      }}
-                      style={{
-                        position: 'absolute',
-                        top: '8px',
-                        right: '8px',
-                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                        padding: '6px',
-                        borderRadius: '4px',
-                        border: '1px solid var(--gray-300)'
-                      }}
-                    >
-                      <ExternalLink size={14} />
-                    </button>
+                    <div style={{
+                      position: 'absolute',
+                      top: '8px',
+                      right: '8px',
+                      display: 'flex',
+                      gap: '4px'
+                    }}>
+                      {item.dataTxId && (
+                        <button 
+                          className="action-button"
+                          title="Preview on Arweave"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            await window.electronAPI.shell.openExternal(`https://arweave.net/${item.dataTxId}`);
+                          }}
+                          style={{
+                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            padding: '6px',
+                            borderRadius: '4px',
+                            border: '1px solid var(--gray-300)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <Eye size={14} />
+                        </button>
+                      )}
+                      {item.ardriveUrl && (
+                        <button 
+                          className="action-button"
+                          title="View on ArDrive"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            if (item.ardriveUrl) {
+                              await window.electronAPI.shell.openExternal(item.ardriveUrl);
+                            }
+                          }}
+                          style={{
+                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            padding: '6px',
+                            borderRadius: '4px',
+                            border: '1px solid var(--gray-300)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <ExternalLink size={14} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -601,7 +829,9 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                   marginBottom: 'var(--space-3)',
                   color: 'var(--gray-900)'
                 }}>
-                  No files on the Permaweb yet
+                  {loadError ? 'Unable to load drive contents' : 
+                   isNewDrive ? 'Your drive is being created' : 
+                   'No files on the Permaweb yet'}
                 </h3>
                 <p style={{ 
                   fontSize: '16px', 
@@ -609,26 +839,43 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                   marginBottom: 'var(--space-6)',
                   lineHeight: '1.6'
                 }}>
-                  Add files to your sync folder and approve them for upload. 
-                  {"Once uploaded to Arweave, they'll be permanently stored and accessible here."}
+                  {loadError ? loadError :
+                   isNewDrive ? 'Your new drive is being created on Arweave. This process may take a few moments. Please try refreshing in a minute.' :
+                   "Add files to your sync folder and approve them for upload. Once uploaded to Arweave, they'll be permanently stored and accessible here."}
                 </p>
                 <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center' }}>
-                  <button
-                    className="button"
-                    onClick={async () => {
-                      if (config.syncFolder) {
-                        await window.electronAPI.shell.openPath(config.syncFolder);
-                      }
-                    }}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-2)'
-                    }}
-                  >
-                    <FolderOpen size={16} />
-                    Open Sync Folder
-                  </button>
+                  {(loadError || isNewDrive) && (
+                    <button
+                      className="button"
+                      onClick={handleRefresh}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 'var(--space-2)'
+                      }}
+                    >
+                      <RefreshCw size={16} />
+                      Refresh
+                    </button>
+                  )}
+                  {!loadError && !isNewDrive && (
+                    <button
+                      className="button"
+                      onClick={async () => {
+                        if (config.syncFolder) {
+                          await window.electronAPI.shell.openPath(config.syncFolder);
+                        }
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 'var(--space-2)'
+                      }}
+                    >
+                      <FolderOpen size={16} />
+                      Open Sync Folder
+                    </button>
+                  )}
                   <button
                     className="button outline"
                     onClick={() => {

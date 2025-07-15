@@ -31,11 +31,18 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
       setLoading(true);
       const driveList = await window.electronAPI.drive.list();
       console.log('Loaded drives in WelcomeBackScreen:', driveList);
-      setDrives(driveList || []);
+      
+      // Filter out private drives since they're not supported yet
+      const publicDrives = (driveList || []).filter((drive: DriveInfo) => 
+        drive.privacy === 'public' && !drive.isPrivate
+      );
+      console.log('Filtered to public drives only:', publicDrives);
+      
+      setDrives(publicDrives);
       
       // Pre-select the most recent drive if there's only one
-      if (driveList && driveList.length === 1) {
-        setSelectedDriveId(driveList[0].id);
+      if (publicDrives.length === 1) {
+        setSelectedDriveId(publicDrives[0].id);
       }
     } catch (err) {
       console.error('Failed to load drives:', err);
@@ -115,8 +122,7 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
       }}>
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
-          <HardDrive size={48} style={{ color: 'var(--ardrive-primary)', marginBottom: 'var(--space-4)' }} />
-          
+                    
           {/* User Avatar */}
           {currentProfile && (
             <div style={{ 
@@ -161,7 +167,10 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
             Welcome Back{currentProfile && (currentProfile.arnsName || currentProfile.name) ? `, ${currentProfile.arnsName || currentProfile.name}` : ''}!
           </h2>
           <p style={{ fontSize: '18px', color: 'var(--gray-600)', lineHeight: '1.6' }}>
-            Great news! You already have {drives.length} ArDrive{drives.length !== 1 ? 's' : ''} ready to sync.
+            {drives.length > 0 
+              ? `Great news! You already have ${drives.length} public Drive${drives.length !== 1 ? 's' : ''} ready to sync.`
+              : 'You have existing Drives, but they are private. Private drives are not supported yet.'
+            }
           </p>
         </div>
 
@@ -172,17 +181,18 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
         )}
 
         {/* Drives List */}
-        <div style={{ marginBottom: 'var(--space-6)' }}>
-          <h3 style={{ 
-            fontSize: '16px', 
-            fontWeight: '600', 
-            marginBottom: 'var(--space-4)',
-            color: 'var(--gray-700)'
-          }}>
-            Choose a drive to sync:
-          </h3>
+        {drives.length > 0 && (
+          <div style={{ marginBottom: 'var(--space-6)' }}>
+            <h3 style={{ 
+              fontSize: '16px', 
+              fontWeight: '600', 
+              marginBottom: 'var(--space-4)',
+              color: 'var(--gray-700)'
+            }}>
+              Choose a drive to sync:
+            </h3>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             {drives.map((drive) => (
               <label
                 key={drive.id}
@@ -315,12 +325,13 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
                   Create New Drive
                 </h4>
                 <p style={{ fontSize: '14px', color: 'var(--gray-600)' }}>
-                  Start fresh with a new ArDrive
+                  Start fresh with a new Drive
                 </p>
               </div>
             </button>
           </div>
         </div>
+        )}
 
         {/* Action Buttons */}
         <div style={{ 
@@ -359,23 +370,42 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
             </button>
           </div>
 
-          <button
-            className="button large"
-            onClick={handleContinue}
-            disabled={!selectedDriveId}
-            style={{
-              fontSize: '16px',
-              padding: '12px 24px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)',
-              opacity: !selectedDriveId ? 0.6 : 1,
-              cursor: !selectedDriveId ? 'not-allowed' : 'pointer'
-            }}
-          >
-            Continue with Selected Drive
-            <ArrowRight size={18} />
-          </button>
+          {drives.length > 0 && (
+            <button
+              className="button large"
+              onClick={handleContinue}
+              disabled={!selectedDriveId}
+              style={{
+                fontSize: '16px',
+                padding: '12px 24px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+                opacity: !selectedDriveId ? 0.6 : 1,
+                cursor: !selectedDriveId ? 'not-allowed' : 'pointer'
+              }}
+            >
+              Continue with Selected Drive
+              <ArrowRight size={18} />
+            </button>
+          )}
+          
+          {drives.length === 0 && (
+            <button
+              className="button large"
+              onClick={onCreateNewDrive}
+              style={{
+                fontSize: '16px',
+                padding: '12px 24px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)'
+              }}
+            >
+              Create New Public Drive
+              <ArrowRight size={18} />
+            </button>
+          )}
         </div>
 
         {/* Help text */}

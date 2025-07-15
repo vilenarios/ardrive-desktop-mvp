@@ -78,6 +78,10 @@ class ArDriveApp {
   private walletManager: SecureWalletManager;
   private syncManager: SyncManager;
   public isQuitting = false;
+  
+  // Cache for wallet info to reduce API calls
+  private lastWalletFetch: number = 0;
+  private cachedWalletInfo: any = null;
 
   constructor() {
     this.walletManager = new SecureWalletManager();
@@ -196,13 +200,24 @@ class ArDriveApp {
       this.mainWindow?.show();
     });
     
-    // Refresh wallet info when window regains focus (useful after Turbo payments)
+    // Refresh wallet info when window regains focus only if payment-related
     this.mainWindow.on('focus', async () => {
       try {
-        const walletInfo = await this.walletManager.getWalletInfo();
-        if (walletInfo) {
-          // Send updated wallet info to renderer
-          this.mainWindow?.webContents.send('wallet-info-updated', walletInfo);
+        // Only refresh if we're on a payment-related page
+        const currentURL = await this.mainWindow?.webContents.getURL();
+        const isPaymentRelated = currentURL && (
+          currentURL.includes('turbo') || 
+          currentURL.includes('payment') ||
+          currentURL.includes('checkout')
+        );
+        
+        if (isPaymentRelated) {
+          console.log('Window focused on payment-related page, refreshing wallet info');
+          const walletInfo = await this.walletManager.getWalletInfo();
+          if (walletInfo) {
+            // Send updated wallet info to renderer
+            this.mainWindow?.webContents.send('wallet-info-updated', walletInfo);
+          }
         }
       } catch (error) {
         console.error('Failed to refresh wallet info on focus:', error);
@@ -228,10 +243,8 @@ class ArDriveApp {
       this.mainWindow?.show();
     });
 
-    // Update tray menu every 30 seconds to show current status
-    setInterval(() => {
-      this.updateTrayMenu();
-    }, 30000);
+    // Removed 30-second interval to reduce wallet balance checks
+    // Tray will update only on specific events
   }
 
   async updateTrayMenu() {
@@ -278,7 +291,23 @@ class ArDriveApp {
       // Get current status for authenticated users
       const config = await configManager.getConfig();
       const globalStatus = await this.syncManager.getStatus();
-      const walletInfo = await this.walletManager.getWalletInfo();
+      
+      // Use cached wallet info for tray menu to avoid frequent balance checks
+      let walletInfo = null;
+      try {
+        // Only fetch if not recently fetched (simple in-memory cache)
+        const now = Date.now();
+        if (!this.lastWalletFetch || (now - this.lastWalletFetch) > 300000) { // 5 minutes
+          walletInfo = await this.walletManager.getWalletInfo();
+          this.lastWalletFetch = now;
+          this.cachedWalletInfo = walletInfo;
+        } else {
+          walletInfo = this.cachedWalletInfo;
+        }
+      } catch (error) {
+        console.error('Failed to get wallet info for tray:', error);
+        walletInfo = this.cachedWalletInfo; // Use cached version on error
+      }
       
       let syncStatusLabel = '⏸ Sync Paused';
       if (globalStatus?.isActive) {
@@ -419,6 +448,14 @@ class ArDriveApp {
   public refreshTray() {
     this.updateTrayMenu();
   }
+  
+  // Method to clear wallet cache and refresh
+  public async refreshWalletAndTray() {
+    console.log('Refreshing wallet info and tray menu');
+    this.lastWalletFetch = 0;
+    this.cachedWalletInfo = null;
+    await this.updateTrayMenu();
+  }
 
   private setupIpcHandlers() {
     // Wallet operations
@@ -444,8 +481,26 @@ class ArDriveApp {
       }
     });
 
-    ipcMain.handle('wallet:get-info', safeIpcHandler(async () => {
-      return await this.walletManager.getWalletInfo();
+    ipcMain.handle('wallet:get-info', safeIpcHandler(async (_, forceRefresh?: boolean) => {
+      // If forceRefresh is true, clear the cache to get fresh data
+      if (forceRefresh) {
+        console.log('Force refreshing wallet balance');
+        this.lastWalletFetch = 0; // Clear cache timestamp
+        this.cachedWalletInfo = null;
+      }
+      
+      const walletInfo = await this.walletManager.getWalletInfo();
+      
+      // Update cache for tray menu
+      if (walletInfo) {
+        this.lastWalletFetch = Date.now();
+        this.cachedWalletInfo = walletInfo;
+        
+        // Send update to renderer
+        this.mainWindow?.webContents.send('wallet-info-updated', walletInfo);
+      }
+      
+      return walletInfo;
     }));
 
     ipcMain.handle('wallet:ensure-loaded', safeIpcHandler(async () => {
@@ -744,14 +799,49 @@ class ArDriveApp {
           throw new Error('Private drives are not supported in this version');
         }
         
-        // List public folder contents
-        const entities = await arDrive.listPublicFolder({
-          folderId: new EntityID(drive.rootFolderId),
-          maxDepth: 10, // Get full hierarchy
-          includeRoot: false // Don't include root folder itself
-        });
+        // For newly created drives, the root folder might not be immediately available
+        // Add a retry mechanism with delay
+        let entities;
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        while (retryCount < maxRetries) {
+          try {
+            // List public folder contents
+            entities = await arDrive.listPublicFolder({
+              folderId: new EntityID(drive.rootFolderId),
+              maxDepth: 10, // Get full hierarchy
+              includeRoot: false // Don't include root folder itself
+            });
+            break; // Success, exit retry loop
+          } catch (error: any) {
+            if (error.message?.includes('not found') && retryCount < maxRetries - 1) {
+              console.log(`Root folder not found, retrying in 2 seconds... (attempt ${retryCount + 1}/${maxRetries})`);
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              retryCount++;
+            } else {
+              // Final attempt failed or different error
+              if (error.message?.includes('not found')) {
+                console.log('Drive might be newly created and not yet propagated. Returning empty list.');
+                return []; // Return empty array for new drives
+              }
+              throw error; // Re-throw other errors
+            }
+          }
+        }
+        
+        // Check if entities was successfully loaded
+        if (!entities) {
+          console.log('No entities loaded, returning empty array');
+          return [];
+        }
         
         console.log(`Found ${entities.length} entities in drive ${drive.name}`);
+        
+        // Log sample entity for debugging
+        if (entities.length > 0) {
+          console.log('Sample entity:', entities[0]);
+        }
         
         // Transform to our FileItem format with ArDrive sharing links
         const fileItems = entities.map((entity: any) => {
@@ -760,25 +850,29 @@ class ArDriveApp {
           const entityId = isFile ? entity.fileId : entity.folderId;
           
           return {
-            id: entityId,
+            id: entityId?.toString() || '',
             name: entity.name || 'Unnamed',
             type: isFile ? 'file' : 'folder',
-            size: isFile ? entity.size : undefined,
-            modifiedAt: entity.lastModifiedDate ? new Date(entity.lastModifiedDate) : new Date(),
+            size: isFile && entity.size ? Number(entity.size) : undefined,
+            modifiedAt: entity.lastModifiedDate 
+              ? (Number(entity.lastModifiedDate) > 0 && Number(entity.lastModifiedDate) < 2000000000 
+                ? new Date(Number(entity.lastModifiedDate) * 1000) 
+                : new Date(Number(entity.lastModifiedDate)))
+              : new Date(),
             isDownloaded: false, // Not relevant for permaweb view
             isUploaded: true, // Everything in permaweb is uploaded
             status: 'synced' as const,
             path: entity.path || '/',
-            parentId: entity.parentFolderId,
+            parentId: entity.parentFolderId?.toString() || '',
             // ArDrive sharing links (only for files, not folders)
             ardriveUrl: isFile 
               ? `https://app.ardrive.io/#/file/${entityId}/view`
               : undefined,
             // Also include transaction IDs for direct Arweave access if needed
-            dataTxId: entity.dataTxId,
-            metadataTxId: entity.metadataTxId || entity.metaDataTxId,
+            dataTxId: entity.dataTxId?.toString() || '',
+            metadataTxId: (entity.metadataTxId || entity.metaDataTxId)?.toString() || '',
             // Additional metadata that might be useful
-            contentType: isFile ? entity.contentType : undefined,
+            contentType: isFile ? entity.dataContentType : undefined,
             driveId: drive.id,
             privacy: drive.privacy
           };
@@ -1012,6 +1106,9 @@ class ArDriveApp {
 
     ipcMain.handle('uploads:approve-all', async () => {
       const pendingUploads = await databaseManager.getPendingUploads();
+      
+      // Force refresh wallet balance before checking funds
+      console.log('Refreshing wallet balance before upload approval...');
       const walletInfo = await this.walletManager.getWalletInfo();
       
       if (!walletInfo) {
@@ -1114,6 +1211,99 @@ class ArDriveApp {
     ipcMain.handle('uploads:reject-all', async () => {
       await databaseManager.clearAllPendingUploads();
       return true;
+    });
+    
+    ipcMain.handle('uploads:cancel', async (_, uploadId: string) => {
+      try {
+        // Cancel the upload in sync manager
+        if (this.syncManager) {
+          this.syncManager.cancelUpload(uploadId);
+        }
+        
+        // Update database status
+        await databaseManager.updateUpload(uploadId, { status: 'failed', error: 'Cancelled by user' });
+        
+        // Emit progress event
+        if (this.mainWindow) {
+          this.mainWindow.webContents.send('upload:progress', {
+            uploadId,
+            progress: 0,
+            status: 'failed',
+            error: 'Cancelled by user'
+          });
+        }
+        
+        return true;
+      } catch (error) {
+        console.error('Failed to cancel upload:', error);
+        throw error;
+      }
+    });
+    
+    ipcMain.handle('uploads:retry', async (_, uploadId: string) => {
+      try {
+        // Get the upload from database
+        const uploads = await databaseManager.getUploads();
+        const upload = uploads.find(u => u.id === uploadId);
+        
+        if (!upload) {
+          throw new Error('Upload not found');
+        }
+        
+        // Reset status to pending
+        await databaseManager.updateUpload(uploadId, {
+          status: 'pending',
+          progress: 0,
+          error: undefined
+        });
+        
+        // Update local copy
+        upload.status = 'pending';
+        upload.progress = 0;
+        upload.error = undefined;
+        
+        // Add back to sync manager queue
+        if (this.syncManager) {
+          this.syncManager.addToUploadQueue(upload);
+        }
+        
+        return true;
+      } catch (error) {
+        console.error('Failed to retry upload:', error);
+        throw error;
+      }
+    });
+    
+    ipcMain.handle('uploads:retry-all', async () => {
+      try {
+        // Get all failed uploads
+        const uploads = await databaseManager.getUploads();
+        const failedUploads = uploads.filter(u => u.status === 'failed');
+        
+        for (const upload of failedUploads) {
+          // Reset status
+          await databaseManager.updateUpload(upload.id, {
+            status: 'pending',
+            progress: 0,
+            error: undefined
+          });
+          
+          // Update local copy
+          upload.status = 'pending';
+          upload.progress = 0;
+          upload.error = undefined;
+          
+          // Add back to sync manager queue
+          if (this.syncManager) {
+            this.syncManager.addToUploadQueue(upload);
+          }
+        }
+        
+        return failedUploads.length;
+      } catch (error) {
+        console.error('Failed to retry all uploads:', error);
+        throw error;
+      }
     });
 
     // Config operations
@@ -1339,8 +1529,25 @@ class ArDriveApp {
         // Validate the path
         const validatedPath = InputValidator.validateFilePath(path);
         
+        // Check if this is a file path, and if so, get its directory
+        const fs = require('fs').promises;
+        const pathModule = require('path');
+        
+        let targetPath = validatedPath;
+        try {
+          const stats = await fs.stat(validatedPath);
+          if (stats.isFile()) {
+            // If it's a file, get the directory
+            targetPath = pathModule.dirname(validatedPath);
+            console.log(`Opening containing folder for file: ${validatedPath} -> ${targetPath}`);
+          }
+        } catch (err) {
+          // If stat fails, assume it's already a directory or doesn't exist
+          console.log(`Path stat failed, assuming directory: ${validatedPath}`);
+        }
+        
         // Open the path (file or folder)
-        const result = await shell.openPath(validatedPath);
+        const result = await shell.openPath(targetPath);
         
         // openPath returns an error string if it fails, empty string on success
         if (result) {

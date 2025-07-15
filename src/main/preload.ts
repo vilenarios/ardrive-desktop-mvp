@@ -15,8 +15,8 @@ const api = {
       ipcRenderer.invoke('wallet:create-new', password),
     completeSetup: () =>
       Promise.resolve(true),
-    getInfo: () => 
-      ipcRenderer.invoke('wallet:get-info'),
+    getInfo: (forceRefresh?: boolean) => 
+      ipcRenderer.invoke('wallet:get-info', forceRefresh),
     ensureLoaded: () =>
       ipcRenderer.invoke('wallet:ensure-loaded'),
     isLoaded: () =>
@@ -86,6 +86,12 @@ const api = {
       ipcRenderer.invoke('uploads:approve-all'),
     rejectAll: () =>
       ipcRenderer.invoke('uploads:reject-all'),
+    cancel: (uploadId: string) =>
+      ipcRenderer.invoke('uploads:cancel', uploadId),
+    retry: (uploadId: string) =>
+      ipcRenderer.invoke('uploads:retry', uploadId),
+    retryAll: () =>
+      ipcRenderer.invoke('uploads:retry-all'),
   },
 
   // Config operations
@@ -162,6 +168,20 @@ const api = {
     ipcRenderer.removeAllListeners('wallet-info-updated');
   },
   
+  // Upload progress events
+  onUploadProgress: (callback: (data: { uploadId: string; progress: number; status: 'uploading' | 'completed' | 'failed'; error?: string }) => void) => {
+    ipcRenderer.on('upload:progress', (_, data) => callback(data));
+  },
+  removeUploadProgressListener: () => {
+    ipcRenderer.removeAllListeners('upload:progress');
+  },
+  onUploadComplete: (callback: (data: { uploadId: string; success: boolean; error?: string }) => void) => {
+    ipcRenderer.on('upload:complete', (_, data) => callback(data));
+  },
+  removeUploadCompleteListener: () => {
+    ipcRenderer.removeAllListeners('upload:complete');
+  },
+  
   // ArNS operations
   arns: {
     getProfile: (address: string) =>
@@ -232,9 +252,6 @@ const api = {
   // Event listeners
   onSyncStatusUpdate: (callback: (status: any) => void) => {
     ipcRenderer.on('sync:status-update', (_, status) => callback(status));
-  },
-  onUploadProgress: (callback: (upload: any) => void) => {
-    ipcRenderer.on('upload:progress', (_, upload) => callback(upload));
   },
   onDriveUpdate: (callback: () => void) => {
     ipcRenderer.on('drive:update', () => callback());

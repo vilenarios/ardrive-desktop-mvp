@@ -197,6 +197,14 @@ class ProfileManager {
       throw new Error('Profile not found');
     }
 
+    // IMPORTANT: Close database connection before deleting profile directory
+    // This prevents EBUSY errors on Windows when trying to delete the database file
+    const { databaseManager } = await import('./database-manager');
+    if (databaseManager.isProfileActive(profileId)) {
+      console.log(`[ProfileManager] Closing database connection for profile ${profileId} before deletion`);
+      await databaseManager.close();
+    }
+
     // Delete profile directory
     const profileDir = path.join(this.profilesDir, profileId);
     try {

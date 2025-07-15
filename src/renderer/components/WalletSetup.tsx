@@ -50,7 +50,6 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
       if (selectedPath) {
         setWalletPath(selectedPath);
         setError(null);
-        setSuccess(`Selected wallet: ${selectedPath}`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to select wallet');
@@ -67,7 +66,6 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
       if (file.name.endsWith('.json')) {
         setWalletPath(file.path);
         setError(null);
-        setSuccess(`Selected wallet: ${file.name}`);
       } else {
         setError('Please drop a valid JSON wallet file');
       }

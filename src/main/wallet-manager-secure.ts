@@ -586,16 +586,49 @@ export class SecureWalletManager {
         driveName: name
       });
 
-      console.log('Drive creation result:', result);
+      console.log('Drive creation result:', JSON.stringify(result, null, 2));
 
-      if (!result.created || result.created.length < 2) {
+      if (!result.created || result.created.length === 0) {
         throw new Error('Invalid drive creation response');
       }
 
-      const driveId = result.created[0].entityId?.toString();
-      const rootFolderId = result.created[1].entityId?.toString();
+      // Find the drive entity and root folder entity in the created items
+      let driveId: string | undefined;
+      let rootFolderId: string | undefined;
+      let driveEntity: any;
+
+      for (const item of result.created) {
+        console.log('Created item:', { type: item.type, entityId: item.entityId?.toString() });
+        
+        if (item.type === 'drive') {
+          driveId = item.entityId?.toString();
+          driveEntity = item;
+        } else if (item.type === 'folder') {
+          // This should be the root folder
+          rootFolderId = item.entityId?.toString();
+        }
+      }
+
+      // If we couldn't find the root folder ID in created items, 
+      // we need to fetch the drive to get its root folder ID
+      if (!rootFolderId && driveId) {
+        console.log('Root folder ID not found in creation result, fetching drive info...');
+        
+        // Wait a moment for the drive to propagate
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Fetch the created drive to get its root folder ID
+        const drives = await this.listDrives();
+        const createdDrive = drives.find(d => d.id === driveId);
+        
+        if (createdDrive && createdDrive.rootFolderId) {
+          rootFolderId = createdDrive.rootFolderId;
+          console.log('Found root folder ID from drive listing:', rootFolderId);
+        }
+      }
 
       if (!driveId || !rootFolderId) {
+        console.error('Failed to extract IDs:', { driveId, rootFolderId, created: result.created });
         throw new Error('Failed to get drive or folder ID from creation result');
       }
 
@@ -679,6 +712,12 @@ export class SecureWalletManager {
   // Clear only in-memory wallet data (for logout)
   async logout(): Promise<void> {
     console.log('[WALLET-DEBUG] Logging out - clearing in-memory data only');
+    
+    // Close database connection on logout to prevent file locks
+    const { databaseManager } = await import('./database-manager');
+    await databaseManager.close();
+    console.log('[WALLET-DEBUG] Database connection closed');
+    
     this.clearInMemoryWallet();
     console.log('[WALLET-DEBUG] Logout complete - wallet file preserved on disk');
   }

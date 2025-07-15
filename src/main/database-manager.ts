@@ -661,8 +661,10 @@ export class DatabaseManager {
     arweaveId?: string
   ): Promise<void> {
     return new Promise((resolve, reject) => {
+      // CRITICAL: Use INSERT OR IGNORE to prevent overwriting download entries with upload entries
+      // This ensures that if a file was downloaded, it remains marked as 'download' source
       const sql = `
-        INSERT OR REPLACE INTO processed_files (fileHash, fileName, fileSize, localPath, source, arweaveId)
+        INSERT OR IGNORE INTO processed_files (fileHash, fileName, fileSize, localPath, source, arweaveId)
         VALUES (?, ?, ?, ?, ?, ?)
       `;
       
@@ -733,6 +735,20 @@ export class DatabaseManager {
       const sql = `DELETE FROM processed_files WHERE fileHash = ?`;
       
       this.db!.run(sql, [fileHash], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  async updateProcessedFileSource(fileHash: string, newSource: 'download' | 'upload'): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `UPDATE processed_files SET source = ? WHERE fileHash = ?`;
+      
+      this.db!.run(sql, [newSource, fileHash], (err) => {
         if (err) {
           reject(err);
         } else {
@@ -1060,6 +1076,21 @@ export class DatabaseManager {
     });
   }
 
+  async updateFolderPath(folderId: string, newPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `UPDATE folder_structure SET folderPath = ?, relativePath = ? WHERE id = ?`;
+      const relativePath = path.basename(newPath);
+      
+      this.db!.run(sql, [newPath, relativePath, folderId], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
   // Downloads management
   async addDownload(download: Omit<FileDownload, 'downloadedAt'>): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -1373,12 +1404,18 @@ export class DatabaseManager {
             console.log('Database closed successfully');
           }
           this.db = null;
+          this.currentProfileId = null;
           resolve();
         });
       } else {
         resolve();
       }
     });
+  }
+
+  // Check if database is for a specific profile
+  isProfileActive(profileId: string): boolean {
+    return this.currentProfileId === profileId;
   }
 
   // Helper method for running queries that return rows

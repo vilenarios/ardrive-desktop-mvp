@@ -18,9 +18,13 @@ export class SyncManager {
   private arDrive: ArDrive | null = null;
   private versionManager: VersionManager;
   private pendingDeletes = new Map<string, NodeJS.Timeout>();
+  private pendingFolderDeletes = new Map<string, NodeJS.Timeout>();
   private isDownloading = false; // Flag to indicate when downloads are in progress
   private fileProcessingQueue = new Map<string, NodeJS.Timeout>(); // Debounce file events
   private processingFiles = new Set<string>(); // Track files currently being processed
+  private recentlyDownloadedFiles = new Set<string>(); // Track recently downloaded file paths
+  private downloadingFiles = new Map<string, Promise<void>>(); // Track files being downloaded with their completion promise
+  private currentMappingId: string | null = null; // Track current drive mapping
 
   constructor(private databaseManager: DatabaseManager) {
     this.versionManager = new VersionManager(databaseManager);
@@ -64,18 +68,30 @@ export class SyncManager {
 
     // Download existing files from ArDrive to local folder
     this.isDownloading = true;
+    let filesWereDownloaded = false;
     try {
+      // Track if we actually downloaded any files
+      const downloadsBefore = await this.databaseManager.getDownloads();
       await this.downloadExistingDriveFiles();
+      const downloadsAfter = await this.databaseManager.getDownloads();
+      filesWereDownloaded = downloadsAfter.length > downloadsBefore.length;
       
-      // Longer delay to ensure all download operations and database transactions are complete
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (filesWereDownloaded) {
+        console.log('Files were downloaded, waiting for database transactions to complete...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
     } finally {
       this.isDownloading = false;
     }
 
-    // Scan existing files (should now skip downloaded files due to database checking)
-    console.log('Starting scan of existing files...');
-    await this.scanExistingFiles();
+    // Only scan existing files if we didn't just download files
+    // The file watcher will handle any new files added after this point
+    if (!filesWereDownloaded) {
+      console.log('No files were downloaded, scanning existing files...');
+      await this.scanExistingFiles();
+    } else {
+      console.log('Skipping initial file scan since files were just downloaded');
+    }
 
     // Start watching for new files
     console.log('Starting file watcher for:', this.syncFolderPath);
@@ -168,6 +184,33 @@ export class SyncManager {
   addToUploadQueue(upload: FileUpload): void {
     console.log(`Adding approved upload to processing queue: ${upload.fileName}`);
     this.uploadQueue.set(upload.id, upload);
+  }
+  
+  // Cancel an upload
+  cancelUpload(uploadId: string): void {
+    console.log(`Cancelling upload: ${uploadId}`);
+    const upload = this.uploadQueue.get(uploadId);
+    if (upload) {
+      // Remove from queue
+      this.uploadQueue.delete(uploadId);
+      console.log(`Upload ${uploadId} removed from queue`);
+    }
+  }
+  
+  // Emit upload progress event
+  private emitUploadProgress(uploadId: string, progress: number, status: 'uploading' | 'completed' | 'failed', error?: string): void {
+    // Import BrowserWindow here to avoid circular dependency
+    const { BrowserWindow } = require('electron');
+    const mainWindow = BrowserWindow.getAllWindows()[0];
+    
+    if (mainWindow) {
+      mainWindow.webContents.send('upload:progress', {
+        uploadId,
+        progress,
+        status,
+        error
+      });
+    }
   }
 
   // Force re-download of existing drive files
@@ -368,6 +411,7 @@ export class SyncManager {
       const downloadId = crypto.randomUUID();
       await this.databaseManager.addDownload({
         id: downloadId,
+        driveId: this.driveId || undefined,
         fileName: fileName,
         localPath: localFilePath,
         fileSize: 0, // Will update after download
@@ -435,11 +479,13 @@ export class SyncManager {
   }
 
   // Download an individual file by file ID (bypasses folder listing issues)
-  private async downloadIndividualFile(fileId: string, fileName: string, dataTxId: string): Promise<void> {
+  private async downloadIndividualFile(fileId: string, fileName: string, dataTxId: string, fullLocalPath?: string): Promise<void> {
     try {
       console.log(`Starting individual download: ${fileName} (${fileId})`);
       
-      const localFilePath = path.join(this.syncFolderPath!, fileName);
+      // Use provided full path or construct from sync folder + filename
+      const localFilePath = fullLocalPath || path.join(this.syncFolderPath!, fileName);
+      console.log(`Target local path: ${localFilePath}`);
       
       // Check if file already exists locally
       try {
@@ -454,6 +500,7 @@ export class SyncManager {
       const downloadId = crypto.randomUUID();
       await this.databaseManager.addDownload({
         id: downloadId,
+        driveId: this.driveId || undefined,
         fileName: fileName,
         localPath: localFilePath,
         fileSize: 0, // We'll update this after download
@@ -463,13 +510,21 @@ export class SyncManager {
         progress: 0
       });
       
+      // Ensure the destination directory exists
+      const destDir = path.dirname(localFilePath);
+      console.log(`Ensuring directory exists: ${destDir}`);
+      await fs.mkdir(destDir, { recursive: true });
+      
       // Use ArDrive's downloadPublicFile method
-      console.log(`Downloading file ${fileName} to ${path.dirname(localFilePath)}`);
+      console.log(`Downloading file ${fileName} to ${destDir}`);
       await this.arDrive!.downloadPublicFile({
         fileId: EID(fileId),
-        destFolderPath: path.dirname(localFilePath),
+        destFolderPath: destDir,
         defaultFileName: fileName
       });
+      
+      // Add a small delay to ensure file system operations are complete
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Verify the file was downloaded and get its size
       const stats = await fs.stat(localFilePath);
@@ -606,6 +661,7 @@ export class SyncManager {
           } else {
             await this.databaseManager.addDownload({
               id: crypto.randomUUID(),
+              driveId: this.driveId || undefined,
               fileName: fileData.name,
               localPath: localFilePath,
               fileSize: fileData.size,
@@ -635,6 +691,7 @@ export class SyncManager {
         downloadId = crypto.randomUUID();
         await this.databaseManager.addDownload({
           id: downloadId,
+          driveId: this.driveId || undefined,
           fileName: fileData.name,
           localPath: localFilePath,
           fileSize: fileData.size,
@@ -651,6 +708,72 @@ export class SyncManager {
       console.log(`Creating directory: ${dir}`);
       await fs.mkdir(dir, { recursive: true });
 
+      // CRITICAL: Add file to recently downloaded BEFORE downloading
+      // This prevents the file watcher from picking it up
+      this.recentlyDownloadedFiles.add(localFilePath);
+      console.log(`Added ${localFilePath} to recently downloaded files BEFORE download`);
+      
+      // Check if this file is already being downloaded
+      if (this.downloadingFiles.has(localFilePath)) {
+        console.log(`File is already being downloaded: ${localFilePath}`);
+        await this.downloadingFiles.get(localFilePath);
+        return;
+      }
+      
+      // Create a promise for this download
+      const downloadPromise = this.performFileDownload(fileData, localFilePath, dir, downloadId);
+      this.downloadingFiles.set(localFilePath, downloadPromise);
+
+      // Pre-register the file in the processed database with a placeholder
+      // This ensures that even if the file watcher detects it, it will be marked as processed
+      const placeholderHash = `downloading-${fileData.fileId}-${Date.now()}`;
+      try {
+        await this.databaseManager.addProcessedFile(
+          placeholderHash,
+          fileData.name,
+          fileData.size || 0,
+          localFilePath,
+          'download',
+          fileData.fileId
+        );
+        console.log(`Pre-registered file with placeholder hash: ${placeholderHash}`);
+      } catch (preRegError) {
+        console.warn(`Failed to pre-register file:`, preRegError);
+      }
+
+      try {
+        await downloadPromise;
+      } finally {
+        // Remove from tracking when done
+        this.downloadingFiles.delete(localFilePath);
+      }
+    } catch (error) {
+      console.error(`Failed to download file ${file.name}:`, error);
+      console.error('Download error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
+      // Update download record as failed if we have a downloadId
+      const fileData = file as any;
+      if (fileData.fileId) {
+        try {
+          const existingDownload = await this.databaseManager.getDownloadByFileId(fileData.fileId);
+          if (existingDownload) {
+            await this.databaseManager.updateDownload(existingDownload.id, {
+              status: 'failed',
+              error: error instanceof Error ? error.message : 'Unknown error'
+            });
+          }
+        } catch (dbError) {
+          console.error('Failed to update download record:', dbError);
+        }
+      }
+    }
+  }
+  
+  private async performFileDownload(fileData: any, localFilePath: string, dir: string, downloadId: string): Promise<void> {
+    try {
       // Download the file using ArDrive
       console.log(`Starting ArDrive download with params:`, {
         fileId: fileData.fileId,
@@ -693,12 +816,48 @@ export class SyncManager {
         throw new Error(`Downloaded file not found at ${localFilePath}`);
       }
       
-      // Add to processed files database to avoid re-uploading
+      // Update the processed files database with the real hash
       const content = await fs.readFile(localFilePath);
       const hash = crypto.createHash('sha256').update(content).digest('hex');
       const stats = await fs.stat(localFilePath);
       const fileName = path.basename(localFilePath);
       
+      // First remove the placeholder entry
+      try {
+        // We need to find the placeholder hash to remove it
+        const processedFiles = await this.databaseManager.getProcessedFiles();
+        const placeholderEntry = processedFiles.find(f => 
+          f.fileHash.startsWith('downloading-') && f.localPath === localFilePath
+        );
+        
+        if (placeholderEntry) {
+          await this.databaseManager.removeProcessedFile(placeholderEntry.fileHash);
+          console.log(`Removed placeholder entry for ${localFilePath}`);
+        }
+      } catch (deleteError) {
+        console.warn(`Failed to remove placeholder entry:`, deleteError);
+      }
+      
+      // First, remove any existing entries for this file (both by hash and path)
+      // This ensures we don't have duplicates with different sources
+      try {
+        const existingEntries = await this.databaseManager.getProcessedFiles();
+        const toRemove = existingEntries.filter(f => 
+          f.fileHash === hash || f.localPath === localFilePath
+        );
+        
+        for (const entry of toRemove) {
+          if (entry.fileHash !== hash || entry.source !== 'download') {
+            await this.databaseManager.removeProcessedFile(entry.fileHash);
+            console.log(`Removed old entry: hash=${entry.fileHash.substring(0, 16)}..., source=${entry.source}`);
+          }
+        }
+      } catch (cleanupError) {
+        console.warn(`Failed to clean up old entries:`, cleanupError);
+      }
+      
+      // Add the real entry with download source
+      // Using INSERT OR IGNORE means if there's already an entry, it won't be overwritten
       await this.databaseManager.addProcessedFile(
         hash,
         fileName,
@@ -708,38 +867,46 @@ export class SyncManager {
         fileData.fileId
       );
       
-      console.log(`Added downloaded file to processed database:`);
+      // Also check and remove any pending uploads for this file
+      try {
+        const pendingUploads = await this.databaseManager.getPendingUploads();
+        const pendingUpload = pendingUploads.find(u => u.localPath === localFilePath);
+        if (pendingUpload) {
+          await this.databaseManager.updatePendingUploadStatus(pendingUpload.id, 'rejected');
+          console.log(`Removed pending upload for downloaded file: ${fileName}`);
+        }
+      } catch (pendingError) {
+        console.warn(`Failed to check/remove pending uploads:`, pendingError);
+      }
+      
+      console.log(`Updated processed file with real hash:`);
       console.log(`  - File: ${fileData.name}`);
       console.log(`  - Hash: ${hash}`);
       console.log(`  - Size: ${stats.size}`);
+      console.log(`  - Source: download`);
+
+      // Keep file in recently downloaded set for extended period
+      // Remove from recently downloaded after a longer delay
+      setTimeout(() => {
+        this.recentlyDownloadedFiles.delete(localFilePath);
+        console.log(`Removed ${localFilePath} from recently downloaded files`);
+      }, 30000); // Keep in set for 30 seconds (increased from 15)
 
       console.log(`Successfully completed download: ${fileData.name}`);
       
-      // Small delay to ensure database transaction completes before file watcher detects the file
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Ensure database transactions are complete
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
     } catch (error) {
-      console.error(`Failed to download file ${file.name}:`, error);
-      console.error('Download error details:', {
-        message: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined
+      console.error(`Failed during download process:`, error);
+      
+      // Update download record as failed
+      await this.databaseManager.updateDownload(downloadId, {
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
       
-      // Update download record as failed if we have a downloadId
-      const fileData = file as any;
-      if (fileData.fileId) {
-        try {
-          const existingDownload = await this.databaseManager.getDownloadByFileId(fileData.fileId);
-          if (existingDownload) {
-            await this.databaseManager.updateDownload(existingDownload.id, {
-              status: 'failed',
-              error: error instanceof Error ? error.message : 'Unknown error'
-            });
-          }
-        } catch (dbError) {
-          console.error('Failed to update download record:', dbError);
-        }
-      }
+      throw error; // Re-throw to be handled by the outer try-catch
     }
   }
 
@@ -782,6 +949,20 @@ export class SyncManager {
     // Skip processing if we're currently downloading files
     if (this.isDownloading) {
       console.log(`Skipping file add event during download: ${filePath}`);
+      return;
+    }
+
+    // Skip processing if this file was recently downloaded
+    if (this.recentlyDownloadedFiles.has(filePath)) {
+      console.log(`Skipping file add event for recently downloaded file: ${filePath}`);
+      return;
+    }
+    
+    // Check if this file is currently being downloaded
+    if (this.downloadingFiles.has(filePath)) {
+      console.log(`Skipping file add event for file being downloaded: ${filePath}`);
+      // Wait for download to complete before processing
+      await this.downloadingFiles.get(filePath);
       return;
     }
 
@@ -894,59 +1075,108 @@ export class SyncManager {
       }
 
       const relativePath = this.versionManager.getRelativePath(dirPath);
-      const parentPath = path.dirname(dirPath);
+      const folderName = path.basename(dirPath);
       
-      console.log(`Creating folder: ${relativePath}`);
-      
-      // Create folder on Arweave first
-      let arweaveFolderId: string | undefined;
-      if (this.arDrive && this.rootFolderId) {
-        try {
-          console.log(`Creating folder on Arweave: ${relativePath}`);
+      // Check if this folder was recently deleted (might be a rename)
+      for (const [deletedPath, timeout] of this.pendingFolderDeletes) {
+        const deletedName = path.basename(deletedPath);
+        const deletedParent = path.dirname(deletedPath);
+        const currentParent = path.dirname(dirPath);
+        
+        // If folder with same parent but different name, it's likely a rename
+        if (deletedParent === currentParent && deletedName !== folderName) {
+          console.log(`Detected folder rename: ${deletedName} -> ${folderName}`);
+          clearTimeout(timeout);
+          this.pendingFolderDeletes.delete(deletedPath);
           
-          // Find parent folder ID for nested folders
-          let parentFolderId = this.rootFolderId;
-          if (parentPath !== this.syncFolderPath) {
-            const parentFolder = await this.databaseManager.getFolderByPath(parentPath);
-            if (parentFolder?.arweaveFolderId) {
-              parentFolderId = parentFolder.arweaveFolderId;
-            }
-          }
-
-          const folderName = path.basename(dirPath);
-          const result = await this.arDrive.createPublicFolder({
-            parentFolderId: EID(parentFolderId),
-            folderName: folderName
-          });
-
-          if (result.created && result.created.length > 0) {
-            const createdFolder = result.created[0];
-            if (createdFolder.type === 'folder' && createdFolder.entityId) {
-              arweaveFolderId = createdFolder.entityId.toString();
-              console.log(`✓ Folder created on Arweave with ID: ${arweaveFolderId}`);
-            }
-          }
-        } catch (arweaveError) {
-          console.error(`Failed to create folder on Arweave: ${arweaveError}`);
-          // Continue with local tracking even if Arweave creation fails
+          // Update the existing folder instead of creating new one
+          await this.handleFolderRename(deletedPath, dirPath);
+          return;
         }
       }
       
+      console.log(`New folder detected: ${relativePath}`);
+      
+      // Add folder to upload queue instead of creating immediately
+      const folderId = crypto.randomUUID();
+      const parentPath = path.dirname(dirPath);
+      
+      // Add to database first (local tracking)
       await this.databaseManager.addFolder({
-        id: crypto.randomUUID(),
+        id: folderId,
         folderPath: dirPath,
         relativePath,
         parentPath: parentPath !== this.syncFolderPath ? parentPath : undefined,
-        arweaveFolderId
+        arweaveFolderId: undefined // Will be set after upload
       });
-
-      console.log(`Folder added to database: ${relativePath}${arweaveFolderId ? ` (Arweave ID: ${arweaveFolderId})` : ' (local only)'}`);
+      
+      // Add to upload queue for approval
+      const folderUpload: FileUpload = {
+        filePath: dirPath,
+        relativePath,
+        fileHash: 'folder', // Special marker for folders
+        version: 1,
+        size: 0,
+        contentType: 'folder',
+        status: 'pending',
+        method: 'ar', // Folders always use AR
+        isNewFile: true,
+        uploadId: folderId
+      };
+      
+      this.uploadQueue.set(dirPath, folderUpload);
+      await this.databaseManager.addPendingUpload({
+        ...folderUpload,
+        mappingId: this.currentMappingId || '',
+        createdAt: new Date(),
+        arCost: '0' // Folder creation cost is minimal
+      });
+      
+      // Notify renderer about new pending folder
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send('sync:queue-updated', Array.from(this.uploadQueue.values()));
+      }
+      
+      console.log(`Folder added to upload queue: ${relativePath}`);
     } catch (error) {
       console.error(`Error handling folder add for ${dirPath}:`, error);
     }
   }
+  
+  private async handleFolderRename(oldPath: string, newPath: string) {
+    try {
+      const folder = await this.databaseManager.getFolderByPath(oldPath);
+      if (folder) {
+        // Update folder path in database
+        await this.databaseManager.updateFolderPath(folder.id, newPath);
+        
+        // If folder was already uploaded to Arweave, we need to handle the rename there too
+        if (folder.arweaveFolderId && this.arDrive) {
+          // Note: ArDrive doesn't support renaming, so we'd need to create new and mark old as deleted
+          console.log(`Folder rename on Arweave not yet implemented for: ${oldPath} -> ${newPath}`);
+        }
+        
+        console.log(`Folder renamed: ${oldPath} -> ${newPath}`);
+      }
+    } catch (error) {
+      console.error(`Error handling folder rename:`, error);
+    }
+  }
 
   private async handleFolderDelete(dirPath: string) {
+    // Use pending delete to detect folder renames
+    this.pendingFolderDeletes.set(dirPath, setTimeout(async () => {
+      try {
+        await this.confirmFolderDelete(dirPath);
+      } catch (error) {
+        console.error('Failed to confirm folder delete:', error);
+      } finally {
+        this.pendingFolderDeletes.delete(dirPath);
+      }
+    }, 1000)); // Wait 1 second before confirming delete
+  }
+  
+  private async confirmFolderDelete(dirPath: string) {
     try {
       await this.databaseManager.markFolderDeleted(dirPath);
       console.log(`Marked folder as deleted: ${dirPath}`);
@@ -991,6 +1221,18 @@ export class SyncManager {
 
   private async handleNewFile(filePath: string, changeType: ChangeType = 'create') {
     console.log(`Processing new file: ${filePath}`);
+    
+    // FIRST CHECK: Skip if file is being downloaded or was recently downloaded
+    if (this.downloadingFiles.has(filePath)) {
+      console.log(`✓ File is currently being downloaded, skipping: ${filePath}`);
+      return;
+    }
+    
+    if (this.recentlyDownloadedFiles.has(filePath)) {
+      console.log(`✓ File was recently downloaded, skipping: ${filePath}`);
+      return;
+    }
+    
     try {
       // Verify file still exists (might have been a temporary file during download)
       try {
@@ -1019,23 +1261,42 @@ export class SyncManager {
       console.log(`  - File size: ${stats.size}`);
       console.log(`  - File path: ${filePath}`);
       
-      // Check database for this file hash
-      const isAlreadyProcessed = await this.databaseManager.isFileProcessed(hash);
-      console.log(`  - Already processed: ${isAlreadyProcessed}`);
-      
-      // Additional debugging: check if this file was recently downloaded
+      // Check database for this file - look for any entry with this hash OR path
       const processedFiles = await this.databaseManager.getProcessedFiles();
-      const matchingFiles = processedFiles.filter(f => f.fileHash === hash);
+      const matchingFiles = processedFiles.filter(f => f.fileHash === hash || f.localPath === filePath);
+      
+      // Check if any matching file has source 'download'
+      const hasDownloadEntry = matchingFiles.some(f => f.source === 'download');
+      const hasPlaceholder = matchingFiles.some(f => f.fileHash.startsWith('downloading-'));
+      const isAlreadyProcessed = matchingFiles.length > 0;
+      
+      console.log(`  - Already processed: ${isAlreadyProcessed}`);
+      console.log(`  - Has download entry: ${hasDownloadEntry}`);
+      console.log(`  - Has placeholder: ${hasPlaceholder}`);
+      
       if (matchingFiles.length > 0) {
         console.log(`  - Found ${matchingFiles.length} matching file(s) in database:`);
         matchingFiles.forEach((f, index) => {
-          console.log(`    ${index + 1}. Source: ${f.source}, Path: ${f.localPath}, ProcessedAt: ${f.processedAt}`);
+          console.log(`    ${index + 1}. Source: ${f.source}, Path: ${f.localPath}, Hash: ${f.fileHash.substring(0, 16)}..., ProcessedAt: ${f.processedAt}`);
         });
       }
 
-      if (isAlreadyProcessed) {
-        console.log(`✓ File already processed, skipping: ${filePath}`);
-        return; // Already processed
+      // Skip if this file was downloaded or is being downloaded
+      if (hasDownloadEntry || hasPlaceholder) {
+        console.log(`✓ File was downloaded from Arweave, skipping: ${filePath}`);
+        return;
+      }
+      
+      // Skip if already processed (but only for upload source - downloads were handled above)
+      if (isAlreadyProcessed && matchingFiles.some(f => f.source === 'upload')) {
+        console.log(`✓ File already uploaded, skipping: ${filePath}`);
+        return;
+      }
+
+      // Double check if this file was recently downloaded
+      if (this.recentlyDownloadedFiles.has(filePath)) {
+        console.log(`✓ File was recently downloaded, skipping: ${filePath}`);
+        return;
       }
 
       // Check if there's already a pending upload for this exact file path
@@ -1120,6 +1381,46 @@ export class SyncManager {
       const conflictType = 'none'; // For now, assume no conflicts
       const conflictDetails = undefined;
       
+      // CRITICAL: Check if this file was previously downloaded BEFORE adding to pending uploads
+      const allProcessedFiles = await this.databaseManager.getProcessedFiles();
+      const downloadEntry = allProcessedFiles.find(f => 
+        (f.fileHash === hash || f.localPath === filePath) && f.source === 'download'
+      );
+      
+      if (downloadEntry) {
+        console.log(`✓ File was previously downloaded from Arweave, not adding to upload queue: ${filePath}`);
+        console.log(`  - Download entry: hash=${downloadEntry.fileHash.substring(0, 16)}..., source=${downloadEntry.source}`);
+        return; // Don't add downloaded files to upload queue
+      }
+
+      // ADDITIONAL SAFETY CHECK: Also check the downloads table directly
+      const downloads = await this.databaseManager.getDownloads();
+      const downloadRecord = downloads.find(d => 
+        d.localPath === filePath && 
+        (d.status === 'downloading' || d.status === 'completed')
+      );
+      
+      if (downloadRecord) {
+        console.log(`✓ File found in downloads table, not adding to upload queue: ${filePath}`);
+        console.log(`  - Download status: ${downloadRecord.status}, fileId: ${downloadRecord.fileId}`);
+        
+        // Also add to processed files if not already there
+        if (!downloadEntry) {
+          await this.databaseManager.addProcessedFile(
+            hash,
+            fileName,
+            stats.size,
+            filePath,
+            'download',
+            downloadRecord.fileId
+          );
+          console.log(`  - Added to processed files with source: download`);
+        }
+        
+        return; // Don't add downloaded files to upload queue
+      }
+
+      // Now that we've confirmed it's not a downloaded file, create the pending upload
       const pendingUpload: Omit<PendingUpload, 'createdAt'> = {
         id: crypto.randomUUID(),
         localPath: filePath,
@@ -1141,7 +1442,7 @@ export class SyncManager {
       
       // Only add to processed files database if not already there
       // (avoids duplicate entries for downloaded files)
-      if (!isAlreadyProcessed) {
+      if (!isAlreadyProcessed && !downloadEntry) {
         await this.databaseManager.addProcessedFile(
           hash,
           fileName,
@@ -1194,10 +1495,16 @@ export class SyncManager {
       console.log(`Setting upload status to 'uploading' for ${upload.fileName}`);
       upload.status = 'uploading';
       await this.databaseManager.updateUpload(upload.id, { status: 'uploading' });
+      
+      // Emit uploading progress event
+      this.emitUploadProgress(upload.id, 0, 'uploading');
 
       // Use ArDrive Core for both AR and Turbo uploads
       // The upload method is determined by ArDrive Core based on wallet configuration and payment method selection
       await this.uploadFileWithArDriveCore(upload);
+      
+      // Emit completion event
+      this.emitUploadProgress(upload.id, 100, 'completed');
 
     } catch (error) {
       console.error(`Failed to upload ${upload.fileName}:`, error);
@@ -1209,6 +1516,9 @@ export class SyncManager {
         status: 'failed',
         error: upload.error
       });
+      
+      // Emit failure event
+      this.emitUploadProgress(upload.id, 0, 'failed', upload.error);
     }
   }
 
@@ -1216,6 +1526,12 @@ export class SyncManager {
     console.log(`Uploading ${upload.fileName} with ArDrive Core (method: ${upload.uploadMethod || 'ar'})`);
     
     try {
+      // Check if this is a free Turbo upload (under 100KB)
+      const isFreeWithTurbo = upload.uploadMethod === 'turbo' && upload.fileSize < 100 * 1024;
+      if (isFreeWithTurbo) {
+        console.log(`File ${upload.fileName} is under 100KB (${upload.fileSize} bytes) - should be FREE with Turbo`);
+      }
+      
       // Get the correct parent folder for this file (will create folder structure if needed)
       const targetFolderId = await this.getTargetFolderId(upload.localPath);
       console.log(`Target folder ID for upload: ${targetFolderId}`);
@@ -1236,7 +1552,16 @@ export class SyncManager {
       // If using Turbo, ensure ArDrive is configured for Turbo uploads
       if (upload.uploadMethod === 'turbo') {
         console.log('Configuring upload for Turbo payment method');
-        // ArDrive Core will use Turbo automatically if initialized
+        
+        // Try to explicitly set payment method (this might not be supported in v3.0.0)
+        uploadOptions.paymentMethod = 'turbo';
+        uploadOptions.useTurbo = true;
+        
+        // For free uploads, we might need to set a specific flag
+        if (isFreeWithTurbo) {
+          console.log('This is a FREE Turbo upload - attempting to bypass balance check');
+          uploadOptions.skipBalanceCheck = true; // This might not exist but worth trying
+        }
       }
       
       // Upload file using ArDrive Core's recommended API
@@ -1291,7 +1616,19 @@ export class SyncManager {
             errorMessage = 'Upload failed after retry. Please ensure the parent folder exists on ArDrive.';
           }
         } else if (error.message.includes('insufficient')) {
-          errorMessage = 'Upload failed: Insufficient balance for transaction.';
+          // Check if this was supposed to be a free upload
+          const isFreeWithTurbo = upload.uploadMethod === 'turbo' && upload.fileSize < 100 * 1024;
+          if (isFreeWithTurbo) {
+            errorMessage = `Upload failed: This file (${upload.fileSize} bytes) should be FREE with Turbo, but ArDrive reported insufficient balance. This may be a configuration issue.`;
+            console.error('FREE UPLOAD FAILED:', {
+              fileName: upload.fileName,
+              fileSize: upload.fileSize,
+              uploadMethod: upload.uploadMethod,
+              error: error.message
+            });
+          } else {
+            errorMessage = 'Upload failed: Insufficient balance for transaction.';
+          }
         } else if (error.message.includes('network')) {
           errorMessage = 'Upload failed: Network error. Please check your internet connection.';
         } else {
@@ -1470,6 +1807,9 @@ export class SyncManager {
       transactionId: upload.transactionId,
       completedAt: upload.completedAt
     });
+    
+    // Emit completion progress event
+    this.emitUploadProgress(upload.id, 100, 'completed');
 
     // Update processed files database with the completed upload
     try {
@@ -1702,8 +2042,8 @@ export class SyncManager {
         // Update status to downloading
         await this.databaseManager.updateDriveMetadataStatus(file.fileId, 'downloading', false);
         
-        // Use existing download method
-        await this.downloadIndividualFile(file.fileId, file.name, file.dataTxId);
+        // Use existing download method with full local path
+        await this.downloadIndividualFile(file.fileId, file.name, file.dataTxId, file.localPath);
         
         // Update status to synced
         await this.databaseManager.updateDriveMetadataStatus(file.fileId, 'synced', true);

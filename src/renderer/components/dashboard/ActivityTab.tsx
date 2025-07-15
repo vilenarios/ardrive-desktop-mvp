@@ -156,8 +156,11 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
     })
     .slice(0, showAllUploads ? undefined : 5);
 
+  // Filter downloads for the current drive
+  const currentDriveDownloads = downloads.filter(download => download.driveId === drive?.id);
+
   // Get recent downloads (last 30 days, limited to 5 for preview)
-  const recentDownloads = downloads
+  const recentDownloads = currentDriveDownloads
     .filter(download => {
       if (!download.downloadedAt) return false;
       const downloadDate = new Date(download.downloadedAt);
@@ -313,12 +316,12 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                   </div>
                 ))}
                 
-                {downloads.length > 5 && (
+                {currentDriveDownloads.length > 5 && (
                   <button 
                     className="show-all-button"
                     onClick={() => setShowAllDownloads(!showAllDownloads)}
                   >
-                    {showAllDownloads ? 'Show Less' : `Show All Downloads (${downloads.length})`}
+                    {showAllDownloads ? 'Show Less' : `Show All Downloads (${currentDriveDownloads.length})`}
                   </button>
                 )}
               </>

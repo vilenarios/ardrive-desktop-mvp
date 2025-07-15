@@ -104,8 +104,15 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
   ];
 
   useEffect(() => {
-    loadTurboBalance();
-    loadFiatEstimate();
+    // Force refresh wallet balance when opening Turbo manager
+    const refreshBalances = async () => {
+      console.log('TurboCreditsManager: Force refreshing wallet balance');
+      await window.electronAPI.wallet.getInfo(true); // Force refresh
+      await loadTurboBalance();
+      loadFiatEstimate();
+    };
+    
+    refreshBalances();
     
     // Listen for wallet info updates (e.g., after returning from payment)
     window.electronAPI.onWalletInfoUpdated((updatedWalletInfo) => {

@@ -26,6 +26,18 @@ const App: React.FC = () => {
 
   useEffect(() => {
     initializeApp();
+    
+    // Listen for wallet info updates from main process
+    const handleWalletInfoUpdate = (newWalletInfo: WalletInfo) => {
+      console.log('Received wallet info update:', newWalletInfo);
+      setWalletInfo(newWalletInfo);
+    };
+    
+    window.electronAPI.onWalletInfoUpdated(handleWalletInfoUpdate);
+    
+    return () => {
+      window.electronAPI.removeWalletInfoUpdatedListener();
+    };
   }, []);
 
   const initializeApp = async () => {
@@ -82,10 +94,22 @@ const App: React.FC = () => {
         setCurrentProfile(profile);
       }
 
-      // Check if drive exists
+      // Check if drive exists (only public drives are supported)
       const driveList = await window.electronAPI.drive.list();
-      if (!driveList || driveList.length === 0) {
-        setAppState('drive-setup');
+      const publicDrives = (driveList || []).filter((drive: DriveInfo) => 
+        drive.privacy === 'public' && !drive.isPrivate
+      );
+      
+      if (!publicDrives || publicDrives.length === 0) {
+        // Check if user has any drives at all (including private ones)
+        if (driveList && driveList.length > 0) {
+          // User has drives, but they're all private - show welcome back screen
+          setIsReturningUser(true);
+          setAppState('welcome-back');
+        } else {
+          // No drives at all - go to drive setup
+          setAppState('drive-setup');
+        }
         return;
       }
 
@@ -95,30 +119,30 @@ const App: React.FC = () => {
       // Try to get the primary drive mapping
       const primaryMapping = await window.electronAPI.driveMappings.getPrimary();
       console.log('Primary drive mapping:', primaryMapping);
-      console.log('Available drives:', driveList.map((d: DriveInfo) => ({ id: d.id, name: d.name })));
+      console.log('Available public drives:', publicDrives.map((d: DriveInfo) => ({ id: d.id, name: d.name })));
       
       // Also log all drive mappings to debug
       const allMappings = await window.electronAPI.driveMappings.list();
       console.log('All drive mappings:', allMappings);
       
       if (primaryMapping) {
-        // Find the drive that matches the primary mapping
-        activeDrive = driveList.find((d: DriveInfo) => d.id === primaryMapping.driveId) || null;
+        // Find the drive that matches the primary mapping (must be public)
+        activeDrive = publicDrives.find((d: DriveInfo) => d.id === primaryMapping.driveId) || null;
         console.log('Found matching drive:', activeDrive);
         
         if (!activeDrive) {
-          console.error('Drive mapping points to driveId that does not exist in drive list!', {
+          console.error('Drive mapping points to driveId that does not exist in public drive list!', {
             mappingDriveId: primaryMapping.driveId,
             mappingDriveName: primaryMapping.driveName,
-            availableDriveIds: driveList.map((d: DriveInfo) => d.id)
+            availablePublicDriveIds: publicDrives.map((d: DriveInfo) => d.id)
           });
         }
       }
       
-      // If no primary mapping or drive not found, fall back to first drive
+      // If no primary mapping or drive not found, fall back to first public drive
       if (!activeDrive) {
-        console.log('No active drive found, using first drive');
-        activeDrive = driveList[0];
+        console.log('No active drive found, using first public drive');
+        activeDrive = publicDrives[0];
       }
       
       console.log('Setting active drive:', activeDrive);
@@ -150,15 +174,15 @@ const App: React.FC = () => {
     });
 
     // Listen for upload updates
-    window.electronAPI.onUploadProgress((upload) => {
+    window.electronAPI.onUploadProgress((progressData) => {
       setUploads(prev => {
-        const index = prev.findIndex(u => u.id === upload.id);
+        const index = prev.findIndex(u => u.id === progressData.uploadId);
         if (index >= 0) {
           const updated = [...prev];
-          updated[index] = upload;
+          updated[index] = { ...updated[index], status: progressData.status, progress: progressData.progress };
           return updated;
         }
-        return [...prev, upload];
+        return prev;
       });
     });
 
@@ -204,11 +228,22 @@ const App: React.FC = () => {
       }
       
       const drives = await window.electronAPI.drive.list();
-      if (!drives || drives.length === 0) {
-        // No existing drives, go to drive setup
-        setAppState('drive-setup');
+      const publicDrives = (drives || []).filter((drive: DriveInfo) => 
+        drive.privacy === 'public' && !drive.isPrivate
+      );
+      
+      if (!publicDrives || publicDrives.length === 0) {
+        // Check if user has any drives at all (including private ones)
+        if (drives && drives.length > 0) {
+          // User has drives, but they're all private - show welcome back screen anyway
+          setIsReturningUser(true);
+          setAppState('welcome-back');
+        } else {
+          // No drives at all - go to drive setup
+          setAppState('drive-setup');
+        }
       } else {
-        // Has existing drives, show welcome back screen for drive selection
+        // Has existing public drives, show welcome back screen for drive selection
         setIsReturningUser(true);
         setAppState('welcome-back');
       }
@@ -394,17 +429,36 @@ const App: React.FC = () => {
         );
 
       case 'dashboard':
-        return (
+        return walletInfo && currentProfile && drive ? (
           <Dashboard
             config={config!}
-            walletInfo={walletInfo!}
-            currentProfile={currentProfile!}
-            drive={drive!}
+            walletInfo={walletInfo}
+            currentProfile={currentProfile}
+            drive={drive}
             syncStatus={syncStatus}
             uploads={uploads}
             onLogout={handleLogout}
             onDriveDeleted={handleDriveDeleted}
           />
+        ) : (
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            height: '100vh',
+            flexDirection: 'column',
+            gap: 'var(--space-4)'
+          }}>
+            <div style={{ 
+              width: '48px', 
+              height: '48px', 
+              border: '4px solid var(--gray-200)',
+              borderTop: '4px solid var(--ardrive-primary)',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite'
+            }} />
+            <p style={{ color: 'var(--gray-600)' }}>Loading...</p>
+          </div>
         );
 
       default:
