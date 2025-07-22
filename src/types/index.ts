@@ -48,8 +48,7 @@ export interface DriveInfo {
 
 export interface FileUpload {
   id: string;
-  mappingId?: string;           // Which drive mapping this upload belongs to
-  driveId?: string;             // ArDrive ID (for backwards compatibility)
+  driveId?: string;             // ArDrive ID
   localPath: string;
   fileName: string;
   fileSize: number;
@@ -71,10 +70,10 @@ export interface SyncStatus {
   uploadedFiles: number;
   failedFiles: number;
   currentFile?: string;
+  lastError?: string;
 }
 
 export interface DriveSyncStatus {
-  mappingId: string;
   driveId: string;
   driveName: string;
   isActive: boolean;
@@ -112,8 +111,7 @@ export interface WalletInfo {
 
 export interface PendingUpload {
   id: string;
-  mappingId?: string;           // Which drive mapping this upload belongs to
-  driveId?: string;             // ArDrive ID (for backwards compatibility)
+  driveId?: string;             // ArDrive ID
   localPath: string;
   fileName: string;
   fileSize: number;
@@ -134,10 +132,18 @@ export interface ConflictResolution {
   reasoning?: string;
 }
 
+export interface SyncProgress {
+  phase: 'starting' | 'metadata' | 'folders' | 'files' | 'verification' | 'complete';
+  description: string;
+  currentItem?: string;
+  itemsProcessed?: number;
+  estimatedRemaining?: number;
+  progress?: number; // Optional real-time progress percentage (0-100)
+}
+
 export interface FileDownload {
   id: string;
-  mappingId?: string;           // Which drive mapping this download belongs to
-  driveId?: string;             // ArDrive ID (for backwards compatibility)
+  driveId?: string;             // ArDrive ID
   fileName: string;
   localPath: string;
   fileSize: number;
@@ -154,8 +160,7 @@ export interface FileDownload {
 // File Version Control Types
 export interface FileVersion {
   id: string;
-  mappingId?: string;           // Which drive mapping this version belongs to
-  driveId?: string;             // ArDrive ID (for backwards compatibility)
+  driveId?: string;             // ArDrive ID
   fileHash: string;
   fileName: string;
   filePath: string;
@@ -173,8 +178,7 @@ export interface FileVersion {
 
 export interface FileOperation {
   id: string;
-  mappingId?: string;           // Which drive mapping this operation belongs to
-  driveId?: string;             // ArDrive ID (for backwards compatibility)
+  driveId?: string;             // ArDrive ID
   fileHash: string;
   operation: 'upload' | 'download' | 'rename' | 'move' | 'delete';
   fromPath?: string;
@@ -185,8 +189,7 @@ export interface FileOperation {
 
 export interface FolderStructure {
   id: string;
-  mappingId?: string;           // Which drive mapping this folder belongs to
-  driveId?: string;             // ArDrive ID (for backwards compatibility)
+  driveId?: string;             // ArDrive ID
   folderPath: string;
   relativePath: string;
   parentPath?: string;
@@ -204,4 +207,28 @@ export interface WalletStorageFormat {
     seedPhrase?: string; // Only stored if wallet was created from seed
     createdAt: string; // ISO timestamp
   };
+}
+
+// Permaweb File Interface
+export interface PermawebFile {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  size?: number;
+  parentId?: string;
+  parentName?: string;
+  dataTxId?: string;
+  metadataTxId?: string;
+  createdAt?: string;
+  modifiedAt?: string;
+}
+
+// Download item interface
+export interface DownloadItem {
+  id: string;
+  fileName: string;
+  status: 'downloading' | 'completed' | 'failed';
+  progress?: number;
+  size?: number;
+  error?: string;
 }

@@ -485,7 +485,7 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = ({
 
         .profile-card.selected {
           border-color: var(--ardrive-primary);
-          background: var(--ardrive-primary-light);
+          background: var(--ardrive-primary-100);
         }
 
         .profile-card-header {
@@ -598,7 +598,7 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = ({
         }
 
         .new-profile:hover .new-profile-icon {
-          background: var(--ardrive-primary-light);
+          background: var(--ardrive-primary-100);
           color: var(--ardrive-primary);
         }
 

@@ -1,0 +1,250 @@
+/* Settings Modal Styles */
+/* Following ArDrive Design System Guidelines */
+
+/* Modal Backdrop */
+.settings-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2500; /* Higher than most modals but lower than WalletExport */
+}
+
+/* Modal Container */
+.settings-modal {
+  background: white;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  width: 90%;
+  max-width: 35rem; /* 560px */
+  max-height: 80vh;
+  overflow: hidden;
+  animation: settingsModalIn 0.2s ease-out;
+}
+
+@keyframes settingsModalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Modal Header */
+.settings-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-6);
+  border-bottom: 1px solid var(--gray-200);
+  background: white;
+}
+
+.settings-modal-header h2 {
+  margin: 0;
+  font-size: 1.25rem; /* 20px */
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.settings-close-button {
+  background: none;
+  border: none;
+  padding: var(--space-2);
+  cursor: pointer;
+  color: var(--gray-500);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.settings-close-button:hover {
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+/* Modal Body */
+.settings-modal-body {
+  padding: var(--space-6);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* Settings Sections */
+.settings-section {
+  margin-bottom: var(--space-6);
+}
+
+.settings-section:last-child {
+  margin-bottom: 0;
+}
+
+/* Settings Items */
+.settings-item {
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  background: var(--gray-50);
+  transition: all 0.2s ease;
+}
+
+.settings-item:hover {
+  border-color: var(--gray-300);
+  background: white;
+}
+
+.settings-item-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.settings-icon {
+  color: var(--ardrive-primary);
+  flex-shrink: 0;
+  margin-top: var(--space-1); /* Align with text */
+}
+
+.settings-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-item-info h3 {
+  margin: 0 0 var(--space-1) 0;
+  font-size: 1rem; /* 16px */
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.settings-item-info p {
+  margin: 0;
+  font-size: 0.875rem; /* 14px */
+  color: var(--gray-600);
+  line-height: 1.5;
+}
+
+/* Settings Item Content */
+.settings-item-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+/* Folder Path Display */
+.folder-path {
+  font-family: var(--font-mono);
+  font-size: 0.875rem; /* 14px */
+  color: var(--gray-700);
+  background: white;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--gray-200);
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+}
+
+/* Settings Buttons */
+.settings-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--ardrive-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem; /* 14px */
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.settings-button:hover:not(:disabled) {
+  background: var(--ardrive-primary-700);
+}
+
+.settings-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.settings-button-secondary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: white;
+  color: var(--gray-700);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem; /* 14px */
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.settings-button-secondary:hover {
+  background: var(--gray-50);
+  border-color: var(--gray-400);
+  color: var(--gray-900);
+}
+
+.settings-button-secondary svg {
+  opacity: 0.7;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .settings-modal {
+    width: 95%;
+    max-width: none;
+    margin: var(--space-4);
+  }
+  
+  .settings-modal-header {
+    padding: var(--space-4);
+  }
+  
+  .settings-modal-body {
+    padding: var(--space-4);
+  }
+  
+  .settings-item {
+    padding: var(--space-4);
+  }
+  
+  .settings-item-header {
+    gap: var(--space-3);
+  }
+  
+  .settings-item-content {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+  
+  .folder-path {
+    font-size: 0.8125rem; /* 13px */
+  }
+  
+  .settings-button,
+  .settings-button-secondary {
+    justify-content: center;
+  }
+}

@@ -156,7 +156,7 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
         <div className="profile-dropdown">
           <div className="dropdown-section">
             <div className="dropdown-header">Switch Profile</div>
-            {profiles.map((profile) => (
+            {profiles && profiles.length > 0 ? profiles.map((profile) => (
               <button
                 key={profile.id}
                 className={`profile-option ${profile.id === currentProfile?.id ? 'active' : ''}`}
@@ -186,7 +186,11 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
                   <Check size={16} className="check-icon" />
                 )}
               </button>
-            ))}
+            )) : (
+              <div style={{ padding: 'var(--space-3)', textAlign: 'center', color: 'var(--gray-500)', fontSize: '13px' }}>
+                No profiles available
+              </div>
+            )}
           </div>
 
           <div className="dropdown-divider" />
@@ -228,7 +232,7 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
             </div>
             
             <div className="password-modal-body">
-              {selectedProfileId && (
+              {selectedProfileId && profiles && (
                 <div className="switching-to-profile">
                   {profiles.find(p => p.id === selectedProfileId)?.avatarUrl ? (
                     <img 
@@ -335,8 +339,8 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
 
         .profile-avatar,
         .profile-avatar-placeholder {
-          width: 32px;
-          height: 32px;
+          width: 40px;
+          height: 40px;
           border-radius: 50%;
           flex-shrink: 0;
         }
@@ -429,7 +433,7 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
         }
 
         .profile-option.active {
-          background: var(--ardrive-primary-light);
+          background: var(--ardrive-primary-100);
         }
 
         .profile-option:disabled {

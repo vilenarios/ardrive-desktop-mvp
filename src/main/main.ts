@@ -11,6 +11,11 @@ import { arnsService } from './arns-service';
 import { profileManager } from './profile-manager';
 import InputValidator, { ValidationError } from './input-validator';
 
+// Load .env file in development
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
+}
+
 // Utility function to safely wrap IPC handlers with error handling
 function safeIpcHandler<T extends any[], R>(
   handler: (...args: T) => Promise<R>
@@ -185,13 +190,6 @@ class ArDriveApp {
         // Check if CSS was loaded by testing a known CSS variable
         this.mainWindow?.webContents.executeJavaScript(`
           const rootStyle = getComputedStyle(document.documentElement);
-          const primaryColor = rootStyle.getPropertyValue('--ardrive-primary');
-          console.log('CSS Primary color:', primaryColor);
-          console.log('Document stylesheets count:', document.styleSheets.length);
-          for (let i = 0; i < document.styleSheets.length; i++) {
-            const sheet = document.styleSheets[i];
-            console.log('Stylesheet', i, ':', sheet.href || 'inline');
-          }
         `);
       });
     }
@@ -767,13 +765,58 @@ class ArDriveApp {
     }));
 
     // Get permaweb files for a drive
-    ipcMain.handle('drive:get-permaweb-files', safeIpcHandler(async (_, driveId: string) => {
-      console.log('Getting permaweb files for drive:', driveId);
+    ipcMain.handle('drive:get-permaweb-files', safeIpcHandler(async (_, driveId: string, forceRefresh: boolean = false) => {
+      console.log('Getting permaweb files for drive:', driveId, 'Force refresh:', forceRefresh);
       
       // Validate drive ID
       const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
       
-      // Get the drive info to find root folder
+      // Get the drive mapping for this drive
+      const driveMappings = await databaseManager.getDriveMappings();
+      const driveMapping = driveMappings.find((m: any) => m.driveId === validatedDriveId);
+      
+      if (!driveMapping) {
+        throw new Error('Drive mapping not found');
+      }
+      
+      // First, try to get from local cache unless force refresh
+      if (!forceRefresh) {
+        console.log('Checking local cache for drive metadata...');
+        const cachedMetadata = await databaseManager.getDriveMetadata(driveMapping.id);
+        
+        if (cachedMetadata && cachedMetadata.length > 0) {
+          console.log(`Found ${cachedMetadata.length} items in local cache`);
+          
+          // Transform cached data to match expected format
+          const fileItems = cachedMetadata.map((item: any) => ({
+            id: item.fileId,
+            name: item.name,
+            type: item.type,
+            size: item.type === 'file' && item.size !== '[object Object]' ? item.size : undefined,
+            modifiedAt: item.lastModifiedDate && item.lastModifiedDate !== '[object Object]'
+              ? new Date(item.lastModifiedDate) 
+              : item.createdAt 
+                ? new Date(item.createdAt)
+                : item.uploadedDate
+                  ? new Date(item.uploadedDate)
+                  : new Date(Date.now() - 86400000), // Default to 1 day ago instead of current time
+            isDownloaded: item.localFileExists,
+            isUploaded: true,
+            status: item.syncStatus || 'synced',
+            path: item.path,
+            parentId: item.parentFolderId || '',
+            ardriveUrl: item.type === 'file' ? `https://app.ardrive.io/#/file/${item.fileId}/view` : undefined,
+            dataTxId: item.dataTxId,
+            metadataTxId: item.metadataTxId,
+            contentType: item.contentType
+          }));
+          
+          return fileItems;
+        }
+        console.log('No cached data found, will query ArDrive API');
+      }
+      
+      // If no cache or force refresh, query ArDrive API
       const drives = await this.walletManager.listDrives();
       const drive = drives.find(d => d.id === validatedDriveId);
       
@@ -838,27 +881,36 @@ class ArDriveApp {
         
         console.log(`Found ${entities.length} entities in drive ${drive.name}`);
         
-        // Log sample entity for debugging
-        if (entities.length > 0) {
-          console.log('Sample entity:', entities[0]);
-        }
-        
         // Transform to our FileItem format with ArDrive sharing links
         const fileItems = entities.map((entity: any) => {
           const isFile = entity.entityType === 'file';
           // Use the appropriate ID based on entity type
           const entityId = isFile ? entity.fileId : entity.folderId;
           
+          // Debug all entity data to understand what's available
+          console.log(`Entity data for ${entity.name}:`, {
+            entityType: entity.entityType,
+            size: entity.size,
+            sizeValue: entity.size?.valueOf(),
+            lastModifiedDate: entity.lastModifiedDate,
+            createdAt: entity.createdAt,
+            uploadedDate: entity.uploadedDate,
+            dataTxId: entity.dataTxId,
+            metadataTxId: entity.metadataTxId
+          });
+          
           return {
             id: entityId?.toString() || '',
             name: entity.name || 'Unnamed',
             type: isFile ? 'file' : 'folder',
-            size: isFile && entity.size ? Number(entity.size) : undefined,
-            modifiedAt: entity.lastModifiedDate 
-              ? (Number(entity.lastModifiedDate) > 0 && Number(entity.lastModifiedDate) < 2000000000 
-                ? new Date(Number(entity.lastModifiedDate) * 1000) 
-                : new Date(Number(entity.lastModifiedDate)))
-              : new Date(),
+            size: isFile && entity.size !== undefined ? entity.size.valueOf() : undefined,
+            modifiedAt: entity.lastModifiedDate !== undefined && entity.lastModifiedDate !== null
+              ? new Date(entity.lastModifiedDate)
+              : entity.createdAt !== undefined && entity.createdAt !== null
+                ? new Date(entity.createdAt)
+                : entity.uploadedDate !== undefined && entity.uploadedDate !== null
+                  ? new Date(entity.uploadedDate)
+                  : new Date(Date.now() - 86400000), // Default to 1 day ago instead of current time
             isDownloaded: false, // Not relevant for permaweb view
             isUploaded: true, // Everything in permaweb is uploaded
             status: 'synced' as const,
@@ -909,6 +961,24 @@ class ArDriveApp {
         throw error;
       }
     });
+
+    // Get recent uploads for Activity tab
+    ipcMain.handle('sync:get-uploads', safeIpcHandler(async () => {
+      console.log('Getting recent uploads from database');
+      const uploads = await databaseManager.getUploads();
+      
+      // Filter to last 30 days and limit to reasonable amount
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const recentUploads = uploads
+        .filter(upload => {
+          const createdAt = new Date(upload.createdAt);
+          return createdAt >= thirtyDaysAgo;
+        })
+        .slice(0, 100); // Limit to 100 most recent
+      
+      console.log(`Found ${recentUploads.length} uploads from last 30 days`);
+      return recentUploads;
+    }));
 
     ipcMain.handle('sync:start', safeIpcHandler(async () => {
       console.log('IPC: sync:start called');
@@ -971,6 +1041,17 @@ class ArDriveApp {
       return await this.syncManager.getStatus();
     }));
 
+    // DEBUG: Sync state handlers
+    ipcMain.handle('sync:get-state', safeIpcHandler(async () => {
+      return this.syncManager.getCurrentSyncState();
+    }));
+
+    ipcMain.handle('sync:force-monitoring', safeIpcHandler(async () => {
+      console.log('🔧 Force starting file monitoring via IPC');
+      await this.syncManager.forceStartFileMonitoring();
+      return true;
+    }));
+
     ipcMain.handle('sync:getFolder', safeIpcHandler(async () => {
       const config = await configManager.getConfig();
       return config.syncFolder;
@@ -994,7 +1075,7 @@ class ArDriveApp {
 
     ipcMain.handle('files:get-uploads-by-mapping', async (_, mappingId: string) => {
       try {
-        return await databaseManager.getUploadsByMapping(mappingId);
+        return await databaseManager.getUploadsByDrive(mappingId); // TODO: Rename parameter from mappingId to driveId
       } catch (error) {
         console.error('Failed to get uploads by mapping:', error);
         throw error;
@@ -1025,6 +1106,71 @@ class ArDriveApp {
       }
     });
 
+    // Manual sync operation (different from background sync monitoring)
+    ipcMain.handle('sync:manual', safeIpcHandler(async () => {
+      console.log('Manual sync requested from UI');
+      try {
+        // Emit sync progress phases for UI
+        const emitProgress = (phase: string, description: string, itemsProcessed?: number, estimatedRemaining?: number) => {
+          const progress = {
+            phase,
+            description,
+            currentItem: undefined,
+            itemsProcessed,
+            estimatedRemaining
+          };
+          console.log(`🔄 Emitting sync progress:`, progress);
+          if (this.mainWindow) {
+            this.mainWindow.webContents.send('sync:progress', progress);
+            console.log(`📤 Sending sync:progress to renderer`);
+          }
+        };
+
+        // Step 1: Starting
+        emitProgress('starting', 'Initializing manual sync...');
+        await new Promise(resolve => setTimeout(resolve, 500)); // Brief delay for UI
+
+        // Step 2: Metadata - Check for new local files (scan upload queue)
+        emitProgress('metadata', 'Scanning local folder for new files...');
+        // Note: This will trigger file watcher to detect new files for upload queue
+        // The actual upload scanning happens in the background via file monitoring
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // Step 3: Folders phase
+        emitProgress('folders', 'Processing folder structure...');
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // Step 4: Files - Download existing drive files
+        emitProgress('files', 'Checking permaweb for updates...');
+        await this.syncManager.forceDownloadExistingFiles();
+
+        // Step 5: Verification
+        emitProgress('verification', 'Verifying sync results...');
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // Step 6: Complete
+        emitProgress('complete', 'Manual sync completed successfully');
+
+        return { success: true, message: 'Manual sync completed' };
+      } catch (error) {
+        console.error('Manual sync failed:', error);
+        
+        // Emit error state
+        if (this.mainWindow) {
+          this.mainWindow.webContents.send('sync:progress', {
+            phase: 'complete',
+            description: `Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            error: true
+          });
+        }
+        
+        return { 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Manual sync failed' 
+        };
+      }
+    }));
+
     // Upload approval queue operations
     ipcMain.handle('uploads:get-pending', async () => {
       return await databaseManager.getPendingUploads();
@@ -1036,6 +1182,13 @@ class ArDriveApp {
       const pendingUpload = pendingUploads.find(u => u.id === uploadId);
       
       if (!pendingUpload) {
+        // Check if already uploaded
+        const existingUploads = await databaseManager.getUploads();
+        const alreadyUploaded = existingUploads.find(u => u.id === uploadId);
+        if (alreadyUploaded) {
+          console.log(`Upload ${uploadId} already processed, status: ${alreadyUploaded.status}`);
+          return { alreadyProcessed: true, status: alreadyUploaded.status };
+        }
         throw new Error('Pending upload not found');
       }
       
@@ -1068,7 +1221,6 @@ class ArDriveApp {
       // Create actual upload entry
       const upload: FileUpload = {
         id: pendingUpload.id,
-        mappingId: pendingUpload.mappingId,
         driveId: pendingUpload.driveId,
         localPath: pendingUpload.localPath,
         fileName: pendingUpload.fileName,
@@ -1087,14 +1239,8 @@ class ArDriveApp {
       await databaseManager.addUpload(upload);
       await databaseManager.removePendingUpload(uploadId);
       
-      // Route to appropriate sync manager based on mapping ID
-      if (pendingUpload.mappingId) {
-        // Multi-drive: add to specific sync engine
-        // Upload will be handled by sync manager
-      } else {
-        // Legacy single-drive: add to sync manager
-        this.syncManager.addToUploadQueue(upload);
-      }
+      // Add to sync manager
+      this.syncManager.addToUploadQueue(upload);
       
       return true;
     });
@@ -1167,7 +1313,6 @@ class ArDriveApp {
           // Create upload entry
           const upload: FileUpload = {
             id: pendingUpload.id,
-            mappingId: pendingUpload.mappingId,
             driveId: pendingUpload.driveId,
             localPath: pendingUpload.localPath,
             fileName: pendingUpload.fileName,
@@ -1186,12 +1331,8 @@ class ArDriveApp {
           await databaseManager.addUpload(upload);
           await databaseManager.removePendingUpload(pendingUpload.id);
           
-          // Route to appropriate sync manager
-          if (pendingUpload.mappingId) {
-            // Upload will be handled by sync manager
-          } else {
-            this.syncManager.addToUploadQueue(upload);
-          }
+          // Add to sync manager
+          this.syncManager.addToUploadQueue(upload);
           
           approvedCount++;
         } catch (error) {
@@ -1564,6 +1705,42 @@ class ArDriveApp {
         throw error;
       }
     });
+
+    // Open file directly with default application
+    ipcMain.handle('shell:open-file', async (_, filePath: string) => {
+      try {
+        // Validate the file path
+        const validatedPath = InputValidator.validateFilePath(filePath);
+        
+        // Check if the file exists
+        const fs = require('fs').promises;
+        try {
+          const stats = await fs.stat(validatedPath);
+          if (!stats.isFile()) {
+            throw new Error('Path is not a file');
+          }
+        } catch (err) {
+          throw new Error(`File does not exist: ${validatedPath}`);
+        }
+        
+        console.log(`Opening file directly: ${validatedPath}`);
+        const result = await shell.openPath(validatedPath);
+        
+        // openPath returns an error string if it fails, empty string on success
+        if (result) {
+          throw new Error(`Failed to open file: ${result}`);
+        }
+        
+        return true;
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          console.error('Shell open file validation failed:', error.message);
+          throw error;
+        }
+        console.error('Failed to open file:', error);
+        throw error;
+      }
+    });
     
     // Open payment in a new child window instead of external browser
     ipcMain.handle('payment:open-window', async (_, url: string) => {
@@ -1651,6 +1828,16 @@ class ArDriveApp {
       const mappings = await databaseManager.getDriveMappings();
       return mappings.find(m => m.isActive) || mappings[0] || null;
     }));
+
+    // System operations
+    ipcMain.handle('system:get-env', async (_, key: string) => {
+      // Only allow specific dev mode environment variables
+      const allowedKeys = ['ARDRIVE_DEV_MODE', 'ARDRIVE_DEV_WALLET_PATH', 'ARDRIVE_DEV_PASSWORD', 'ARDRIVE_DEV_SYNC_FOLDER'];
+      if (!allowedKeys.includes(key)) {
+        return undefined;
+      }
+      return process.env[key];
+    });
 
     // Error reporting handler
     ipcMain.handle('error:report', async (_, errorData: {

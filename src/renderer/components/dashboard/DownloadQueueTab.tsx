@@ -1,14 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { 
   Download,
   CheckCircle,
-  AlertCircle,
   Clock,
-  FileText,
   FolderOpen,
   RefreshCw,
-  Search,
-  Filter,
   Loader,
   XCircle,
   Pause,
@@ -32,7 +28,6 @@ interface FileDownload {
 
 interface DownloadQueueTabProps {
   downloads: FileDownload[];
-  onRefresh: () => void;
   onOpenFolder: (path: string) => void;
   onRetryDownload?: (downloadId: string) => void;
   onPauseDownload?: (downloadId: string) => void;
@@ -41,67 +36,42 @@ interface DownloadQueueTabProps {
 
 export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
   downloads,
-  onRefresh,
   onOpenFolder,
   onRetryDownload,
   onPauseDownload,
   onResumeDownload
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'downloading' | 'completed' | 'failed'>('all');
-  const [sortBy, setSortBy] = useState<'date' | 'name' | 'size'>('date');
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Filter and sort downloads
-  const filteredDownloads = useMemo(() => {
-    let filtered = downloads.filter(download => {
-      // Search filter
-      if (searchQuery && !download.fileName.toLowerCase().includes(searchQuery.toLowerCase())) {
-        return false;
-      }
-      
-      // Status filter
-      if (statusFilter !== 'all' && download.status !== statusFilter) {
-        return false;
-      }
-      
-      return true;
-    });
+  // Filter to only show active downloads (queue items)
+  const activeDownloads = useMemo(() => {
+    return downloads
+      .filter(download => {
+        // Only show active downloads (downloading, paused, or failed that can be retried)
+        return download.status === 'downloading' || download.status === 'paused' || download.status === 'failed';
+      })
+      .sort((a, b) => {
+        // Sort by date (newest first)
+        return new Date(b.downloadedAt).getTime() - new Date(a.downloadedAt).getTime();
+      });
+  }, [downloads]);
 
-    // Sort
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'name':
-          return a.fileName.localeCompare(b.fileName);
-        case 'size':
-          return b.fileSize - a.fileSize;
-        case 'date':
-        default:
-          return new Date(b.downloadedAt).getTime() - new Date(a.downloadedAt).getTime();
-      }
-    });
-
-    return filtered;
-  }, [downloads, searchQuery, statusFilter, sortBy]);
-
-  // Group downloads by status
+  // Stats for active downloads only (queue items)
   const downloadStats = useMemo(() => {
     const stats = {
       active: 0,
-      completed: 0,
       failed: 0,
-      totalSize: 0,
-      downloadedSize: 0
+      paused: 0,
+      totalSize: 0
     };
 
     downloads.forEach(download => {
-      if (download.status === 'downloading') stats.active++;
-      else if (download.status === 'completed') stats.completed++;
-      else if (download.status === 'failed') stats.failed++;
-      
-      stats.totalSize += download.fileSize;
-      if (download.status === 'completed') {
-        stats.downloadedSize += download.fileSize;
+      // Only count active downloads (queue items)
+      if (download.status === 'downloading' || download.status === 'failed' || download.status === 'paused') {
+        if (download.status === 'downloading') stats.active++;
+        else if (download.status === 'failed') stats.failed++;
+        else if (download.status === 'paused') stats.paused++;
+        
+        stats.totalSize += download.fileSize;
       }
     });
 
@@ -136,7 +106,7 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'downloading':
-        return <Loader size={16} className="animate-spin" style={{ color: 'var(--primary-600)' }} />;
+        return <Loader size={16} className="animate-spin" style={{ color: 'var(--ardrive-primary-600)' }} />;
       case 'completed':
         return <CheckCircle size={16} style={{ color: 'var(--success-600)' }} />;
       case 'failed':
@@ -182,7 +152,7 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
             maxWidth: '400px',
             margin: '0 auto'
           }}>
-            Files downloaded from your ArDrive to your local folder will appear here.
+            Active downloads will appear here. Completed downloads can be found in the Activity tab.
           </p>
         </div>
       </div>
@@ -197,35 +167,8 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
         borderBottom: '1px solid var(--gray-200)',
         backgroundColor: 'var(--gray-50)'
       }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 'var(--space-4)'
-        }}>
-          <div>
-            <h2 style={{ fontSize: '20px', fontWeight: '600', margin: 0 }}>Download History</h2>
-          </div>
-          <button
-            className="button small outline"
-            onClick={async () => {
-              setIsRefreshing(true);
-              await onRefresh();
-              // Add a small delay to make the refresh more visible
-              setTimeout(() => setIsRefreshing(false), 500);
-            }}
-            disabled={isRefreshing}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-1)',
-              opacity: isRefreshing ? 0.7 : 1
-            }}
-            title="Manually refresh download list"
-          >
-            <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
-            {isRefreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
+        <div>
+          <h2 style={{ fontSize: '20px', fontWeight: '600', margin: 0, marginBottom: 'var(--space-4)' }}>Download Queue</h2>
         </div>
 
         {/* Stats */}
@@ -237,114 +180,45 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
         }}>
           {downloadStats.active > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <Loader size={14} className="animate-spin" style={{ color: 'var(--primary-600)' }} />
+              <Loader size={14} className="animate-spin" style={{ color: 'var(--ardrive-primary-600)' }} />
               <span>{downloadStats.active} downloading</span>
             </div>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <CheckCircle size={14} style={{ color: 'var(--success-600)' }} />
-            <span>{downloadStats.completed} completed</span>
-          </div>
           {downloadStats.failed > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
               <XCircle size={14} style={{ color: 'var(--error-600)' }} />
               <span>{downloadStats.failed} failed</span>
             </div>
           )}
+          {downloadStats.paused > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <Pause size={14} style={{ color: 'var(--warning-600)' }} />
+              <span>{downloadStats.paused} paused</span>
+            </div>
+          )}
           <div style={{ marginLeft: 'auto' }}>
-            {formatFileSize(downloadStats.downloadedSize)} of {formatFileSize(downloadStats.totalSize)}
+            {formatFileSize(downloadStats.totalSize)} total
           </div>
         </div>
       </div>
 
-      {/* Controls */}
-      <div style={{
-        padding: 'var(--space-4) var(--space-6)',
-        display: 'flex',
-        gap: 'var(--space-4)',
-        alignItems: 'center',
-        borderBottom: '1px solid var(--gray-200)'
-      }}>
-        {/* Search */}
-        <div style={{
-          position: 'relative',
-          flex: 1,
-          maxWidth: '300px'
-        }}>
-          <Search size={16} style={{
-            position: 'absolute',
-            left: '12px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            color: 'var(--gray-500)'
-          }} />
-          <input
-            type="text"
-            placeholder="Search downloads..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '8px 12px 8px 36px',
-              border: '1px solid var(--gray-300)',
-              borderRadius: 'var(--radius-md)',
-              fontSize: '14px'
-            }}
-          />
-        </div>
-
-        {/* Status filter */}
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as any)}
-          style={{
-            padding: '8px 12px',
-            border: '1px solid var(--gray-300)',
-            borderRadius: 'var(--radius-md)',
-            fontSize: '14px',
-            backgroundColor: 'white'
-          }}
-        >
-          <option value="all">All Downloads</option>
-          <option value="downloading">Downloading</option>
-          <option value="completed">Completed</option>
-          <option value="failed">Failed</option>
-        </select>
-
-        {/* Sort */}
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as any)}
-          style={{
-            padding: '8px 12px',
-            border: '1px solid var(--gray-300)',
-            borderRadius: 'var(--radius-md)',
-            fontSize: '14px',
-            backgroundColor: 'white'
-          }}
-        >
-          <option value="date">Sort by Date</option>
-          <option value="name">Sort by Name</option>
-          <option value="size">Sort by Size</option>
-        </select>
-      </div>
 
       {/* Download list */}
       <div style={{
         overflowY: 'auto',
         maxHeight: 'calc(100vh - 400px)'
       }}>
-        {filteredDownloads.length === 0 ? (
+        {activeDownloads.length === 0 ? (
           <div style={{
             padding: 'var(--space-8)',
             textAlign: 'center',
             color: 'var(--gray-500)'
           }}>
-            No downloads match your filters
+            No active downloads in queue
           </div>
         ) : (
           <div style={{ padding: 'var(--space-4)' }}>
-            {filteredDownloads.map((download) => (
+            {activeDownloads.map((download) => (
               <div
                 key={download.id}
                 style={{
@@ -484,7 +358,7 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
                       style={{
                         height: '100%',
                         width: `${download.progress}%`,
-                        backgroundColor: 'var(--primary-600)',
+                        backgroundColor: 'var(--ardrive-primary-600)',
                         transition: 'width 0.3s ease'
                       }}
                     />

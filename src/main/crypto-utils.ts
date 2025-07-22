@@ -128,50 +128,38 @@ export async function decryptData(encryptedData: EncryptedData, password: string
  * Securely writes encrypted data to a file
  */
 export async function writeEncryptedFile(filePath: string, data: string, password: string): Promise<void> {
-  console.log('[CRYPTO-DEBUG] writeEncryptedFile called');
-  console.log('[CRYPTO-DEBUG] Data length:', data.length);
   
   // Ensure the directory exists
   const dir = path.dirname(filePath);
-  console.log('[CRYPTO-DEBUG] Creating directory structure');
   
   try {
     await fs.mkdir(dir, { recursive: true });
-    console.log('[CRYPTO-DEBUG] Directory created successfully');
   } catch (dirError: any) {
     console.error('[CRYPTO-DEBUG] Failed to create directory:', dirError);
     throw new Error(`Failed to create directory ${dir}: ${dirError.message}`);
   }
   
-  console.log('[CRYPTO-DEBUG] Encrypting data...');
   const encryptedData = await encryptData(data, password);
-  console.log('[CRYPTO-DEBUG] Data encrypted successfully');
   
   // Write to a temporary file first to ensure atomicity
   const tempPath = filePath + '.tmp';
   const fileContent = JSON.stringify(encryptedData, null, 2);
-  console.log('[CRYPTO-DEBUG] Writing to temporary file');
-  console.log('[CRYPTO-DEBUG] File content length:', fileContent.length);
   
   try {
     // Write to temp file
     await fs.writeFile(tempPath, fileContent, { encoding: 'utf8' });
-    console.log('[CRYPTO-DEBUG] Temp file written successfully');
     
     // Force sync to disk (important on Windows/WSL)
     const fileHandle = await fs.open(tempPath, 'r+');
     await fileHandle.sync();
     await fileHandle.close();
-    console.log('[CRYPTO-DEBUG] Temp file synced to disk');
     
     // Atomically rename temp file to final path
     await fs.rename(tempPath, filePath);
-    console.log('[CRYPTO-DEBUG] File renamed to final path successfully');
     
     // Verify final file exists
     try {
       await fs.access(filePath);
-      console.log('[CRYPTO-DEBUG] Final file verified to exist');
     } catch (verifyError) {
       console.error('[CRYPTO-DEBUG] Final file verification failed:', verifyError);
       throw new Error('File was not created successfully');

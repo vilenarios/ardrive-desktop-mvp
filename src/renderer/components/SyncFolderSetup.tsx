@@ -72,17 +72,21 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
       // Add the drive mapping via IPC
       await window.electronAPI.driveMappings.add(driveMapping);
       
-      // Start sync
-      setSetupProgress('Starting sync...');
-      await window.electronAPI.sync.start();
-      
       // Mark first run as complete
       await window.electronAPI.config.markFirstRunComplete();
       
-      setSetupProgress('Setup complete! 🎉');
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      // Go to dashboard immediately - sync will start in background
       onSetupComplete();
+      
+      // Start sync in background after navigating to dashboard
+      setTimeout(async () => {
+        try {
+          await window.electronAPI.sync.start();
+        } catch (err) {
+          console.error('Failed to start sync:', err);
+        }
+      }, 100);
+      
     } catch (err) {
       console.error('Setup error:', err);
       setError(err instanceof Error ? err.message : 'Setup failed');
@@ -128,7 +132,7 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
         {/* Selected Drive Info - Enhanced */}
         <div style={{
           padding: 'var(--space-5)',
-          backgroundColor: 'var(--primary-50)',
+          backgroundColor: 'var(--ardrive-primary-50)',
           borderRadius: 'var(--radius-md)',
           border: '1px solid var(--ardrive-primary)',
           marginBottom: 'var(--space-6)'
@@ -186,7 +190,7 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
             border: '2px dashed var(--gray-300)',
             borderRadius: 'var(--radius-md)',
             textAlign: 'center',
-            backgroundColor: syncFolder ? 'var(--primary-50)' : 'var(--gray-50)',
+            backgroundColor: syncFolder ? 'var(--ardrive-primary-50)' : 'var(--gray-50)',
             borderColor: syncFolder ? 'var(--ardrive-primary)' : 'var(--gray-300)'
           }}>
             {syncFolder ? (

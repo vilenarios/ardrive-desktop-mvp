@@ -107,7 +107,7 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
               <div style={{
                 width: '32px',
                 height: '32px',
-                background: 'var(--primary-100)',
+                background: 'var(--ardrive-primary-100)',
                 borderRadius: 'var(--radius-sm)',
                 display: 'flex',
                 alignItems: 'center',
@@ -147,7 +147,7 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
               <div style={{
                 width: '32px',
                 height: '32px',
-                background: 'var(--primary-100)',
+                background: 'var(--ardrive-primary-100)',
                 borderRadius: 'var(--radius-sm)',
                 display: 'flex',
                 alignItems: 'center',
@@ -413,7 +413,7 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.borderColor = 'var(--ardrive-primary)';
-                      e.currentTarget.style.backgroundColor = 'var(--primary-50)';
+                      e.currentTarget.style.backgroundColor = 'var(--ardrive-primary-50)';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.borderColor = 'var(--gray-300)';

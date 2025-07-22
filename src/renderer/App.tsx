@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AppConfig, DriveInfo, WalletInfo, SyncStatus, FileUpload, Profile } from '../types';
+import { AppConfig, DriveInfo, WalletInfo, SyncStatus, FileUpload, Profile, SyncProgress } from '../types';
 import WalletSetup from './components/WalletSetup';
 import DriveAndSyncSetup from './components/DriveAndSyncSetup';
 import SyncFolderSetup from './components/SyncFolderSetup';
@@ -22,6 +22,8 @@ const App: React.FC = () => {
   const [uploads, setUploads] = useState<FileUpload[]>([]);
   const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
   const [isReturningUser, setIsReturningUser] = useState(false);
+  const [drives, setDrives] = useState<DriveInfo[]>([]);
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const { toasts, toast, removeToast } = useToast();
 
   useEffect(() => {
@@ -37,6 +39,7 @@ const App: React.FC = () => {
     
     return () => {
       window.electronAPI.removeWalletInfoUpdatedListener();
+      window.electronAPI.removeSyncProgressListener();
     };
   }, []);
 
@@ -155,6 +158,16 @@ const App: React.FC = () => {
         return;
       }
 
+      // Load uploads data
+      try {
+        const uploadData = await window.electronAPI.files.getUploads();
+        console.log('Loaded uploads data:', uploadData);
+        setUploads(uploadData || []);
+      } catch (error) {
+        console.error('Failed to load uploads:', error);
+        setUploads([]);
+      }
+
       // All setup complete, go to dashboard
       setAppState('dashboard');
       
@@ -173,8 +186,17 @@ const App: React.FC = () => {
       setSyncStatus(status);
     });
 
+    // Listen for sync progress updates
+    window.electronAPI.onSyncProgress((progress) => {
+      console.log('Received sync progress:', progress);
+      setSyncProgress(progress);
+    });
+
     // Listen for upload updates
-    window.electronAPI.onUploadProgress((progressData) => {
+    window.electronAPI.onUploadProgress(async (progressData) => {
+      console.log('Upload progress update:', progressData);
+      
+      // Update existing upload in state
       setUploads(prev => {
         const index = prev.findIndex(u => u.id === progressData.uploadId);
         if (index >= 0) {
@@ -184,6 +206,18 @@ const App: React.FC = () => {
         }
         return prev;
       });
+      
+      // If upload completed, refresh the full list to get all metadata
+      if (progressData.status === 'completed') {
+        console.log('Upload completed, refreshing upload list');
+        try {
+          const uploadData = await window.electronAPI.files.getUploads();
+          console.log('Refreshed uploads after completion:', uploadData?.length || 0);
+          setUploads(uploadData || []);
+        } catch (error) {
+          console.error('Failed to refresh uploads after completion:', error);
+        }
+      }
     });
 
     // Listen for drive updates
@@ -196,61 +230,59 @@ const App: React.FC = () => {
   };
 
   const handleWalletImported = async () => {
-    // Wallet is imported, check if we need drive setup
+    // Navigate immediately to improve perceived performance
+    setIsReturningUser(true);
+    setAppState('welcome-back');
+    
+    // Load critical data (drives) and basic profile in parallel
     try {
-      // Get wallet info and profile
-      const [wallet, profile] = await Promise.all([
+      const [wallet, profile, driveList] = await Promise.all([
         window.electronAPI.wallet.getInfo(),
-        window.electronAPI.profile.getActive()
+        window.electronAPI.profile.getActive(),
+        window.electronAPI.drive.list()
       ]);
       
-      if (wallet && profile) {
+      if (wallet) {
         setWalletInfo(wallet);
-        
-        // Fetch ArNS data for the profile
-        try {
-          const arnsProfile = await window.electronAPI.arns.getProfile(profile.address);
-          console.log('ArNS profile data (wallet import):', arnsProfile);
-          if (arnsProfile) {
-            const enrichedProfile = {
-              ...profile,
-              arnsName: arnsProfile.name,
-              avatarUrl: arnsProfile.avatar  // Fixed: was avatarUrl, should be avatar
-            };
-            setCurrentProfile(enrichedProfile);
-          } else {
-            setCurrentProfile(profile);
-          }
-        } catch (error) {
-          console.error('Failed to fetch ArNS profile:', error);
-          setCurrentProfile(profile);
-        }
       }
       
-      const drives = await window.electronAPI.drive.list();
-      const publicDrives = (drives || []).filter((drive: DriveInfo) => 
-        drive.privacy === 'public' && !drive.isPrivate
-      );
+      if (profile) {
+        // Set basic profile immediately
+        setCurrentProfile(profile);
+        
+        // Load ArNS data in background (non-blocking)
+        loadArnsProfileInBackground(profile);
+      }
       
-      if (!publicDrives || publicDrives.length === 0) {
-        // Check if user has any drives at all (including private ones)
-        if (drives && drives.length > 0) {
-          // User has drives, but they're all private - show welcome back screen anyway
-          setIsReturningUser(true);
-          setAppState('welcome-back');
-        } else {
-          // No drives at all - go to drive setup
-          setAppState('drive-setup');
-        }
-      } else {
-        // Has existing public drives, show welcome back screen for drive selection
-        setIsReturningUser(true);
-        setAppState('welcome-back');
+      // Pass ALL drives to the component - let it handle filtering
+      setDrives(driveList || []);
+      
+      // If no drives at all, navigate to drive setup
+      if (!driveList || driveList.length === 0) {
+        setAppState('drive-setup');
       }
     } catch (error) {
-      console.error('Error checking drives:', error);
-      toast.error('Failed to check existing drives');
-      setAppState('drive-setup');
+      console.error('Error during initial load:', error);
+      toast.error('Failed to load data');
+      // Stay on welcome back screen - it will show an error state
+    }
+  };
+  
+  const loadArnsProfileInBackground = async (profile: Profile) => {
+    try {
+      const arnsProfile = await window.electronAPI.arns.getProfile(profile.address);
+      console.log('ArNS profile data loaded:', arnsProfile);
+      if (arnsProfile) {
+        const enrichedProfile = {
+          ...profile,
+          arnsName: arnsProfile.name,
+          avatarUrl: arnsProfile.avatar
+        };
+        setCurrentProfile(enrichedProfile);
+      }
+    } catch (error) {
+      console.error('Failed to fetch ArNS profile:', error);
+      // Silent failure - ArNS data is non-critical
     }
   };
 
@@ -407,12 +439,26 @@ const App: React.FC = () => {
         return (
           <WelcomeBackScreen
             currentProfile={currentProfile}
+            initialDrives={drives}
             onDriveSelected={handleDriveSelectedFromWelcomeBack}
             onCreateNewDrive={() => {
               setIsReturningUser(true);
               setAppState('drive-setup');
             }}
             onSkipSetup={handleSkipSetup}
+            onBack={() => {
+              // Go back to profile selection if multiple profiles exist
+              window.electronAPI.profiles.list().then(profiles => {
+                if (profiles && profiles.length > 1) {
+                  setAppState('profile-management');
+                } else {
+                  setAppState('wallet-setup');
+                }
+              });
+            }}
+            onProfileLoaded={(profile) => {
+              console.log('Profile fully loaded in welcome back:', profile);
+            }}
           />
         );
 
@@ -436,9 +482,19 @@ const App: React.FC = () => {
             currentProfile={currentProfile}
             drive={drive}
             syncStatus={syncStatus}
+            syncProgress={syncProgress}
             uploads={uploads}
             onLogout={handleLogout}
             onDriveDeleted={handleDriveDeleted}
+            onRefreshUploads={async () => {
+              try {
+                const uploadData = await window.electronAPI.files.getUploads();
+                console.log('Refreshed uploads data:', uploadData);
+                setUploads(uploadData || []);
+              } catch (error) {
+                console.error('Failed to refresh uploads:', error);
+              }
+            }}
           />
         ) : (
           <div style={{ 

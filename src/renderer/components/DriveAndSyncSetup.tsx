@@ -3,7 +3,8 @@ import { Cloud, FolderOpen, HardDrive, Info, Globe, Zap, X, HelpCircle, CheckCir
 import { ClientInputValidator } from '../input-validator';
 import { InfoButton } from './common/InfoButton';
 import SetupSuccessScreen from './SetupSuccessScreen';
-import { Profile } from '../../types';
+import { SyncProgressDisplay } from './SyncProgressDisplay';
+import { Profile, SyncProgress } from '../../types';
 
 interface DriveAndSyncSetupProps {
   currentProfile?: Profile | null;
@@ -22,6 +23,7 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
   const [showSummary, setShowSummary] = useState(false);
   const [enableAutoSync, setEnableAutoSync] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [createdDriveInfo, setCreatedDriveInfo] = useState<{
     driveName: string;
     localFolder: string;
@@ -29,6 +31,44 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
     rootFolderId?: string;
     driveTxId?: string;
   } | null>(null);
+
+  // Dev mode auto-fill for faster testing
+  useEffect(() => {
+    const checkDevMode = async () => {
+      const isDevMode = await window.electronAPI.system.getEnv('ARDRIVE_DEV_MODE');
+      const devSyncFolder = await window.electronAPI.system.getEnv('ARDRIVE_DEV_SYNC_FOLDER');
+      
+      if (isDevMode === 'true' && devSyncFolder && !syncFolder) {
+        setSyncFolder(devSyncFolder);
+      }
+    };
+    
+    checkDevMode();
+  }, []);
+
+  // Listen for sync progress during setup
+  useEffect(() => {
+    const handleSyncProgress = (progress: SyncProgress) => {
+      console.log('Setup received sync progress:', progress);
+      setSyncProgress(progress);
+      
+      // Also update the simple progress text for fallback
+      setSetupProgress(progress.description);
+      
+      // Hide sync progress modal when complete
+      if (progress.phase === 'complete') {
+        setTimeout(() => {
+          setSyncProgress(null);
+        }, 2000); // Show complete state for 2 seconds
+      }
+    };
+
+    window.electronAPI.onSyncProgress(handleSyncProgress);
+    
+    return () => {
+      window.electronAPI.removeSyncProgressListener();
+    };
+  }, []);
 
   const handleSelectFolder = async () => {
     try {
@@ -408,7 +448,7 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
             border: '2px dashed var(--gray-300)',
             borderRadius: 'var(--radius-md)',
             textAlign: 'center',
-            backgroundColor: syncFolder ? 'var(--primary-50)' : 'var(--gray-50)',
+            backgroundColor: syncFolder ? 'var(--ardrive-primary-50)' : 'var(--gray-50)',
             borderColor: syncFolder ? 'var(--ardrive-primary)' : 'var(--gray-300)'
           }}>
             {syncFolder ? (
@@ -623,6 +663,13 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
           )}
         </div>
       </div>
+      
+      {/* Sync Progress Modal during initial setup */}
+      {syncProgress && syncProgress.phase !== 'complete' && (
+        <SyncProgressDisplay 
+          progress={syncProgress}
+        />
+      )}
     </div>
   );
 };

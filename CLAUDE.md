@@ -42,6 +42,44 @@ npm run uat:existing-user # Test existing user flow
 npm run uat:dashboard    # Test dashboard functionality
 ```
 
+### Dev Mode - Fast Import Testing
+For rapid testing of the import user flow, you can use a `.env` file to auto-fill forms:
+
+1. **Copy the example .env file:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Edit `.env` with your test values:**
+   ```env
+   # Enable dev mode
+   ARDRIVE_DEV_MODE=true
+   
+   # Set your test wallet path
+   ARDRIVE_DEV_WALLET_PATH=C:\Source\arweave-keyfile-iKryOeZQMONi2965nKz528htMMN_sBcjlhc-VncoRjA.json
+   
+   # Set your test password
+   ARDRIVE_DEV_PASSWORD=testingPASSword
+   
+   # Set your test sync folder
+   ARDRIVE_DEV_SYNC_FOLDER=C:\ARDRIVE
+   ```
+
+3. **Run the app:**
+   ```bash
+   npm run dev
+   ```
+
+When dev mode is enabled:
+- Import User flow will auto-fill the wallet path and password
+- Drive setup will auto-fill the sync folder
+- You can just click "Next" through the setup process
+
+**Security Notes**: 
+- Only use test wallets and passwords in dev mode
+- The `.env` file is gitignored and won't be committed
+- Never share your `.env` file with real wallet information
+
 ## Project Structure
 ```
 ardrive-desktop-mvp/
@@ -252,12 +290,25 @@ SELECT * FROM drive_mappings;
 ## Configuration & Environment
 
 ### Environment Variables
+Create a `.env` file from `.env.example` for local development:
+
 ```bash
+# Core environment settings
 NODE_ENV=development     # or production
+DEBUG=ardrive:*         # Enable debug logging
+
+# Testing shortcuts
 SKIP_ONBOARDING=true    # Skip onboarding flow
 AUTO_LOGIN=true         # Auto-login for testing
-DEBUG=ardrive:*         # Enable debug logging
+
+# Dev Mode Auto-fill (Import User Flow Testing)
+ARDRIVE_DEV_MODE=true    # Enable dev mode auto-fill
+ARDRIVE_DEV_WALLET_PATH=C:\path\to\wallet.json  # Auto-fill wallet path
+ARDRIVE_DEV_PASSWORD=testPassword               # Auto-fill password
+ARDRIVE_DEV_SYNC_FOLDER=C:\ARDRIVE             # Auto-fill sync folder
 ```
+
+The `.env` file is automatically loaded in development mode and is gitignored for security.
 
 ### Configuration Files
 - `tsconfig.json` - Base TypeScript config

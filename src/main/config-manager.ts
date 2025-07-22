@@ -27,15 +27,12 @@ export class ConfigManager {
   }
 
   async initialize() {
-    console.log('ConfigManager - initialize called');
     
     // Load global config
     try {
       const configData = await fs.readFile(this.globalConfigPath, 'utf8');
       this.globalConfig = JSON.parse(configData);
-      console.log('ConfigManager - loaded global config from disk:', JSON.stringify(this.globalConfig));
     } catch (error) {
-      console.log('ConfigManager - no global config file found, using defaults');
       await this.saveGlobalConfig();
     }
     
@@ -49,7 +46,6 @@ export class ConfigManager {
   async getConfig(): Promise<AppConfig> {
     // If no profile is active, return global config
     if (!this.currentProfileId) {
-      console.log('ConfigManager - getConfig called, returning global config');
       return { ...this.globalConfig };
     }
     
@@ -71,11 +67,9 @@ export class ConfigManager {
       
       // Migration removed - legacy fields no longer supported
       
-      console.log('ConfigManager - loaded profile config with', driveMappings.length, 'drive mappings');
       return config;
     } catch (error) {
       // No profile config yet, return defaults with global config
-      console.log('ConfigManager - no profile config found, using defaults');
       return { 
         ...this.globalConfig, 
         isFirstRun: false

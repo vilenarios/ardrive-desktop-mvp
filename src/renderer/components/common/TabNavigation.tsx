@@ -22,9 +22,10 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
   className = ''
 }) => {
   return (
-    <div className={`tab-navigation ${className}`}>
-      <div className="tab-list" role="tablist">
-        {tabs.map((tab) => (
+    <div className={`tab-navigation-wrapper ${className}`}>
+      <div className="tab-navigation">
+        <div className="tab-list" role="tablist">
+          {tabs.map((tab) => (
           <button
             key={tab.id}
             role="tab"
@@ -43,12 +44,23 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
             )}
           </button>
         ))}
+        </div>
       </div>
-
+      
       <style>{`
-        .tab-navigation {
-          border-bottom: 1px solid var(--gray-200);
+        .tab-navigation-wrapper {
+          display: flex;
+          justify-content: center;
           margin-bottom: var(--space-6);
+          background: var(--gray-50);
+        }
+
+        .tab-navigation {
+          background: var(--ardrive-surface);
+          border: 1px solid var(--ardrive-border);
+          border-radius: var(--radius-lg);
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+          overflow: hidden;
         }
 
         .tab-list {
@@ -67,37 +79,45 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
           display: flex;
           align-items: center;
           gap: var(--space-2);
-          padding: var(--space-3) var(--space-4);
+          padding: var(--space-4) var(--space-5);
           background: none;
           border: none;
-          border-bottom: 2px solid transparent;
+          border-bottom: 3px solid transparent;
+          border-radius: var(--radius-md) var(--radius-md) 0 0;
           cursor: pointer;
           font-size: var(--text-sm);
           font-weight: 500;
-          color: var(--gray-600);
-          transition: all 0.2s ease;
+          color: var(--ardrive-text-secondary);
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
           white-space: nowrap;
           position: relative;
+          margin-bottom: -1px;
+          min-height: 48px;
         }
 
-        .tab-button:hover {
-          color: var(--gray-800);
+        .tab-button:hover:not(.active) {
+          color: var(--ardrive-text-primary);
           background: var(--gray-50);
+          border-bottom-color: var(--ardrive-border-hover);
         }
 
         .tab-button:focus {
           outline: 2px solid var(--ardrive-primary);
           outline-offset: 2px;
           border-radius: var(--radius-sm);
+          z-index: 10;
         }
 
         .tab-button.active {
           color: var(--ardrive-primary);
+          background: white;
           border-bottom-color: var(--ardrive-primary);
+          z-index: 5;
         }
 
         .tab-button.active:hover {
-          background: var(--ardrive-primary-light);
+          background: var(--ardrive-surface);
+          color: var(--ardrive-primary-700);
         }
 
         .tab-icon {
@@ -112,18 +132,26 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
 
         .tab-count {
           background: var(--gray-200);
-          color: var(--gray-700);
+          color: var(--ardrive-text-secondary);
           font-size: var(--text-xs);
           font-weight: 600;
-          padding: 2px 6px;
-          border-radius: 10px;
-          min-width: 18px;
+          padding: 3px 7px;
+          border-radius: 12px;
+          min-width: 20px;
           text-align: center;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .tab-button:hover:not(.active) .tab-count {
+          background: var(--gray-300);
+          color: var(--ardrive-text-primary);
         }
 
         .tab-button.active .tab-count {
           background: var(--ardrive-primary);
           color: white;
+          box-shadow: 0 2px 4px rgba(220, 38, 38, 0.3);
         }
 
         .tab-badge {
@@ -131,6 +159,8 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
           height: 8px;
           border-radius: 50%;
           margin-left: var(--space-2);
+          border: 2px solid var(--ardrive-surface);
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
         }
 
         .tab-badge.attention {
@@ -138,22 +168,60 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
         }
 
         .tab-badge.error {
-          background: var(--danger-500);
+          background: var(--ardrive-primary);
         }
 
         .tab-badge.success {
           background: var(--success-500);
         }
 
+        /* Enhanced hover effects for icons */
+        .tab-icon {
+          transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .tab-button:hover .tab-icon {
+          transform: translateY(-1px);
+        }
+
+        .tab-button.active .tab-icon {
+          transform: scale(1.05);
+        }
+
         /* Mobile responsive */
-        @media (max-width: 640px) {
+        @media (max-width: 768px) {
+          .tab-list {
+            padding: 0 var(--space-2);
+          }
+
           .tab-button {
-            padding: var(--space-2) var(--space-3);
+            padding: var(--space-3) var(--space-4);
             font-size: var(--text-xs);
+            min-height: 44px;
           }
 
           .tab-icon {
             font-size: 14px;
+          }
+
+          .tab-count {
+            padding: 2px 5px;
+            min-width: 16px;
+            font-size: 10px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .tab-button {
+            padding: var(--space-2) var(--space-3);
+          }
+
+          .tab-label {
+            display: none;
+          }
+
+          .tab-button .tab-icon {
+            margin: 0;
           }
         }
       `}</style>

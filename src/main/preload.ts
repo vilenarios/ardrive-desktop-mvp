@@ -42,12 +42,12 @@ const api = {
       ipcRenderer.invoke('drive:create', name, privacy),
     select: (driveId: string) => 
       ipcRenderer.invoke('drive:select', driveId),
-    getMetadata: (mappingId: string) =>
-      ipcRenderer.invoke('drive:get-metadata', mappingId),
-    refreshMetadata: (mappingId: string) =>
-      ipcRenderer.invoke('drive:refresh-metadata', mappingId),
-    getPermawebFiles: (driveId: string) =>
-      ipcRenderer.invoke('drive:get-permaweb-files', driveId),
+    getMetadata: (driveId: string) =>
+      ipcRenderer.invoke('drive:get-metadata', driveId),
+    refreshMetadata: (driveId: string) =>
+      ipcRenderer.invoke('drive:refresh-metadata', driveId),
+    getPermawebFiles: (driveId: string, forceRefresh?: boolean) =>
+      ipcRenderer.invoke('drive:get-permaweb-files', driveId, forceRefresh),
   },
 
   // Sync operations
@@ -62,6 +62,13 @@ const api = {
       ipcRenderer.invoke('sync:stop'),
     getStatus: () => 
       ipcRenderer.invoke('sync:status'),
+    manual: () => 
+      ipcRenderer.invoke('sync:manual'),
+    // DEBUG methods
+    getState: () => 
+      ipcRenderer.invoke('sync:get-state'),
+    forceMonitoring: () => 
+      ipcRenderer.invoke('sync:force-monitoring'),
   },
 
   // File operations
@@ -120,6 +127,8 @@ const api = {
       ipcRenderer.invoke('shell:open-external', url),
     openPath: (path: string) =>
       ipcRenderer.invoke('shell:open-path', path),
+    openFile: (filePath: string) =>
+      ipcRenderer.invoke('shell:open-file', filePath),
   },
   
   // Payment operations
@@ -166,6 +175,9 @@ const api = {
   },
   removeWalletInfoUpdatedListener: () => {
     ipcRenderer.removeAllListeners('wallet-info-updated');
+  },
+  removeSyncProgressListener: () => {
+    ipcRenderer.removeAllListeners('sync:progress');
   },
   
   // Upload progress events
@@ -235,8 +247,8 @@ const api = {
 
   // Enhanced file operations
   multiFiles: {
-    getUploadsByMapping: (mappingId: string) =>
-      ipcRenderer.invoke('files:get-uploads-by-mapping', mappingId),
+    getUploadsByDrive: (driveId: string) =>
+      ipcRenderer.invoke('files:get-uploads-by-mapping', driveId), // TODO: Rename IPC channel
   },
 
   // Error reporting
@@ -249,9 +261,18 @@ const api = {
     }) => ipcRenderer.invoke('error:report', errorData),
   },
 
+  // System operations
+  system: {
+    getEnv: (key: string) =>
+      ipcRenderer.invoke('system:get-env', key),
+  },
+
   // Event listeners
   onSyncStatusUpdate: (callback: (status: any) => void) => {
     ipcRenderer.on('sync:status-update', (_, status) => callback(status));
+  },
+  onSyncProgress: (callback: (progress: any) => void) => {
+    ipcRenderer.on('sync:progress', (_, progress) => callback(progress));
   },
   onDriveUpdate: (callback: () => void) => {
     ipcRenderer.on('drive:update', () => callback());

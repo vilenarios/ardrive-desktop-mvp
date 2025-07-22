@@ -7,6 +7,11 @@ import { DatabaseManager } from './database-manager';
 import { VersionManager, ChangeType } from './version-manager';
 import { FileUpload, SyncStatus, PendingUpload } from '../types';
 import { turboManager } from './turbo-manager';
+import { SyncProgressTracker } from './sync/SyncProgressTracker';
+import { FileStateManager } from './sync/FileStateManager';
+import { CostCalculator } from './sync/CostCalculator';
+import { UploadQueueManager } from './sync/UploadQueueManager';
+import { DownloadManager } from './sync/DownloadManager';
 
 export class SyncManager {
   private watcher: chokidar.FSWatcher | null = null;
@@ -14,31 +19,68 @@ export class SyncManager {
   private driveId: string | null = null;
   private rootFolderId: string | null = null;
   private isActive = false;
-  private uploadQueue: Map<string, FileUpload> = new Map();
+  // REMOVED: uploadQueue - now managed by UploadQueueManager
   private arDrive: ArDrive | null = null;
   private versionManager: VersionManager;
+  private progressTracker: SyncProgressTracker;
+  private fileStateManager: FileStateManager;
+  private costCalculator: CostCalculator;
+  private uploadQueueManager: UploadQueueManager;
+  private downloadManager: DownloadManager;
   private pendingDeletes = new Map<string, NodeJS.Timeout>();
   private pendingFolderDeletes = new Map<string, NodeJS.Timeout>();
-  private isDownloading = false; // Flag to indicate when downloads are in progress
-  private fileProcessingQueue = new Map<string, NodeJS.Timeout>(); // Debounce file events
-  private processingFiles = new Set<string>(); // Track files currently being processed
-  private recentlyDownloadedFiles = new Set<string>(); // Track recently downloaded file paths
-  private downloadingFiles = new Map<string, Promise<void>>(); // Track files being downloaded with their completion promise
-  private currentMappingId: string | null = null; // Track current drive mapping
+  // REMOVED: File state tracking properties - now managed by FileStateManager
+  
+  // New sync state management
+  private syncState: 'idle' | 'syncing' | 'monitoring' = 'idle';
+  private syncPromise: Promise<void> | null = null;
+  private totalItemsToSync = 0;
+  private foldersToCreate = 0;
+  private filesToDownload = 0;
 
   constructor(private databaseManager: DatabaseManager) {
     this.versionManager = new VersionManager(databaseManager);
+    this.progressTracker = new SyncProgressTracker();
+    this.fileStateManager = new FileStateManager();
+    this.costCalculator = new CostCalculator();
+    
+    // UploadQueueManager needs a callback for uploading files
+    this.uploadQueueManager = new UploadQueueManager(
+      databaseManager,
+      this.progressTracker,
+      (upload) => this.uploadFile(upload)
+    );
+    
+    // DownloadManager needs references to be set later
+    this.downloadManager = new DownloadManager(
+      databaseManager,
+      this.fileStateManager,
+      this.progressTracker,
+      null, // ArDrive will be set later
+      null, // driveId will be set later
+      null, // rootFolderId will be set later
+      null  // syncFolderPath will be set later
+    );
+  }
+
+  private emitSyncProgress(progress: any) {
+    this.progressTracker.emitSyncProgress(progress);
   }
 
   setSyncFolder(folderPath: string) {
     console.log('SyncManager.setSyncFolder:', folderPath);
     this.syncFolderPath = folderPath;
     this.versionManager.setSyncFolder(folderPath);
+    // Update download manager with new path
+    if (this.driveId && this.rootFolderId) {
+      this.downloadManager.setDriveInfo(this.driveId, this.rootFolderId, folderPath);
+    }
   }
 
   setArDrive(arDrive: ArDrive) {
     console.log('SyncManager.setArDrive - ArDrive instance set');
     this.arDrive = arDrive;
+    this.downloadManager.setArDrive(arDrive);
   }
 
   async startSync(driveId: string, rootFolderId: string, driveName?: string): Promise<boolean> {
@@ -47,64 +89,126 @@ export class SyncManager {
       rootFolderId,
       driveName,
       hasSyncFolder: !!this.syncFolderPath,
-      hasArDrive: !!this.arDrive
+      hasArDrive: !!this.arDrive,
+      currentState: this.syncState
     });
     
     if (!this.syncFolderPath || !this.arDrive) {
       throw new Error('Sync folder and ArDrive instance must be set');
     }
 
-    // Note: The drive folder is already created in DriveAndSyncSetup.tsx
-    // We should NOT create another nested folder here
-    console.log(`Starting sync for folder: ${this.syncFolderPath}`);
+    if (this.syncState !== 'idle') {
+      console.log('Sync already in progress or monitoring active, current state:', this.syncState);
+      
+      // If already monitoring, just return true (sync is working)
+      if (this.syncState === 'monitoring') {
+        console.log('Already in monitoring state, file watching should be active');
+        return true;
+      }
+      
+      return false;
+    }
 
+    this.syncState = 'syncing';
     this.driveId = driveId;
     this.rootFolderId = rootFolderId;
-    this.isActive = true;
+    
+    // Update download manager with drive info
+    if (this.syncFolderPath) {
+      this.downloadManager.setDriveInfo(driveId, rootFolderId, this.syncFolderPath);
+    }
 
-    // Load existing processed files from database
-    const processedFiles = await this.databaseManager.getProcessedFiles();
-    console.log(`Loaded ${processedFiles.length} processed files from database`);
-
-    // Download existing files from ArDrive to local folder
-    this.isDownloading = true;
-    let filesWereDownloaded = false;
     try {
-      // Track if we actually downloaded any files
-      const downloadsBefore = await this.databaseManager.getDownloads();
-      await this.downloadExistingDriveFiles();
-      const downloadsAfter = await this.databaseManager.getDownloads();
-      filesWereDownloaded = downloadsAfter.length > downloadsBefore.length;
+      console.log('🚀 About to perform full drive sync...');
+      // Step 1: Complete full drive sync (no file watcher yet)
+      await this.performFullDriveSync();
       
-      if (filesWereDownloaded) {
-        console.log('Files were downloaded, waiting for database transactions to complete...');
-        await new Promise(resolve => setTimeout(resolve, 5000));
-      }
-    } finally {
-      this.isDownloading = false;
+      console.log('✅ Full drive sync completed, starting file monitoring...');
+      
+      // Step 2: Only start monitoring after sync is complete
+      this.syncState = 'monitoring';
+      this.isActive = true;
+      await this.startFileWatcher();
+      
+      console.log('🎯 File watcher started, sync state is now:', this.syncState);
+      
+      // Start processing upload queue
+      this.uploadQueueManager.startProcessing();
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to start sync:', error);
+      this.syncState = 'idle';
+      this.isActive = false;
+      throw error;
     }
+  }
 
-    // Only scan existing files if we didn't just download files
-    // The file watcher will handle any new files added after this point
-    if (!filesWereDownloaded) {
-      console.log('No files were downloaded, scanning existing files...');
-      await this.scanExistingFiles();
-    } else {
-      console.log('Skipping initial file scan since files were just downloaded');
-    }
-
-    // Start watching for new files
-    console.log('Starting file watcher for:', this.syncFolderPath);
-    this.watcher = chokidar.watch(this.syncFolderPath, {
-      ignored: /(^|[\/\\])\../, // ignore dotfiles
-      persistent: true,
-      ignoreInitial: true // We've already scanned existing files
+  // NEW: Complete drive sync without file monitoring
+  private async performFullDriveSync(): Promise<void> {
+    console.log('🔄 Starting full drive sync (no local monitoring)...');
+    
+    this.emitSyncProgress({
+      phase: 'starting',
+      description: 'Initializing drive sync...'
     });
 
-    // File events
+    // Small delay to ensure UI shows the starting phase
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Step 1: Get authoritative drive state
+    await this.downloadManager.syncDriveMetadata();
+    
+    // Step 2: Create all folder structure
+    await this.downloadManager.createAllFolders();
+    
+    // Step 3: Download all missing files
+    await this.downloadManager.downloadMissingFilesWithProgress();
+    
+    // Step 4: Verify sync completeness
+    await this.downloadManager.verifySyncState();
+    
+    // Small delay to ensure user sees the verification complete
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    this.emitSyncProgress({
+      phase: 'complete',
+      description: 'Drive sync completed successfully'
+    });
+    
+    console.log('✅ Full drive sync completed');
+  }
+
+  // NEW: Start file watcher only after sync complete
+  private async startFileWatcher(): Promise<void> {
+    if (this.watcher) {
+      await this.watcher.close();
+    }
+    
+    console.log('👁️ Starting file monitoring (sync complete)...');
+    console.log(`🔍 Watching folder: ${this.syncFolderPath}`);
+    console.log(`📊 Current sync state: ${this.syncState}`);
+    
+    this.watcher = chokidar.watch(this.syncFolderPath!, {
+      ignored: /(^|[\/\\])\../, // ignore dotfiles
+      persistent: true,
+      ignoreInitial: true, // Critical: ignore existing files
+      awaitWriteFinish: {
+        stabilityThreshold: 1000,
+        pollInterval: 100
+      }
+    });
+
+    // Only handle NEW changes after sync
     this.watcher.on('add', (filePath) => {
-      console.log('New file detected:', filePath);
+      console.log('🆕 New file detected by watcher:', filePath);
+      console.log(`📊 Current sync state when file detected: ${this.syncState}`);
       this.handleFileAdd(filePath);
+    });
+
+    this.watcher.on('addDir', (dirPath) => {
+      console.log('New folder detected:', dirPath);
+      this.handleFolderAdd(dirPath);
     });
 
     this.watcher.on('change', (filePath) => {
@@ -117,50 +221,53 @@ export class SyncManager {
       this.handleFileDelete(filePath);
     });
 
-    // Folder events
-    this.watcher.on('addDir', (dirPath) => {
-      console.log('New folder detected:', dirPath);
-      this.handleFolderAdd(dirPath);
-    });
-
     this.watcher.on('unlinkDir', (dirPath) => {
       console.log('Folder deleted:', dirPath);
       this.handleFolderDelete(dirPath);
     });
 
-    this.watcher.on('ready', () => {
-      console.log('File watcher is ready and monitoring for changes');
-    });
-
     this.watcher.on('error', (error) => {
-      console.error('Watcher error:', error);
+      console.error('File watcher error:', error);
     });
-
-    // Start processing upload queue
-    this.processUploadQueue();
-
-    return true;
   }
 
   async stopSync(): Promise<boolean> {
     this.isActive = false;
+    this.syncState = 'idle';
     
     if (this.watcher) {
       await this.watcher.close();
       this.watcher = null;
     }
 
-    // Clear all pending file processing timeouts
-    for (const [filePath, timeout] of this.fileProcessingQueue) {
-      clearTimeout(timeout);
-      console.log(`Cleared pending timeout for: ${filePath}`);
-    }
-    this.fileProcessingQueue.clear();
+    // Stop upload queue processing
+    this.uploadQueueManager.stopProcessing();
     
-    // Clear processing files set
-    this.processingFiles.clear();
+    // Clear all pending file processing timeouts
+    this.fileStateManager.clearAllProcessing();
 
     return true;
+  }
+
+  // DEBUG: Method to check current sync state
+  getCurrentSyncState(): string {
+    return this.syncState;
+  }
+
+  // DEBUG: Method to force file monitoring if needed
+  async forceStartFileMonitoring(): Promise<void> {
+    console.log('🔧 Force starting file monitoring...');
+    console.log(`Current state: ${this.syncState}, isActive: ${this.isActive}`);
+    
+    if (!this.syncFolderPath) {
+      throw new Error('No sync folder set');
+    }
+    
+    this.syncState = 'monitoring';
+    this.isActive = true;
+    await this.startFileWatcher();
+    
+    console.log('✅ File monitoring force-started');
   }
 
   async getStatus(): Promise<SyncStatus> {
@@ -169,7 +276,7 @@ export class SyncManager {
     const uploadedFiles = uploads.filter(u => u.status === 'completed').length;
     const failedFiles = uploads.filter(u => u.status === 'failed').length;
 
-    const currentUpload = Array.from(this.uploadQueue.values()).find(u => u.status === 'uploading');
+    const currentUpload = this.uploadQueueManager.getCurrentUpload();
 
     return {
       isActive: this.isActive,
@@ -183,34 +290,18 @@ export class SyncManager {
   // Add approved upload to the processing queue
   addToUploadQueue(upload: FileUpload): void {
     console.log(`Adding approved upload to processing queue: ${upload.fileName}`);
-    this.uploadQueue.set(upload.id, upload);
+    this.uploadQueueManager.addToQueue(upload);
   }
   
   // Cancel an upload
   cancelUpload(uploadId: string): void {
     console.log(`Cancelling upload: ${uploadId}`);
-    const upload = this.uploadQueue.get(uploadId);
-    if (upload) {
-      // Remove from queue
-      this.uploadQueue.delete(uploadId);
-      console.log(`Upload ${uploadId} removed from queue`);
-    }
+    this.uploadQueueManager.cancelUpload(uploadId);
   }
   
   // Emit upload progress event
   private emitUploadProgress(uploadId: string, progress: number, status: 'uploading' | 'completed' | 'failed', error?: string): void {
-    // Import BrowserWindow here to avoid circular dependency
-    const { BrowserWindow } = require('electron');
-    const mainWindow = BrowserWindow.getAllWindows()[0];
-    
-    if (mainWindow) {
-      mainWindow.webContents.send('upload:progress', {
-        uploadId,
-        progress,
-        status,
-        error
-      });
-    }
+    this.progressTracker.emitUploadProgress(uploadId, progress, status, error);
   }
 
   // Force re-download of existing drive files
@@ -220,16 +311,11 @@ export class SyncManager {
       throw new Error('Sync not properly initialized');
     }
     
-    // Set downloading flag to prevent file watcher from processing downloaded files
-    this.isDownloading = true;
-    try {
-      await this.downloadExistingDriveFiles();
-      
-      // Wait a bit more to ensure all database transactions are complete
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    } finally {
-      this.isDownloading = false;
-    }
+    // Download existing files (the DownloadManager handles the downloading flag internally)
+    await this.downloadExistingDriveFiles();
+    
+    // Wait a bit more to ensure all database transactions are complete
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
   // Scan downloaded files and add them to database
@@ -590,7 +676,7 @@ export class SyncManager {
     
     // First, sync all metadata to cache
     try {
-      await this.syncDriveMetadata();
+      await this.downloadManager.syncDriveMetadata();
     } catch (error) {
       console.error('Failed to sync drive metadata:', error);
       console.error('Error details:', {
@@ -710,19 +796,18 @@ export class SyncManager {
 
       // CRITICAL: Add file to recently downloaded BEFORE downloading
       // This prevents the file watcher from picking it up
-      this.recentlyDownloadedFiles.add(localFilePath);
-      console.log(`Added ${localFilePath} to recently downloaded files BEFORE download`);
+      this.fileStateManager.markAsDownloaded(localFilePath);
       
       // Check if this file is already being downloaded
-      if (this.downloadingFiles.has(localFilePath)) {
+      if (this.fileStateManager.isDownloading(localFilePath)) {
         console.log(`File is already being downloaded: ${localFilePath}`);
-        await this.downloadingFiles.get(localFilePath);
+        await this.fileStateManager.getDownloadPromise(localFilePath);
         return;
       }
       
       // Create a promise for this download
       const downloadPromise = this.performFileDownload(fileData, localFilePath, dir, downloadId);
-      this.downloadingFiles.set(localFilePath, downloadPromise);
+      this.fileStateManager.setDownloadPromise(localFilePath, downloadPromise);
 
       // Pre-register the file in the processed database with a placeholder
       // This ensures that even if the file watcher detects it, it will be marked as processed
@@ -745,7 +830,7 @@ export class SyncManager {
         await downloadPromise;
       } finally {
         // Remove from tracking when done
-        this.downloadingFiles.delete(localFilePath);
+        this.fileStateManager.clearDownload(localFilePath);
       }
     } catch (error) {
       console.error(`Failed to download file ${file.name}:`, error);
@@ -886,11 +971,7 @@ export class SyncManager {
       console.log(`  - Source: download`);
 
       // Keep file in recently downloaded set for extended period
-      // Remove from recently downloaded after a longer delay
-      setTimeout(() => {
-        this.recentlyDownloadedFiles.delete(localFilePath);
-        console.log(`Removed ${localFilePath} from recently downloaded files`);
-      }, 30000); // Keep in set for 30 seconds (increased from 15)
+      // (This is now handled automatically by FileStateManager.markAsDownloaded)
 
       console.log(`Successfully completed download: ${fileData.name}`);
       
@@ -946,93 +1027,95 @@ export class SyncManager {
 
   // Enhanced file event handlers with versioning support
   private async handleFileAdd(filePath: string) {
+    console.log(`🎯 handleFileAdd called for: ${filePath}`);
+    console.log(`📊 Current sync state: ${this.syncState}`);
+    console.log(`🔧 Is active: ${this.isActive}`);
+    
+    // Skip processing if not in monitoring state
+    if (this.syncState !== 'monitoring') {
+      console.log(`🚫 Ignoring file add due to sync state: ${filePath} (state: ${this.syncState})`);
+      return;
+    }
+
     // Skip processing if we're currently downloading files
-    if (this.isDownloading) {
+    if (this.downloadManager.isDownloadInProgress()) {
       console.log(`Skipping file add event during download: ${filePath}`);
       return;
     }
 
     // Skip processing if this file was recently downloaded
-    if (this.recentlyDownloadedFiles.has(filePath)) {
+    if (this.fileStateManager.isRecentlyDownloaded(filePath)) {
       console.log(`Skipping file add event for recently downloaded file: ${filePath}`);
       return;
     }
     
     // Check if this file is currently being downloaded
-    if (this.downloadingFiles.has(filePath)) {
+    if (this.fileStateManager.isDownloading(filePath)) {
       console.log(`Skipping file add event for file being downloaded: ${filePath}`);
       // Wait for download to complete before processing
-      await this.downloadingFiles.get(filePath);
+      await this.fileStateManager.getDownloadPromise(filePath);
       return;
     }
 
     // Clear any existing timeout for this file
-    const existingTimeout = this.fileProcessingQueue.get(filePath);
-    if (existingTimeout) {
-      clearTimeout(existingTimeout);
-      console.log(`Cleared existing timeout for: ${filePath}`);
-    }
+    this.fileStateManager.clearProcessingTimeout(filePath);
 
     // Debounce file events - wait 500ms before processing
     const timeout = setTimeout(async () => {
-      this.fileProcessingQueue.delete(filePath);
+      this.fileStateManager.clearProcessingTimeout(filePath);
       
       // Check if file is already being processed
-      if (this.processingFiles.has(filePath)) {
+      if (this.fileStateManager.isFileBeingProcessed(filePath)) {
         console.log(`File already being processed, skipping: ${filePath}`);
         return;
       }
 
       // Mark file as being processed
-      this.processingFiles.add(filePath);
+      this.fileStateManager.markAsProcessing(filePath);
       
       try {
         await this.handleFileWithVersioning(filePath, 'create');
       } finally {
         // Remove from processing set when done
-        this.processingFiles.delete(filePath);
+        this.fileStateManager.clearProcessing(filePath);
       }
     }, 500);
 
-    this.fileProcessingQueue.set(filePath, timeout);
+    this.fileStateManager.setProcessingTimeout(filePath, timeout);
   }
 
   private async handleFileChange(filePath: string) {
     // Skip processing if we're currently downloading files
-    if (this.isDownloading) {
+    if (this.downloadManager.isDownloadInProgress()) {
       console.log(`Skipping file change event during download: ${filePath}`);
       return;
     }
 
     // Clear any existing timeout for this file
-    const existingTimeout = this.fileProcessingQueue.get(filePath);
-    if (existingTimeout) {
-      clearTimeout(existingTimeout);
-      console.log(`Cleared existing timeout for: ${filePath}`);
-    }
+    this.fileStateManager.clearProcessingTimeout(filePath);
 
     // Debounce file events - wait 500ms before processing
     const timeout = setTimeout(async () => {
-      this.fileProcessingQueue.delete(filePath);
+      this.fileStateManager.clearProcessingTimeout(filePath);
       
       // Check if file is already being processed
-      if (this.processingFiles.has(filePath)) {
+      if (this.fileStateManager.isFileBeingProcessed(filePath)) {
         console.log(`File already being processed, skipping: ${filePath}`);
         return;
       }
 
       // Mark file as being processed
-      this.processingFiles.add(filePath);
+      this.fileStateManager.markAsProcessing(filePath);
       
       try {
         await this.handleFileWithVersioning(filePath, 'update');
       } finally {
         // Remove from processing set when done
-        this.processingFiles.delete(filePath);
+        this.fileStateManager.clearProcessing(filePath);
       }
     }, 500);
 
-    this.fileProcessingQueue.set(filePath, timeout);
+    this.fileStateManager.setProcessingTimeout(filePath, timeout);
   }
 
   private async handleFileDelete(filePath: string) {
@@ -1070,12 +1153,25 @@ export class SyncManager {
 
   private async handleFolderAdd(dirPath: string) {
     try {
+      // Skip processing if not in monitoring state
+      if (this.syncState !== 'monitoring') {
+        console.log(`🚫 Ignoring folder add during sync: ${dirPath}`);
+        return;
+      }
+
       if (!this.syncFolderPath || dirPath === this.syncFolderPath) {
         return; // Skip root folder
       }
 
       const relativePath = this.versionManager.getRelativePath(dirPath);
       const folderName = path.basename(dirPath);
+      
+      // Check if this folder already exists in our database
+      const existingFolder = await this.databaseManager.getFolderByPath(dirPath);
+      if (existingFolder && !existingFolder.isDeleted) {
+        console.log(`Folder already exists in database: ${relativePath}, skipping`);
+        return; // Folder already tracked, no need to add to queue
+      }
       
       // Check if this folder was recently deleted (might be a rename)
       for (const [deletedPath, timeout] of this.pendingFolderDeletes) {
@@ -1110,34 +1206,29 @@ export class SyncManager {
         arweaveFolderId: undefined // Will be set after upload
       });
       
-      // Add to upload queue for approval
-      const folderUpload: FileUpload = {
-        filePath: dirPath,
-        relativePath,
-        fileHash: 'folder', // Special marker for folders
-        version: 1,
-        size: 0,
-        contentType: 'folder',
-        status: 'pending',
-        method: 'ar', // Folders always use AR
-        isNewFile: true,
-        uploadId: folderId
+      // Add to pending uploads table for user approval (NOT to uploadQueue yet)
+      const pendingUpload: Omit<PendingUpload, 'createdAt'> = {
+        id: folderId,
+        driveId: this.driveId || undefined,
+        localPath: dirPath,
+        fileName: folderName,
+        fileSize: 0,
+        mimeType: 'folder',
+        estimatedCost: this.costCalculator.getFolderCost(),
+        status: 'awaiting_approval',
+        conflictType: 'none'
       };
       
-      this.uploadQueue.set(dirPath, folderUpload);
-      await this.databaseManager.addPendingUpload({
-        ...folderUpload,
-        mappingId: this.currentMappingId || '',
-        createdAt: new Date(),
-        arCost: '0' // Folder creation cost is minimal
-      });
+      await this.databaseManager.addPendingUpload(pendingUpload);
       
-      // Notify renderer about new pending folder
-      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send('sync:queue-updated', Array.from(this.uploadQueue.values()));
+      // Notify renderer about new pending folder (don't send uploadQueue since folder isn't in it yet)
+      const { BrowserWindow } = require('electron');
+      const mainWindow = BrowserWindow.getAllWindows()[0];
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('sync:pending-uploads-updated');
       }
       
-      console.log(`Folder added to upload queue: ${relativePath}`);
+      console.log(`Folder added to pending uploads queue: ${relativePath}`);
     } catch (error) {
       console.error(`Error handling folder add for ${dirPath}:`, error);
     }
@@ -1223,12 +1314,12 @@ export class SyncManager {
     console.log(`Processing new file: ${filePath}`);
     
     // FIRST CHECK: Skip if file is being downloaded or was recently downloaded
-    if (this.downloadingFiles.has(filePath)) {
+    if (this.fileStateManager.isDownloading(filePath)) {
       console.log(`✓ File is currently being downloaded, skipping: ${filePath}`);
       return;
     }
     
-    if (this.recentlyDownloadedFiles.has(filePath)) {
+    if (this.fileStateManager.isRecentlyDownloaded(filePath)) {
       console.log(`✓ File was recently downloaded, skipping: ${filePath}`);
       return;
     }
@@ -1246,7 +1337,7 @@ export class SyncManager {
       console.log(`File stats: size=${stats.size} bytes`);
       
       // Skip files larger than 100MB for MVP
-      if (stats.size > 100 * 1024 * 1024) {
+      if (this.costCalculator.isFileTooBig(stats.size)) {
         console.log(`Skipping large file: ${filePath} (${stats.size} bytes)`);
         return;
       }
@@ -1294,7 +1385,7 @@ export class SyncManager {
       }
 
       // Double check if this file was recently downloaded
-      if (this.recentlyDownloadedFiles.has(filePath)) {
+      if (this.fileStateManager.isRecentlyDownloaded(filePath)) {
         console.log(`✓ File was recently downloaded, skipping: ${filePath}`);
         return;
       }
@@ -1315,67 +1406,45 @@ export class SyncManager {
       // Ensure the parent folder is tracked in the database
       const fileDir = path.dirname(filePath);
       if (fileDir !== this.syncFolderPath) {
-        const folder = await this.databaseManager.getFolderByPath(fileDir);
-        if (!folder) {
-          console.log(`Parent folder not tracked yet, adding: ${fileDir}`);
-          // Add the folder to the database (without Arweave ID for now)
-          await this.handleFolderAdd(fileDir);
+        console.log(`🔍 Checking parent folder for file: ${filePath}`);
+        console.log(`  - File directory: ${fileDir}`);
+        console.log(`  - Sync folder path: ${this.syncFolderPath}`);
+        
+        // First check the drive_metadata_cache table for the folder
+        const folderInDriveMetadata = await this.databaseManager.checkFolderInDriveMetadata(fileDir);
+        console.log(`  - Drive metadata check result:`, folderInDriveMetadata ? {
+          fileId: folderInDriveMetadata.fileId,
+          name: folderInDriveMetadata.name,
+          type: folderInDriveMetadata.type,
+          localPath: folderInDriveMetadata.localPath
+        } : 'null');
+        
+        if (folderInDriveMetadata) {
+          console.log(`  - ✅ Parent folder exists in drive metadata: ${fileDir}`);
+          // Folder exists in drive metadata, no need to add
+        } else {
+          // Fallback to checking the folder_structure table
+          const folder = await this.databaseManager.getFolderByPath(fileDir);
+          console.log(`  - Folder structure lookup result for "${fileDir}":`, folder ? {
+            id: folder.id,
+            folderPath: folder.folderPath,
+            isDeleted: folder.isDeleted,
+            arweaveFolderId: folder.arweaveFolderId
+          } : 'null');
+          
+          if (!folder) {
+            console.log(`  - ❌ Parent folder not tracked in either table, adding: ${fileDir}`);
+            // Add the folder to the database (without Arweave ID for now)
+            await this.handleFolderAdd(fileDir);
+          } else {
+            console.log(`  - ✅ Parent folder already exists in folder structure: ${fileDir}, skipping handleFolderAdd`);
+          }
         }
       }
       
       // Calculate estimated costs for both AR and Turbo
-      // ArDrive uses ~1 winston per byte, convert to AR (1 AR = 1e12 winston)
-      const estimatedCostWinc = stats.size; // winston
-      const estimatedCost = estimatedCostWinc / 1e12; // Convert to AR
-      let estimatedTurboCost: number | undefined;
-      let recommendedMethod: 'ar' | 'turbo' = 'ar';
-      
-      // Always try to get Turbo cost and check balance - this enables the option in UI
-      let hasSufficientTurboBalance = false;
-      try {
-        if (turboManager.isInitialized()) {
-          console.log('Turbo manager is initialized, getting cost estimate...');
-          const turboCosts = await turboManager.getUploadCosts(stats.size);
-          estimatedTurboCost = parseFloat(turboCosts.winc) / 1e12; // Convert winc to AR equivalent
-          console.log(`Turbo cost calculated: ${estimatedTurboCost} AR`);
-          
-          // Check if user has sufficient Turbo balance
-          try {
-            const balance = await turboManager.getBalance();
-            const balanceInWinc = parseFloat(balance.winc);
-            const requiredWinc = parseFloat(turboCosts.winc);
-            hasSufficientTurboBalance = balanceInWinc >= requiredWinc;
-            console.log(`Turbo balance check: Required ${(requiredWinc/1e12).toFixed(6)} AR, Available ${balance.ar} AR, Sufficient: ${hasSufficientTurboBalance}`);
-          } catch (balanceError) {
-            console.log('Failed to check Turbo balance:', balanceError);
-            hasSufficientTurboBalance = false;
-          }
-          
-          // Recommend Turbo for files > 1MB or if significantly cheaper (and user has balance)
-          const isLargeFile = stats.size > 1024 * 1024;
-          const isCheaper = estimatedTurboCost < estimatedCost * 0.9; // 10% cheaper
-          
-          if (hasSufficientTurboBalance && (isLargeFile || isCheaper)) {
-            recommendedMethod = 'turbo';
-            console.log('Recommending Turbo due to:', { isLargeFile, isCheaper, hasSufficientTurboBalance });
-          }
-        } else {
-          // Even if not initialized, show Turbo option with estimated cost
-          // This allows users to see the option and get Turbo Credits if needed
-          console.log('Turbo manager not initialized, using estimated cost...');
-          
-          // Rough estimate: Turbo is typically similar cost to AR but faster
-          // We'll set it to a slightly higher cost to be conservative
-          estimatedTurboCost = estimatedCost * 1.1; // 10% more than AR, already in AR units
-          console.log(`Turbo estimated cost (not initialized): ${estimatedTurboCost} AR`);
-          hasSufficientTurboBalance = false; // Can't have balance if not initialized
-        }
-      } catch (turboError) {
-        console.warn('Failed to get Turbo cost estimate:', turboError);
-        // Even on error, provide estimated cost so users see the option
-        estimatedTurboCost = estimatedCost * 1.1; // Conservative estimate, already in AR
-        hasSufficientTurboBalance = false;
-      }
+      const costs = await this.costCalculator.calculateUploadCosts(stats.size);
+      const { estimatedCost, estimatedTurboCost, recommendedMethod, hasSufficientTurboBalance } = costs;
       
       // TODO: Add conflict detection logic here
       const conflictType = 'none'; // For now, assume no conflicts
@@ -1423,11 +1492,12 @@ export class SyncManager {
       // Now that we've confirmed it's not a downloaded file, create the pending upload
       const pendingUpload: Omit<PendingUpload, 'createdAt'> = {
         id: crypto.randomUUID(),
+        driveId: this.driveId || undefined,
         localPath: filePath,
         fileName: path.basename(filePath),
         fileSize: stats.size,
         estimatedCost,
-        estimatedTurboCost,
+        estimatedTurboCost: estimatedTurboCost || undefined,
         recommendedMethod,
         hasSufficientTurboBalance,
         conflictType,
@@ -1435,6 +1505,9 @@ export class SyncManager {
         status: 'awaiting_approval'
       };
 
+      // Before adding the file, ensure all parent folders are in the queue
+      await this.ensureParentFoldersInQueue(filePath);
+      
       await this.databaseManager.addPendingUpload(pendingUpload);
       
       // Create file version (without upload info yet, will be updated after upload)
@@ -1454,8 +1527,8 @@ export class SyncManager {
       }
       
       // Simple cost formatting (already in AR)
-      const costInAR = estimatedCost.toFixed(6);
-      const turboCostDisplay = estimatedTurboCost ? estimatedTurboCost.toFixed(6) : 'N/A';
+      const costInAR = this.costCalculator.formatCostInAR(estimatedCost);
+      const turboCostDisplay = estimatedTurboCost ? this.costCalculator.formatCostInAR(estimatedTurboCost) : 'N/A';
       console.log(`File added to pending approval queue: ${pendingUpload.fileName} (AR Cost: ${costInAR} AR, Turbo Cost: ${turboCostDisplay} AR, Change: ${changeType})`);
 
     } catch (error) {
@@ -1463,28 +1536,96 @@ export class SyncManager {
     }
   }
 
-  private async processUploadQueue() {
-    console.log('Starting upload queue processor');
-    while (this.isActive) {
-      const pendingUploads = Array.from(this.uploadQueue.values())
-        .filter(u => u.status === 'pending');
-
-      if (pendingUploads.length > 0) {
-        console.log(`Processing ${pendingUploads.length} pending uploads`);
-        const upload = pendingUploads[0];
-        await this.uploadFile(upload);
-      } else {
-        // console.log('No pending uploads, waiting...');
-      }
-
-      // Wait before checking again
-      await new Promise(resolve => setTimeout(resolve, 1000));
+  // REMOVED: processUploadQueue and sortUploadsForProcessing - replaced by UploadQueueManager
+  
+  private async ensureParentFoldersInQueue(filePath: string): Promise<void> {
+    if (!this.syncFolderPath) return;
+    
+    const fileDir = path.dirname(filePath);
+    
+    // If the file is directly in the sync folder, no parent folders needed
+    if (fileDir === this.syncFolderPath) return;
+    
+    // Get all parent directories from the file's directory up to the sync folder
+    const dirsToCheck: string[] = [];
+    let currentDir = fileDir;
+    
+    while (currentDir !== this.syncFolderPath && currentDir.startsWith(this.syncFolderPath)) {
+      dirsToCheck.unshift(currentDir); // Add to beginning to maintain parent->child order
+      currentDir = path.dirname(currentDir);
     }
-    console.log('Upload queue processor stopped');
+    
+    console.log(`Checking parent folders for ${filePath}:`, dirsToCheck.length > 0 ? dirsToCheck : 'None (file in root)');
+    
+    // Check each directory and add to pending uploads if needed
+    for (const dirPath of dirsToCheck) {
+      try {
+        // Check if folder exists in our database AND has been uploaded to Arweave
+        const existingFolder = await this.databaseManager.getFolderByPath(dirPath);
+        const isAlreadyOnArweave = existingFolder && existingFolder.arweaveFolderId;
+        
+        // Check if folder exists in drive metadata cache (another way to verify it's on Arweave)
+        const inDriveMetadata = await this.databaseManager.checkFolderInDriveMetadata(dirPath);
+        
+        // Check if it's already in pending uploads
+        const pendingUploads = await this.databaseManager.getPendingUploads();
+        const alreadyPending = pendingUploads.some(u => u.localPath === dirPath);
+        
+        // Only add to queue if:
+        // 1. Not already uploaded to Arweave
+        // 2. Not already in pending uploads
+        if (!isAlreadyOnArweave && !inDriveMetadata && !alreadyPending) {
+          console.log(`Adding parent folder to queue: ${dirPath}`);
+          
+          const folderName = path.basename(dirPath) + '/';
+          const relativePath = this.versionManager.getRelativePath(dirPath);
+          
+          // Add folder to database first (local tracking)
+          const folderId = crypto.randomUUID();
+          await this.databaseManager.addFolder({
+            id: folderId,
+            folderPath: dirPath,
+            relativePath,
+            parentPath: path.dirname(dirPath) !== this.syncFolderPath ? path.dirname(dirPath) : undefined,
+            arweaveFolderId: undefined // Will be set after upload
+          });
+          
+          // Add to pending uploads
+          const pendingUpload: Omit<PendingUpload, 'createdAt'> = {
+            id: folderId,
+            driveId: this.driveId || undefined,
+            localPath: dirPath,
+            fileName: folderName,
+            fileSize: 0,
+            mimeType: 'folder',
+            estimatedCost: this.costCalculator.getFolderCost(),
+            status: 'awaiting_approval',
+            conflictType: 'none'
+          };
+          
+          await this.databaseManager.addPendingUpload(pendingUpload);
+          console.log(`Parent folder added to pending uploads: ${relativePath}`);
+        } else {
+          // Log why we're skipping this folder
+          if (isAlreadyOnArweave) {
+            console.log(`Skipping folder ${dirPath} - already uploaded to Arweave (ID: ${existingFolder?.arweaveFolderId})`);
+          } else if (inDriveMetadata) {
+            console.log(`Skipping folder ${dirPath} - exists in drive metadata`);
+          } else if (alreadyPending) {
+            console.log(`Skipping folder ${dirPath} - already in pending uploads`);
+          }
+        }
+      } catch (error) {
+        console.error(`Error checking/adding parent folder ${dirPath}:`, error);
+      }
+    }
   }
 
   private async uploadFile(upload: FileUpload) {
-    console.log(`Starting upload for file: ${upload.fileName} using method: ${upload.uploadMethod || 'ar'}`);
+    const isFolder = upload.fileSize === 0 && upload.localPath.endsWith(upload.fileName);
+    const itemName = upload.fileName;
+    console.log(`Starting upload for ${isFolder ? 'folder' : 'file'}: ${itemName} using method: ${upload.uploadMethod || 'ar'}`);
+    
     if (!this.arDrive || !this.rootFolderId) {
       console.error('Cannot upload: ArDrive or rootFolderId not available');
       return;
@@ -1492,15 +1633,14 @@ export class SyncManager {
 
     try {
       // Update status to uploading
-      console.log(`Setting upload status to 'uploading' for ${upload.fileName}`);
+      console.log(`Setting upload status to 'uploading' for ${itemName}`);
       upload.status = 'uploading';
       await this.databaseManager.updateUpload(upload.id, { status: 'uploading' });
       
       // Emit uploading progress event
       this.emitUploadProgress(upload.id, 0, 'uploading');
 
-      // Use ArDrive Core for both AR and Turbo uploads
-      // The upload method is determined by ArDrive Core based on wallet configuration and payment method selection
+      // Use ArDrive Core for both files AND folders
       await this.uploadFileWithArDriveCore(upload);
       
       // Emit completion event
@@ -1523,11 +1663,78 @@ export class SyncManager {
   }
 
   private async uploadFileWithArDriveCore(upload: FileUpload) {
-    console.log(`Uploading ${upload.fileName} with ArDrive Core (method: ${upload.uploadMethod || 'ar'})`);
+    const isFolder = upload.fileSize === 0 && upload.localPath.endsWith(upload.fileName);
+    const itemName = upload.fileName;
+    console.log(`Uploading ${itemName} with ArDrive Core (method: ${upload.uploadMethod || 'ar'})`);
     
     try {
+      if (isFolder) {
+        // For folders, we need to create the folder on Arweave
+        const parentPath = path.dirname(upload.localPath);
+        let parentFolderId = this.rootFolderId;
+        
+        // Find parent folder ID for nested folders
+        if (parentPath !== this.syncFolderPath) {
+          const parentFolder = await this.databaseManager.getFolderByPath(parentPath);
+          if (parentFolder?.arweaveFolderId) {
+            parentFolderId = parentFolder.arweaveFolderId;
+          }
+        }
+        
+        console.log(`Creating folder "${itemName}" in parent folder: ${parentFolderId}`);
+        
+        // Check if folder already exists on Arweave
+        const existingFolder = await this.databaseManager.getFolderByPath(upload.localPath);
+        if (existingFolder?.arweaveFolderId) {
+          console.log(`Folder already exists on Arweave with ID: ${existingFolder.arweaveFolderId}`);
+          // Mark upload as completed
+          upload.status = 'completed';
+          await this.databaseManager.updateUpload(upload.id, { 
+            status: 'completed',
+            completedAt: new Date()
+          });
+          return;
+        }
+        
+        const result = await this.arDrive!.createPublicFolder({
+          parentFolderId: EID(parentFolderId!),
+          folderName: itemName
+        });
+        
+        if (result.created && result.created.length > 0) {
+          const createdFolder = result.created[0];
+          if (createdFolder.type === 'folder' && createdFolder.entityId) {
+            const arweaveFolderId = createdFolder.entityId.toString();
+            console.log(`✓ Folder created on Arweave with ID: ${arweaveFolderId}`);
+            
+            // Update the folder in database with the Arweave ID
+            if (existingFolder) {
+              await this.databaseManager.updateFolderArweaveId(existingFolder.id, arweaveFolderId);
+            } else {
+              // Add new folder record
+              await this.databaseManager.addFolder({
+                id: upload.id,
+                folderPath: upload.localPath,
+                relativePath: this.versionManager.getRelativePath(upload.localPath),
+                parentPath: parentPath !== this.syncFolderPath ? parentPath : undefined,
+                arweaveFolderId
+              });
+            }
+            
+            // Mark upload as completed
+            upload.status = 'completed';
+            await this.databaseManager.updateUpload(upload.id, { 
+              status: 'completed',
+              completedAt: new Date()
+            });
+          }
+        }
+        return;
+      }
+      
+      // For files, continue with existing logic
       // Check if this is a free Turbo upload (under 100KB)
-      const isFreeWithTurbo = upload.uploadMethod === 'turbo' && upload.fileSize < 100 * 1024;
+      const isFreeWithTurbo = upload.uploadMethod === 'turbo' && this.costCalculator.isFreeWithTurbo(upload.fileSize);
       if (isFreeWithTurbo) {
         console.log(`File ${upload.fileName} is under 100KB (${upload.fileSize} bytes) - should be FREE with Turbo`);
       }
@@ -1540,7 +1747,7 @@ export class SyncManager {
       const wrappedFile = wrapFileOrFolder(upload.localPath);
       
       // Check if using Turbo and configure appropriately
-      let uploadOptions: any = {
+      const uploadOptions: any = {
         entitiesToUpload: [
           {
             wrappedEntity: wrappedFile,
@@ -1617,7 +1824,7 @@ export class SyncManager {
           }
         } else if (error.message.includes('insufficient')) {
           // Check if this was supposed to be a free upload
-          const isFreeWithTurbo = upload.uploadMethod === 'turbo' && upload.fileSize < 100 * 1024;
+          const isFreeWithTurbo = upload.uploadMethod === 'turbo' && this.costCalculator.isFreeWithTurbo(upload.fileSize);
           if (isFreeWithTurbo) {
             errorMessage = `Upload failed: This file (${upload.fileSize} bytes) should be FREE with Turbo, but ArDrive reported insufficient balance. This may be a configuration issue.`;
             console.error('FREE UPLOAD FAILED:', {
@@ -1644,34 +1851,85 @@ export class SyncManager {
     // Get the directory containing the file
     const fileDir = path.dirname(filePath);
     
+    console.log(`🔍 getTargetFolderId for file: ${filePath}`);
+    console.log(`  - File directory: ${fileDir}`);
+    console.log(`  - Sync folder path: ${this.syncFolderPath}`);
+    
     // If file is in sync root, use root folder ID
     if (fileDir === this.syncFolderPath) {
+      console.log(`  - File is in sync root, using root folder ID: ${this.rootFolderId}`);
       return this.rootFolderId!;
     }
     
     // Find the Arweave folder ID for the file's directory
     const folder = await this.databaseManager.getFolderByPath(fileDir);
+    console.log(`  - Database lookup result:`, folder ? {
+      id: folder.id,
+      folderPath: folder.folderPath,
+      arweaveFolderId: folder.arweaveFolderId,
+      isDeleted: folder.isDeleted
+    } : 'null');
+    
     if (folder?.arweaveFolderId) {
+      console.log(`  - ✓ Found Arweave folder ID: ${folder.arweaveFolderId}`);
       return folder.arweaveFolderId;
     }
     
     // If folder doesn't exist on Arweave, create it first
-    console.log(`No Arweave folder found for ${fileDir}, creating folder structure...`);
-    try {
-      await this.ensureFolderStructure(fileDir);
-      
-      // Try to get the folder again after creation
-      const newFolder = await this.databaseManager.getFolderByPath(fileDir);
-      if (newFolder?.arweaveFolderId) {
-        return newFolder.arweaveFolderId;
+    console.log(`  - ❌ No Arweave folder found for ${fileDir}, creating folder structure...`);
+    
+    // Try multiple times to create the folder structure with retries
+    let retryCount = 0;
+    const maxRetries = 3;
+    let lastError: any = null;
+    
+    while (retryCount < maxRetries) {
+      try {
+        await this.ensureFolderStructure(fileDir);
+        
+        // Add a small delay to ensure folder creation is propagated
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Try to get the folder again after creation
+        const newFolder = await this.databaseManager.getFolderByPath(fileDir);
+        console.log(`  - After creation attempt ${retryCount + 1}, database lookup result:`, newFolder ? {
+          id: newFolder.id,
+          folderPath: newFolder.folderPath,
+          arweaveFolderId: newFolder.arweaveFolderId,
+          isDeleted: newFolder.isDeleted
+        } : 'null');
+        
+        if (newFolder?.arweaveFolderId) {
+          console.log(`  - ✓ Created folder successfully on attempt ${retryCount + 1}, using ID: ${newFolder.arweaveFolderId}`);
+          return newFolder.arweaveFolderId;
+        }
+        
+        // If we didn't get an Arweave ID, try again
+        retryCount++;
+        if (retryCount < maxRetries) {
+          console.log(`  - Folder creation didn't return Arweave ID, retrying (${retryCount}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+        }
+      } catch (error) {
+        lastError = error;
+        console.error(`Failed to create folder structure on attempt ${retryCount + 1}:`, error);
+        retryCount++;
+        
+        if (retryCount < maxRetries) {
+          console.log(`  - Retrying folder creation (${retryCount}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+        }
       }
-    } catch (error) {
-      console.error(`Failed to create folder structure for ${fileDir}:`, error);
     }
     
-    // Final fallback to root if folder creation failed
-    console.warn(`Failed to create folder structure for ${fileDir}, using root folder`);
-    return this.rootFolderId!;
+    // If we exhausted all retries, throw an error instead of using root
+    const errorMessage = `Failed to create folder structure for ${fileDir} after ${maxRetries} attempts. ` +
+                        `Please ensure the parent folder "${path.basename(fileDir)}" is created on ArDrive first.`;
+    console.error(errorMessage);
+    console.error('Last error:', lastError);
+    
+    // Instead of falling back to root, throw an error to prevent incorrect uploads
+    throw new Error(errorMessage);
   }
 
   // Ensure folder structure exists on Arweave before uploading files
@@ -1734,6 +1992,8 @@ export class SyncManager {
       const parentFolder = await this.databaseManager.getFolderByPath(parentPath);
       if (parentFolder?.arweaveFolderId) {
         parentFolderId = parentFolder.arweaveFolderId;
+      } else {
+        console.warn(`Parent folder ${parentPath} doesn't have Arweave ID yet, using root folder`);
       }
     }
     
@@ -1749,21 +2009,76 @@ export class SyncManager {
           const arweaveFolderId = createdFolder.entityId.toString();
           console.log(`✓ Folder created on Arweave with ID: ${arweaveFolderId}`);
           
-          // Add to database
-          await this.databaseManager.addFolder({
-            id: crypto.randomUUID(),
-            folderPath: dirPath,
-            relativePath,
-            parentPath: parentPath !== this.syncFolderPath ? parentPath : undefined,
-            arweaveFolderId
-          });
+          // Check if folder already exists in database
+          const existingFolder = await this.databaseManager.getFolderByPath(dirPath);
+          if (existingFolder) {
+            // Update existing folder with Arweave ID
+            console.log(`Updating existing folder record with Arweave ID`);
+            await this.databaseManager.updateFolderArweaveId(existingFolder.id, arweaveFolderId);
+          } else {
+            // Add new folder to database
+            console.log(`Adding new folder record with Arweave ID`);
+            await this.databaseManager.addFolder({
+              id: crypto.randomUUID(),
+              folderPath: dirPath,
+              relativePath,
+              parentPath: parentPath !== this.syncFolderPath ? parentPath : undefined,
+              arweaveFolderId
+            });
+          }
           
           // Small delay to ensure folder is fully propagated
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Failed to create folder ${folderName} on Arweave:`, error);
+      
+      // Handle "Entity name already exists" error by fetching the existing folder
+      if (error.message?.includes('Entity name already exists')) {
+        console.log(`Folder "${folderName}" already exists on Arweave, fetching its ID...`);
+        
+        try {
+          // List the parent folder contents to find the existing folder
+          const parentContents = await this.arDrive!.listPublicFolder({
+            folderId: EID(parentFolderId)
+          });
+          
+          // Find the folder by name
+          const existingFolder = parentContents.find(
+            item => item.entityType === 'folder' && item.name === folderName
+          );
+          
+          if (existingFolder && existingFolder.entityType === 'folder' && 'folderId' in existingFolder) {
+            const arweaveFolderId = existingFolder.folderId.toString();
+            console.log(`✓ Found existing folder on Arweave with ID: ${arweaveFolderId}`);
+            
+            // Update database with the existing folder ID
+            const dbFolder = await this.databaseManager.getFolderByPath(dirPath);
+            if (dbFolder) {
+              await this.databaseManager.updateFolderArweaveId(dbFolder.id, arweaveFolderId);
+            } else {
+              await this.databaseManager.addFolder({
+                id: crypto.randomUUID(),
+                folderPath: dirPath,
+                relativePath,
+                parentPath: parentPath !== this.syncFolderPath ? parentPath : undefined,
+                arweaveFolderId
+              });
+            }
+            
+            return; // Success - folder exists and we have its ID
+          } else {
+            console.error(`Could not find folder "${folderName}" in parent folder ${parentFolderId}`);
+            throw new Error(`Folder exists but could not retrieve its ID`);
+          }
+        } catch (listError) {
+          console.error('Failed to list parent folder contents:', listError);
+          throw error; // Re-throw original error
+        }
+      }
+      
+      // For other errors, re-throw
       throw error;
     }
   }
@@ -1795,6 +2110,7 @@ export class SyncManager {
     upload.dataTxId = dataTxId;
     upload.metadataTxId = metadataTxId;
     upload.transactionId = dataTxId; // Keep legacy field for backward compatibility
+    upload.fileId = fileId;
     upload.completedAt = new Date();
 
     console.log(`ArDrive Core upload completed - Data TX: ${dataTxId}, Metadata TX: ${metadataTxId}, File-ID: ${fileId}`);
@@ -1805,11 +2121,20 @@ export class SyncManager {
       dataTxId: upload.dataTxId,
       metadataTxId: upload.metadataTxId,
       transactionId: upload.transactionId,
+      fileId: fileId,
       completedAt: upload.completedAt
     });
     
     // Emit completion progress event
     this.emitUploadProgress(upload.id, 100, 'completed');
+    
+    // Emit drive update event to refresh UI
+    const { BrowserWindow } = require('electron');
+    const mainWindow = BrowserWindow.getAllWindows()[0];
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('drive:update');
+      mainWindow.webContents.send('activity:update');
+    }
 
     // Update processed files database with the completed upload
     try {
@@ -1829,7 +2154,7 @@ export class SyncManager {
       console.warn('Failed to update processed files for completed ArDrive Core upload:', hashError);
     }
 
-    this.uploadQueue.delete(upload.id);
+    this.uploadQueueManager.removeFromQueue(upload.id);
   }
   
   private getMimeType(fileName: string): string {
@@ -1856,6 +2181,11 @@ export class SyncManager {
 
   // New method to sync drive metadata to cache
   private async syncDriveMetadata(): Promise<void> {
+    this.emitSyncProgress({
+      phase: 'metadata',
+      description: 'Discovering drive contents...'
+    });
+
     console.log('Syncing drive metadata to cache...');
     
     // Get the mapping ID for this drive
@@ -1895,6 +2225,15 @@ export class SyncManager {
       
       console.log(`Found ${sortedItems.length} items in drive`);
 
+      this.emitSyncProgress({
+        phase: 'metadata',
+        description: `Found ${sortedItems.length} items`,
+        itemsProcessed: sortedItems.length
+      });
+
+      // Store for later phases
+      this.totalItemsToSync = sortedItems.length;
+
       // Clear existing cache for this mapping
       await this.databaseManager.clearDriveMetadataCache(mapping.id);
 
@@ -1919,6 +2258,7 @@ export class SyncManager {
         }
         
         const localPath = itemPath ? path.join(this.syncFolderPath!, itemPath) : path.join(this.syncFolderPath!, item.name);
+        
         let localFileExists = false;
         
         if (item.entityType === 'file') {
@@ -1939,7 +2279,7 @@ export class SyncManager {
           name: item.name,
           path: item.path || item.name,
           type: item.entityType === 'folder' ? 'folder' : 'file',
-          size: item.entityType === 'file' ? (item.size ? Number(item.size) : 0) : undefined,
+          size: item.entityType === 'file' ? (item.size ? item.size.valueOf() : 0) : undefined,
           lastModifiedDate: item.lastModifiedDate ? Number(item.lastModifiedDate) : undefined,
           dataTxId: item.dataTxId?.toString(),
           metadataTxId: (item as any).metaDataTxId?.toString() || (item as any).metadataTxId?.toString(),
@@ -1953,7 +2293,7 @@ export class SyncManager {
       console.log('Metadata sync completed');
       
       // Now download only missing files
-      await this.downloadMissingFiles(mapping.id);
+      await this.downloadManager.downloadMissingFiles();
       
     } catch (error) {
       console.error('Failed to sync drive metadata:', error);
@@ -2055,5 +2395,143 @@ export class SyncManager {
     }
 
     console.log('Missing files download completed');
+  }
+
+  // NEW: Create all folders before downloading files
+  private async createAllFolders(): Promise<void> {
+    this.emitSyncProgress({
+      phase: 'folders',
+      description: 'Creating folder structure...'
+    });
+
+    const mappings = await this.databaseManager.getDriveMappings();
+    const mapping = mappings.find(m => m.driveId === this.driveId);
+    if (!mapping) {
+      throw new Error('No mapping found for drive');
+    }
+
+    const allMetadata = await this.databaseManager.getDriveMetadata(mapping.id);
+    const folders = allMetadata.filter(item => item.type === 'folder');
+    
+    this.foldersToCreate = folders.length;
+    let created = 0;
+
+    console.log(`Creating ${folders.length} folders...`);
+
+    for (const folder of folders) {
+      this.emitSyncProgress({
+        phase: 'folders',
+        description: 'Creating folder structure...',
+        currentItem: folder.name,
+        itemsProcessed: created,
+        estimatedRemaining: this.foldersToCreate - created
+      });
+
+      try {
+        await fs.mkdir(folder.localPath, { recursive: true });
+        console.log(`Created folder: ${folder.localPath}`);
+        created++;
+      } catch (error) {
+        console.error(`Failed to create folder ${folder.localPath}:`, error);
+      }
+    }
+
+    console.log(`Folder creation completed: ${created}/${folders.length}`);
+  }
+
+  // NEW: Download files with progress
+  private async downloadMissingFilesWithProgress(): Promise<void> {
+    this.emitSyncProgress({
+      phase: 'files',
+      description: 'Downloading files...'
+    });
+
+    const mappings = await this.databaseManager.getDriveMappings();
+    const mapping = mappings.find(m => m.driveId === this.driveId);
+    if (!mapping) {
+      throw new Error('No mapping found for drive');
+    }
+
+    const allMetadata = await this.databaseManager.getDriveMetadata(mapping.id);
+    const missingFiles = allMetadata.filter(item => 
+      item.type === 'file' && 
+      !item.localFileExists &&
+      item.syncStatus === 'pending'
+    );
+
+    this.filesToDownload = missingFiles.length;
+    let downloaded = 0;
+
+    console.log(`Downloading ${missingFiles.length} missing files...`);
+
+    for (const file of missingFiles) {
+      this.emitSyncProgress({
+        phase: 'files',
+        description: 'Downloading files...',
+        currentItem: file.name,
+        itemsProcessed: downloaded,
+        estimatedRemaining: this.filesToDownload - downloaded
+      });
+
+      try {
+        await this.databaseManager.updateDriveMetadataStatus(file.fileId, 'downloading', false);
+        await this.downloadIndividualFile(file.fileId, file.name, file.dataTxId, file.localPath);
+        await this.databaseManager.updateDriveMetadataStatus(file.fileId, 'synced', true);
+        downloaded++;
+        console.log(`Downloaded: ${file.name}`);
+      } catch (error) {
+        console.error(`Failed to download ${file.name}:`, error);
+        await this.databaseManager.updateDriveMetadataStatus(file.fileId, 'error', false);
+      }
+    }
+
+    console.log(`File download completed: ${downloaded}/${missingFiles.length}`);
+  }
+
+  // NEW: Verify sync completeness
+  private async verifySyncState(): Promise<void> {
+    this.emitSyncProgress({
+      phase: 'verification',
+      description: 'Verifying sync completeness...'
+    });
+
+    console.log('🔍 Verifying sync completeness...');
+    
+    const mappings = await this.databaseManager.getDriveMappings();
+    const mapping = mappings.find(m => m.driveId === this.driveId);
+    if (!mapping) {
+      throw new Error('No mapping found for drive');
+    }
+
+    const metadata = await this.databaseManager.getDriveMetadata(mapping.id);
+    const folders = metadata.filter(item => item.type === 'folder');
+    const files = metadata.filter(item => item.type === 'file');
+    
+    let missingFolders = 0;
+    let missingFiles = 0;
+    
+    for (const folder of folders) {
+      try {
+        await fs.access(folder.localPath);
+      } catch {
+        missingFolders++;
+        console.warn(`Missing folder: ${folder.localPath}`);
+      }
+    }
+    
+    for (const file of files) {
+      try {
+        await fs.access(file.localPath);
+      } catch {
+        missingFiles++;
+        console.warn(`Missing file: ${file.localPath}`);
+      }
+    }
+    
+    if (missingFolders > 0 || missingFiles > 0) {
+      throw new Error(`Sync incomplete: ${missingFolders} folders, ${missingFiles} files missing`);
+    }
+    
+    console.log('✅ Sync verification passed');
   }
 }

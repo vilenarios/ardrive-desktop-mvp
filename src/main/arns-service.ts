@@ -39,12 +39,8 @@ export class ArNSService {
       // Check cache first
       const cached = arnsCache.get(address);
       if (cached && Date.now() - cached.timestamp < CACHE_DURATION && cached.primaryName !== undefined) {
-        console.log('ArNS Debug - Returning cached primary name:', cached.primaryName || 'none');
         return cached.primaryName || null;
       }
-
-      console.log('ArNS Debug - Fetching primary ArNS name for address:', `${address.slice(0,4)}...${address.slice(-4)}`);
-
       // Create a timeout promise
       const timeoutPromise = new Promise<null>((resolve) => {
         setTimeout(() => resolve(null), 5000); // 5 second timeout
@@ -52,7 +48,6 @@ export class ArNSService {
 
       // Race between the API call and timeout
       const primaryNamePromise = this.ario.getPrimaryName({ address }).catch(error => {
-        console.log('ArNS Debug - getPrimaryName error:', error);
         return null;
       });
       
@@ -61,11 +56,8 @@ export class ArNSService {
         timeoutPromise
       ]);
 
-      console.log('ArNS Debug - API response for getPrimaryName:', primaryName);
-
       // According to docs, response contains: { name, processId, startTimestamp, endTimestamp }
       if (primaryName && typeof primaryName === 'object' && primaryName.name) {
-        console.log('ArNS Debug - Found primary name:', primaryName.name);
         
         // Update cache
         arnsCache.set(address, {
@@ -82,13 +74,12 @@ export class ArNSService {
         primaryName: '',
         timestamp: Date.now(),
       });
-      console.log('ArNS Debug - No primary name found for address');
       return null;
     } catch (error) {
       console.error('ArNS Debug - Error fetching primary ArNS name:', error);
       // Check if it's a 404 or name not found error
       if (error && typeof error === 'object' && 'message' in error) {
-        console.log('ArNS Debug - Error message:', error.message);
+        console.error('ArNS Debug - Error message:', error.message);
       }
       return null;
     }
@@ -110,38 +101,29 @@ export class ArNSService {
           // Get the ArNS record
           const record = await this.ario.getArNSRecord({ name });
 
-          console.log('ArNS Debug - Record for', name, ':', record);
-
         if (record && record.processId) {
           // Initialize ANT client for this record
           const ant = ANT.init({ processId: record.processId });
 
-          console.log('ArNS Debug - ANT initialized for processId:', record.processId);
-
           // Get the logo transaction ID
           const logoTxId = await ant.getLogo();
 
-          console.log('ArNS Debug - Logo TxId for', name, ':', logoTxId);
-
           if (logoTxId && checkValidAddress(logoTxId)) {
-            console.log('ArNS Debug - Valid logo found:', logoTxId);
             return {
               processId: record.processId,
               logo: logoTxId,
             };
           }
 
-          console.log('ArNS Debug - No valid logo found for', name);
           return {
             processId: record.processId,
             logo: null,
           };
         }
 
-        console.log('ArNS Debug - No record or processId found for', name);
         return { processId: null, logo: null };
         } catch (error) {
-          console.log('ArNS Debug - Error fetching record for', name, ':', error);
+          console.error('ArNS Debug - Error fetching record for', name, ':', error);
           return { processId: null, logo: null };
         }
       })();
@@ -161,14 +143,11 @@ export class ArNSService {
     try {
       // Validate address
       if (!address || !checkValidAddress(address)) {
-        console.log('ArNS Debug - Invalid address provided:', address);
         return { name: null, avatar: null };
       }
 
       // First get the primary name
       const primaryName = await this.getPrimaryNameForAddress(address);
-
-      console.log('ArNS Debug - Primary name for', `${address.slice(0,4)}...${address.slice(-4)}`, ':', primaryName);
 
       if (!primaryName) {
         return { name: null, avatar: null };
@@ -177,7 +156,6 @@ export class ArNSService {
       // Check cache for logo
       const cached = arnsCache.get(address);
       if (cached && cached.logo !== undefined && Date.now() - cached.timestamp < CACHE_DURATION) {
-        console.log('ArNS Debug - Using cached logo for', primaryName, ':', cached.logo);
         return { 
           name: primaryName, 
           avatar: cached.logo ? `https://arweave.net/${cached.logo}` : null 
@@ -186,8 +164,6 @@ export class ArNSService {
 
       // Get the ArNS record details including logo
       const { logo } = await this.getArNSRecord(primaryName);
-
-      console.log('ArNS Debug - Fetched logo for', primaryName, ':', logo);
 
       // Update cache with logo
       arnsCache.set(address, {

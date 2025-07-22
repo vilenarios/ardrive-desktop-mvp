@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RotateCcw, AlertTriangle, Shuffle, CheckCircle2, Upload, X, Sparkles, Zap, Lightbulb, Tag, FileText, Bookmark, Plus, Edit3, ChevronDown, ChevronRight, Wallet, Loader2, RefreshCw } from 'lucide-react';
+import { RotateCcw, AlertTriangle, Shuffle, CheckCircle2, Upload, X, Sparkles, Zap, Lightbulb, Tag, FileText, Bookmark, Plus, Edit3, ChevronDown, ChevronRight, Wallet, Loader2, RefreshCw, Folder } from 'lucide-react';
 import { PendingUpload, ConflictResolution } from '../../types';
 import { CustomMetadata, MetadataTemplate, FileWithMetadata, MetadataEditContext } from '../../types/metadata';
 import { isTurboFree, formatFileSize } from '../../utils/turbo-utils';
@@ -18,6 +18,8 @@ interface UploadApprovalQueueProps {
   onRejectAll: () => void;
   onResolveConflict: (resolution: ConflictResolution) => void;
   onRefreshBalance?: () => void;
+  onRefreshPendingUploads?: () => void;
+  onRefreshUploads?: () => void; // Add this to refresh completed uploads list
   walletInfo?: {
     balance: string;
     turboBalance?: string;
@@ -32,6 +34,8 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
   onApproveAll,
   onRejectAll,
   onResolveConflict,
+  onRefreshPendingUploads,
+  onRefreshUploads,
   onRefreshBalance,
   walletInfo
 }) => {
@@ -96,9 +100,10 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
           console.log(`Uploaded ${upload.fileName}`, isTurboFree(upload.fileSize) ? 'Free upload via Turbo' : undefined);
         }
         
-        // Remove from pending uploads after a delay
+        // Clean up local state after a delay (upload already moved from pending to uploads queue)
         setTimeout(() => {
-          onRejectUpload(data.uploadId); // This removes it from the queue
+          // Note: Don't call onRejectUpload here - the upload has already been moved
+          // from pendingUploads to uploads queue when it was approved
           setUploadingFiles(prev => {
             const newMap = new Map(prev);
             newMap.delete(data.uploadId);
@@ -109,6 +114,17 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
             newSet.delete(data.uploadId);
             return newSet;
           });
+          
+          // Refresh the pending uploads to reflect the current state
+          // This will remove the upload from the UI since it's no longer in pending
+          if (onRefreshPendingUploads) {
+            onRefreshPendingUploads();
+          }
+          
+          // Refresh the completed uploads list so it appears in Activity tab
+          if (onRefreshUploads) {
+            onRefreshUploads();
+          }
         }, 2000); // Show success state for 2 seconds before removing
         
         // Refresh balance after successful upload
@@ -683,8 +699,12 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
                     e.currentTarget.style.backgroundColor = 'transparent';
                   }
                 }}>
-              {/* File icon */}
-              <FileText size={16} style={{ color: 'var(--gray-500)', marginRight: 'var(--space-3)' }} />
+              {/* File/Folder icon */}
+              {upload.mimeType === 'folder' || upload.fileSize === 0 ? (
+                <Folder size={16} style={{ color: 'var(--gray-500)', marginRight: 'var(--space-3)' }} />
+              ) : (
+                <FileText size={16} style={{ color: 'var(--gray-500)', marginRight: 'var(--space-3)' }} />
+              )}
               
               {/* File info */}
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -711,7 +731,7 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
                     color: 'var(--gray-500)',
                     flexShrink: 0
                   }}>
-                    {formatFileSize(upload.fileSize)}
+                    {upload.mimeType === 'folder' || upload.fileSize === 0 ? 'Folder' : formatFileSize(upload.fileSize)}
                   </span>
                   
                   {/* Upload method tag */}

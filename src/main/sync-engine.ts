@@ -161,7 +161,7 @@ export class SyncEngine {
 
   async getStatus(): Promise<DriveSyncStatus> {
     // Get upload statistics for this mapping
-    const uploads = await this.databaseManager.getUploadsByMapping(this.mapping.id);
+    const uploads = await this.databaseManager.getUploadsByDrive(this.mapping.driveId);
     
     const uploadedFiles = uploads.filter(u => u.status === 'completed').length;
     const failedFiles = uploads.filter(u => u.status === 'failed').length;
@@ -173,7 +173,6 @@ export class SyncEngine {
       .reduce((sum, u) => sum + u.fileSize, 0);
 
     return {
-      mappingId: this.mapping.id,
       driveId: this.mapping.driveId,
       driveName: this.mapping.driveName,
       isActive: this.mapping.isActive,
@@ -200,8 +199,7 @@ export class SyncEngine {
   addToUploadQueue(upload: FileUpload): void {
     console.log(`SyncEngine[${this.mapping.driveName}] - Adding upload to queue: ${upload.fileName}`);
     
-    // Ensure upload has correct mapping ID
-    upload.mappingId = this.mapping.id;
+    // Ensure upload has correct drive ID
     upload.driveId = this.mapping.driveId;
     
     this.uploadQueue.set(upload.id, upload);
@@ -409,7 +407,6 @@ export class SyncEngine {
       // Create pending upload for approval
       const pendingUpload: PendingUpload = {
         id: crypto.randomUUID(),
-        mappingId: this.mapping.id,
         driveId: this.mapping.driveId,
         localPath: filePath,
         fileName,
@@ -655,13 +652,13 @@ export class SyncEngine {
 
         // Store metadata in cache
         await this.databaseManager.upsertDriveMetadata({
-          mappingId: this.mapping.id,
+          mappingId: '', // TODO: Remove mappingId from database schema
           fileId: item.fileId || item.entityId,
           parentFolderId: item.parentFolderId,
           name: item.name,
           path: item.path || item.name,
           type: item.type || (item.entityType === 'folder' ? 'folder' : 'file'),
-          size: item.size,
+          size: item.size ? item.size.valueOf() : undefined,
           lastModifiedDate: item.lastModifiedDate,
           dataTxId: item.dataTxId,
           metadataTxId: item.metadataTxId,

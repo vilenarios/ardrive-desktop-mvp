@@ -1,41 +1,64 @@
 /* ArDrive Desktop - Apple-Style Design System */
 
+/* Import component-specific styles */
+@import './styles/turbo-credits.css';
+@import './styles/info-button.css';
+@import './styles/activity-tab.css';
+@import './styles/user-menu.css';
+@import './styles/settings.css';
+@import './styles/dashboard-tabs.css';
+
 :root {
-  /* ArDrive Brand Colors */
-  --ardrive-primary: #dc2626;        /* Red for primary actions */
-  --ardrive-primary-hover: #b91c1c;  /* Darker red on hover */
-  --ardrive-primary-light: #fee2e2;  /* Light red background */
-  --ardrive-secondary: #10b981;      /* Green for secondary actions */
+  /* ArDrive Brand Colors - Primary Red Scale */
+  --ardrive-primary: #dc2626;        /* Main brand color */
+  --ardrive-primary-50: #fef2f2;     /* Lightest tint for backgrounds */
+  --ardrive-primary-100: #fee2e2;    /* Light tint */
+  --ardrive-primary-200: #fecaca;    /* Light-medium tint */
+  --ardrive-primary-300: #fca5a5;    /* Medium-light tint */
+  --ardrive-primary-400: #f87171;    /* Medium tint */
+  --ardrive-primary-500: #ef4444;    /* Medium shade */
+  --ardrive-primary-600: #dc2626;    /* Primary (base) */
+  --ardrive-primary-700: #b91c1c;    /* Dark shade (hover) */
+  --ardrive-primary-800: #991b1b;    /* Darker shade */
+  --ardrive-primary-900: #7f1d1d;    /* Darkest shade */
+  
+  /* Legacy aliases for backward compatibility - will phase out */
+  --ardrive-primary-hover: var(--ardrive-primary-700);
+  --ardrive-primary-light: var(--ardrive-primary-100);
+  --primary-50: var(--ardrive-primary-50);
+  --primary-100: var(--ardrive-primary-100);
+  --primary-600: var(--ardrive-primary-600);
+  
+  /* Semantic Colors - Updated to match ArDrive Style Guide */
+  --ardrive-success: #10b981;        /* Green for success states (matches style guide) */
   --ardrive-warning: #f59e0b;        /* Orange for warnings */
-  --ardrive-danger: #ef4444;         /* Bright red for dangerous actions */
-  --ardrive-danger-light: #fef2f2;   /* Light red background for errors */
-  --ardrive-success: #10b981;        /* Green for success states */
+  --ardrive-danger: #dc2626;         /* Use primary red for errors (style guide aligned) */
+  --ardrive-info: #3b82f6;           /* Blue for information (matches style guide) */
   
-  /* Additional color variations */
-  --primary-50: #fef2f2;             /* Very light red for backgrounds */
-  --error: #ef4444;                  /* Error color alias */
-  --error-50: #fef2f2;
-  --error-100: #fee2e2;
-  --error-200: #fecaca;
-  --error-300: #fca5a5;
-  --error-400: #f87171;
-  --error-500: #ef4444;
-  --error-600: #dc2626;
-  --error-700: #b91c1c;
-  --error-800: #991b1b;
-  --error-900: #7f1d1d;
+  /* Error color scale (danger alias) */
+  --error: var(--ardrive-danger);
+  --error-50: var(--ardrive-primary-50);
+  --error-100: var(--ardrive-primary-100);
+  --error-200: var(--ardrive-primary-200);
+  --error-300: var(--ardrive-primary-300);
+  --error-400: var(--ardrive-primary-400);
+  --error-500: var(--ardrive-danger);
+  --error-600: var(--ardrive-primary-600);
+  --error-700: var(--ardrive-primary-700);
+  --error-800: var(--ardrive-primary-800);
+  --error-900: var(--ardrive-primary-900);
   
-  /* Toast Notification Colors */
-  --success-50: #f0fdf4;
-  --success-100: #dcfce7;
-  --success-200: #bbf7d0;
-  --success-300: #86efac;
-  --success-400: #4ade80;
-  --success-500: #22c55e;
-  --success-600: #16a34a;
-  --success-700: #15803d;
-  --success-800: #166534;
-  --success-900: #14532d;
+  /* Success Colors - ArDrive Style Guide Green */
+  --success-50: #ecfdf5;
+  --success-100: #d1fae5;
+  --success-200: #a7f3d0;
+  --success-300: #6ee7b7;
+  --success-400: #34d399;
+  --success-500: #10b981;   /* Style guide green */
+  --success-600: #059669;
+  --success-700: #047857;
+  --success-800: #065f46;
+  --success-900: #064e3b;
   
   --danger-50: #fef2f2;
   --danger-100: #fee2e2;
@@ -59,39 +82,62 @@
   --warning-800: #92400e;
   --warning-900: #78350f;
   
+  /* Info Colors - ArDrive Style Guide Blue */
   --info-50: #eff6ff;
   --info-100: #dbeafe;
   --info-200: #bfdbfe;
   --info-300: #93c5fd;
   --info-400: #60a5fa;
-  --info-500: #3b82f6;
+  --info-500: #3b82f6;   /* Style guide blue */
   --info-600: #2563eb;
   --info-700: #1d4ed8;
   --info-800: #1e40af;
   --info-900: #1e3a8a;
   
-  /* Neutral Colors - Apple-inspired */
-  --gray-50: #f9fafb;
-  --gray-100: #f3f4f6;
-  --gray-200: #e5e7eb;
-  --gray-300: #d1d5db;
-  --gray-400: #9ca3af;
-  --gray-500: #6b7280;
-  --gray-600: #4b5563;
-  --gray-700: #374151;
-  --gray-800: #1f2937;
-  --gray-900: #111827;
+  /* Neutral Colors - ArDrive Style Guide Aligned */
+  --gray-50: #fafafa;     /* Slightly warmer gray from style guide */
+  --gray-100: #f4f4f5;   /* Updated to match style guide backgrounds */
+  --gray-200: #e4e4e7;   /* Better contrast for borders */
+  --gray-300: #d4d4d8;   /* Refined medium gray */
+  --gray-400: #a1a1aa;   /* Style guide placeholder text */
+  --gray-500: #71717a;   /* Body text color */
+  --gray-600: #52525b;   /* Secondary text */
+  --gray-700: #3f3f46;   /* Primary text */
+  --gray-800: #27272a;   /* Dark text */
+  --gray-900: #18181b;   /* Darkest text */
+  
+  /* Style Guide Specific Colors */
+  --ardrive-background: #fafafa;           /* Main app background */
+  --ardrive-surface: #ffffff;             /* Card/panel backgrounds */
+  --ardrive-border: #e4e4e7;              /* Default borders */
+  --ardrive-border-hover: #d4d4d8;        /* Hover state borders */
+  --ardrive-text-primary: #18181b;        /* Primary text */
+  --ardrive-text-secondary: #71717a;      /* Secondary text */
+  --ardrive-text-muted: #a1a1aa;          /* Muted/placeholder text */
   
   /* Typography */
   --font-system: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
   --font-mono: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
   
-  /* Font Sizes */
-  --text-xs: 0.75rem;   /* 12px */
-  --text-sm: 0.875rem;  /* 14px */
-  --text-base: 1rem;    /* 16px */
-  --text-lg: 1.125rem;  /* 18px */
-  --text-xl: 1.25rem;   /* 20px */
+  /* Font Sizes - Per Style Guide */
+  --text-xs: 0.75rem;   /* 12px - Secondary labels */
+  --text-sm: 0.875rem;  /* 14px - Body text (default) */
+  --text-base: 1rem;    /* 16px - Primary body */
+  --text-lg: 1.125rem;  /* 18px - Subheadings */
+  --text-xl: 1.25rem;   /* 20px - Card titles */
+  --text-2xl: 1.5rem;   /* 24px - Section headings */
+  --text-3xl: 1.875rem; /* 30px - Page headings */
+  
+  /* Font Weights */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+  
+  /* Line Heights */
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.75;
   
   /* Spacing */
   --space-1: 0.25rem;
@@ -129,19 +175,79 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+  font-family: var(--font-system);
+  font-size: var(--text-sm); /* 14px - Default body text per style guide */
+  font-weight: var(--font-normal);
+  line-height: var(--leading-normal);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #f9fafb;
-  color: #111827;
-  line-height: 1.5;
-  font-size: 14px;
+  background: var(--gray-50);
+  color: var(--gray-900);
 }
 
 #root {
   height: 100%;
   margin: 0;
   padding: 0;
+}
+
+/* Typography Styles - Based on Style Guide */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-tight);
+  color: var(--gray-900);
+  letter-spacing: -0.025em;
+}
+
+h1 {
+  font-size: var(--text-3xl); /* 30px - Page headings */
+  margin-bottom: var(--space-6);
+}
+
+h2 {
+  font-size: var(--text-2xl); /* 24px - Section headings */
+  margin-bottom: var(--space-5);
+}
+
+h3 {
+  font-size: var(--text-xl); /* 20px - Card titles */
+  margin-bottom: var(--space-4);
+}
+
+h4 {
+  font-size: var(--text-lg); /* 18px - Subheadings */
+  margin-bottom: var(--space-3);
+}
+
+p {
+  font-size: var(--text-sm); /* 14px - Body text */
+  line-height: var(--leading-normal);
+  color: var(--gray-700);
+  margin-bottom: var(--space-4);
+}
+
+.text-secondary {
+  font-size: var(--text-xs); /* 12px - Secondary labels */
+  color: var(--gray-500);
+}
+
+.text-primary {
+  font-size: var(--text-base); /* 16px - Primary body */
+  color: var(--gray-800);
+}
+
+label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--gray-700);
+  margin-bottom: var(--space-2);
+  display: block;
+}
+
+.help-text {
+  font-size: var(--text-xs);
+  color: var(--gray-500);
+  margin-top: var(--space-1);
 }
 
 /* App Layout */
@@ -241,17 +347,19 @@ html, body {
 
 /* Cards */
 .card {
-  background: white;
-  border-radius: var(--radius-lg);
+  background: var(--ardrive-surface);
+  border-radius: 12px; /* Style guide aligned radius */
   padding: var(--space-6);
   margin-bottom: var(--space-6);
-  box-shadow: var(--shadow);
-  border: 1px solid var(--gray-200);
-  transition: all 0.2s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--ardrive-border);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .card:hover {
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  border-color: var(--ardrive-border-hover);
+  transform: translateY(-1px);
 }
 
 .card h2 {
@@ -269,7 +377,7 @@ html, body {
   font-weight: 600;
 }
 
-/* Buttons */
+/* Button System - ArDrive Style Guide Aligned */
 .button {
   display: inline-flex;
   align-items: center;
@@ -278,26 +386,34 @@ html, body {
   color: white;
   border: none;
   padding: var(--space-3) var(--space-5);
-  border-radius: var(--radius);
+  border-radius: 8px;  /* Style guide standard */
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: 600;  /* Stronger weight from style guide */
   font-family: var(--font-system);
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   text-decoration: none;
   min-height: 40px;
   gap: var(--space-2);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  position: relative;
+  overflow: hidden;
 }
 
 .button:hover {
-  background: var(--ardrive-primary-hover);
+  background: var(--ardrive-primary-700);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 4px 8px 0 rgba(220, 38, 38, 0.25), 0 2px 4px 0 rgba(0, 0, 0, 0.1);
 }
 
 .button:active {
   transform: translateY(0);
-  box-shadow: var(--shadow);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.1);
+}
+
+.button:focus {
+  outline: 2px solid var(--ardrive-primary-300);
+  outline-offset: 2px;
 }
 
 .button:disabled {
@@ -306,50 +422,131 @@ html, body {
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+  opacity: 0.6;
 }
 
+/* Secondary Button - Style Guide Dark */
 .button.secondary {
-  background: var(--gray-700);    /* Dark/black for secondary actions */
+  background: var(--gray-800);
   color: white;
-  border: 1px solid var(--gray-600);
+  border: 1px solid var(--gray-700);
 }
 
 .button.secondary:hover {
-  background: var(--gray-800);    /* Darker on hover */
+  background: var(--gray-900);
   color: white;
+  box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.15), 0 2px 4px 0 rgba(0, 0, 0, 0.1);
+  border-color: var(--gray-600);
 }
 
+/* Outline Button - Style Guide Aligned */
 .button.outline {
   background: transparent;
   color: var(--gray-700);
   border: 1px solid var(--gray-300);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .button.outline:hover {
-  background: var(--gray-100);
+  background: var(--gray-50);
   color: var(--gray-800);
+  border-color: var(--gray-400);
+  box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.1);
 }
 
+/* Success Button */
+.button.success {
+  background: var(--ardrive-success);
+  color: white;
+}
+
+.button.success:hover {
+  background: var(--success-600);
+  box-shadow: 0 4px 8px 0 rgba(16, 185, 129, 0.25), 0 2px 4px 0 rgba(0, 0, 0, 0.1);
+}
+
+/* Danger Button */
 .button.danger {
   background: var(--ardrive-danger);
+  color: white;
 }
 
 .button.danger:hover {
-  background: #dc2626;
+  background: var(--ardrive-primary-700);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 4px 8px 0 rgba(220, 38, 38, 0.25), 0 2px 4px 0 rgba(0, 0, 0, 0.1);
 }
 
+/* Info Button */
+.button.info {
+  background: var(--ardrive-info);
+  color: white;
+}
+
+.button.info:hover {
+  background: var(--info-600);
+  box-shadow: 0 4px 8px 0 rgba(59, 130, 246, 0.25), 0 2px 4px 0 rgba(0, 0, 0, 0.1);
+}
+
+/* Button Sizes */
 .button.small {
   padding: var(--space-2) var(--space-3);
-  font-size: 12px;
+  font-size: var(--text-xs);
   min-height: 32px;
+  border-radius: 6px;
 }
 
 .button.large {
   padding: var(--space-4) var(--space-8);
-  font-size: 16px;
+  font-size: var(--text-base);
   min-height: 48px;
+  border-radius: 10px;
+}
+
+.button.extra-large {
+  padding: var(--space-5) var(--space-10);
+  font-size: var(--text-lg);
+  min-height: 56px;
+  border-radius: 12px;
+}
+
+/* Icon-only buttons */
+.button.icon-only {
+  padding: var(--space-3);
+  min-width: 40px;
+}
+
+.button.icon-only.small {
+  padding: var(--space-2);
+  min-width: 32px;
+}
+
+.button.icon-only.large {
+  padding: var(--space-4);
+  min-width: 48px;
+}
+
+/* Loading state */
+.button.loading {
+  color: transparent;
+  pointer-events: none;
+}
+
+.button.loading::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top: 2px solid currentColor;
+  border-radius: 50%;
+  animation: button-spin 0.8s linear infinite;
+  color: white;
+}
+
+@keyframes button-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 /* Form Elements */
@@ -360,9 +557,9 @@ html, body {
 .form-group label {
   display: block;
   margin-bottom: var(--space-2);
-  font-weight: 500;
+  font-weight: var(--font-medium);
   color: var(--gray-700);
-  font-size: 14px;
+  font-size: var(--text-sm);
 }
 
 .form-group input {
@@ -379,7 +576,7 @@ html, body {
 .form-group input:focus {
   outline: none;
   border-color: var(--ardrive-primary);
-  box-shadow: 0 0 0 3px var(--ardrive-primary-light);
+  box-shadow: 0 0 0 3px var(--ardrive-primary-100);
 }
 
 /* Status Indicators */
@@ -624,7 +821,7 @@ html, body {
 }
 
 .tx-id:hover {
-  background: var(--ardrive-primary-light);
+  background: var(--ardrive-primary-100);
   color: var(--ardrive-primary);
 }
 
@@ -1480,55 +1677,6 @@ html, body {
   font-weight: 500;
 }
 
-/* Quick Settings */
-.quick-settings {
-  margin-bottom: var(--space-6);
-}
-
-.settings-card {
-  background: white;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-}
-
-.settings-card h3 {
-  margin: 0 0 var(--space-4) 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--gray-900);
-}
-
-.setting-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--gray-100);
-}
-
-.setting-row:last-child {
-  border-bottom: none;
-}
-
-.setting-info {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.setting-info > div label {
-  display: block;
-  font-weight: 500;
-  color: var(--gray-700);
-  font-size: 14px;
-  margin-bottom: var(--space-1);
-}
-
-.setting-info > div span {
-  font-size: 13px;
-  color: var(--gray-600);
-}
 
 /* Dashboard Content */
 .dashboard-content {
@@ -1538,12 +1686,18 @@ html, body {
 }
 
 .dashboard-tabs {
-  margin-bottom: var(--space-6);
+  margin-bottom: 0; /* Remove gap - tabs now connect to content */
 }
 
 .tab-content {
-  min-height: 400px;
-  min-width:680px;
+  background: var(--ardrive-surface);
+  border: 1px solid var(--ardrive-border);
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-lg);
+  min-height: 600px;
+  width: 100%;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  margin-top: -1px; /* Connect to tab navigation */
+  /* Padding moved to dashboard-tabs.css for consistency */
 }
 
 /* Status Overview */
@@ -2127,7 +2281,7 @@ html, body {
 }
 
 .section-header {
-  margin-bottom: var(--space-6);
+  margin-left: 10px;
 }
 
 .section-header h2 {
@@ -2396,7 +2550,7 @@ html, body {
 
 .drive-option input[type="radio"]:checked + .drive-card {
   border-color: var(--ardrive-primary);
-  background: var(--ardrive-primary-light);
+  background: var(--ardrive-primary-100);
 }
 
 .drive-card:hover {
@@ -2491,13 +2645,14 @@ html, body {
 }
 
 .wallet-export-modal .modal-overlay {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
+  z-index: 3000;
 }
 
 .wallet-export-modal .modal-content {
@@ -2510,6 +2665,7 @@ html, body {
   overflow-y: auto;
   box-shadow: var(--shadow-xl);
   animation: slideUp 0.3s ease;
+  z-index: 3001; /* Above the overlay */
 }
 
 .wallet-export-modal .modal-header {
@@ -2885,32 +3041,37 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  padding: 0; /* Remove internal padding - handled by .tab-content */
 }
 
 .activity-tab {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  padding: 0; /* Remove internal padding - handled by .tab-content */
 }
 
 .storage-tab {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  padding: 0; /* Remove internal padding - handled by .tab-content */
 }
 
 /* Summary Cards */
 .summary-card {
-  background: white;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-lg);
+  background: var(--ardrive-surface);
+  border: 1px solid var(--ardrive-border);
+  border-radius: 12px; /* Style guide aligned radius */
   padding: var(--space-6);
-  box-shadow: var(--shadow-sm);
-  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .summary-card:hover {
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  border-color: var(--ardrive-border-hover);
+  transform: translateY(-2px);
 }
 
 .card-header {
@@ -2918,6 +3079,8 @@ html, body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: var(--space-5);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--gray-100);
 }
 
 .header-left {
@@ -2930,7 +3093,8 @@ html, body {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: var(--gray-900);
+  color: var(--ardrive-text-primary);
+  letter-spacing: -0.025em;
 }
 
 .refresh-button {
@@ -3257,6 +3421,58 @@ html, body {
   margin: 0;
   color: var(--gray-600);
   font-size: 16px;
+}
+
+.activity-filters {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-6);
+  padding: var(--space-4);
+  background: var(--gray-50);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--gray-200);
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.activity-summary {
+  color: var(--gray-600);
+  font-size: 14px;
+  margin-left: 10px;
+}
+
+.unified-activity-stream {
+  background: var(--ardrive-surface);
+  border-radius: 12px; /* Style guide aligned radius */
+  border: 1px solid var(--ardrive-border);
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  overflow: visible;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.unified-activity-stream:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.unified-activity-item {
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.unified-activity-item:last-child {
+  border-bottom: none;
+}
+
+.activity-type-badge {
+  transition: all 0.2s ease;
+}
+
+.unified-activity-item:hover .activity-type-badge {
+  transform: scale(1.05);
 }
 
 .activity-columns {
@@ -3686,7 +3902,7 @@ html, body {
 
 .list-header {
   display: grid;
-  grid-template-columns: 1fr 100px 120px 100px 120px;
+  grid-template-columns: 1fr 100px 120px 120px;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
   background: var(--gray-50);
@@ -3698,7 +3914,7 @@ html, body {
 
 .file-item {
   display: grid;
-  grid-template-columns: 1fr 100px 120px 100px 120px;
+  grid-template-columns: 1fr 100px 120px 120px;
   gap: var(--space-3);
   align-items: center;
   padding: var(--space-4) var(--space-5);
@@ -3712,7 +3928,7 @@ html, body {
 }
 
 .file-item.selected {
-  background: var(--ardrive-primary-light);
+  background: var(--ardrive-primary-100);
 }
 
 .file-explorer.grid .file-list {
@@ -4057,6 +4273,233 @@ html, body {
 .action-button:hover {
   background: var(--gray-100);
   color: var(--gray-700);
+}
+
+/* Action Menu System */
+.item-actions-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--gray-400);
+  transition: all 0.2s ease;
+  opacity: 0;
+}
+
+.file-item:hover .action-menu-trigger {
+  opacity: 1;
+  color: var(--gray-600);
+}
+
+.action-menu-trigger:hover {
+  background: var(--gray-100);
+  color: var(--gray-800);
+}
+
+.action-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 100;
+  min-width: 160px;
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: var(--space-1);
+  margin-top: 4px;
+}
+
+.action-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--gray-700);
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.action-menu-item:hover {
+  background: var(--gray-50);
+  color: var(--gray-900);
+}
+
+.action-menu-item:disabled {
+  color: var(--gray-400);
+  cursor: not-allowed;
+}
+
+.action-menu-item:disabled:hover {
+  background: none;
+  color: var(--gray-400);
+}
+
+/* File Details Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-4);
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  max-width: 600px;
+  width: 100%;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-6);
+  border-bottom: 1px solid var(--gray-200);
+  background: var(--gray-50);
+}
+
+.modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 20px;
+  color: var(--gray-500);
+  transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+  background: var(--gray-200);
+  color: var(--gray-700);
+}
+
+.modal-body {
+  padding: var(--space-6);
+  overflow-y: auto;
+  flex: 1;
+}
+
+.details-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.detail-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3);
+  border-radius: 8px;
+  background: var(--gray-50);
+}
+
+.detail-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--gray-700);
+}
+
+.detail-value {
+  font-size: var(--text-sm);
+  color: var(--gray-900);
+  word-break: break-all;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.detail-value.monospace {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--gray-100);
+  padding: var(--space-1) var(--space-2);
+  border-radius: 4px;
+}
+
+.copy-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  font-size: 12px;
+}
+
+.copy-button:hover {
+  background: var(--gray-200);
+}
+
+.modal-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--gray-200);
+}
+
+@media (max-width: 768px) {
+  .modal-overlay {
+    padding: var(--space-2);
+  }
+  
+  .modal-content {
+    max-height: 90vh;
+  }
+  
+  .modal-header,
+  .modal-body {
+    padding: var(--space-4);
+  }
+  
+  .detail-row {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+  
+  .detail-label {
+    font-weight: 500;
+    color: var(--gray-600);
+  }
 }
 
 /* Show All Buttons */
@@ -4661,4 +5104,278 @@ html, body {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+/* Overview Tab Stat Cards */
+.overview-stat-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--ardrive-surface);
+  border: 1px solid var(--ardrive-border);
+  border-radius: 12px; /* Style guide aligned radius */
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.overview-stat-card:hover {
+  box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.12), 0 3px 7px -3px rgba(0, 0, 0, 0.1);
+  border-color: var(--ardrive-border-hover);
+  transform: translateY(-1px);
+}
+
+.stat-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: var(--gray-50);
+  border-radius: 10px; /* Style guide aligned radius */
+  flex-shrink: 0;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.overview-stat-card:hover .stat-icon {
+  background: var(--gray-100);
+  transform: scale(1.05);
+}
+
+.stat-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--ardrive-text-primary);
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+
+.stat-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ardrive-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+/* Card Variants for Different Use Cases */
+.card-elevated {
+  box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.12), 0 3px 7px -3px rgba(0, 0, 0, 0.1);
+}
+
+.card-interactive {
+  cursor: pointer;
+  user-select: none;
+}
+
+.card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 20px -4px rgba(0, 0, 0, 0.12), 0 6px 10px -4px rgba(0, 0, 0, 0.1);
+}
+
+.card-interactive:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.card-accent {
+  border-color: var(--ardrive-primary);
+  box-shadow: 0 1px 3px 0 rgba(220, 38, 38, 0.1), 0 1px 2px 0 rgba(220, 38, 38, 0.06);
+}
+
+.card-success {
+  border-color: var(--success-500);
+  box-shadow: 0 1px 3px 0 rgba(16, 185, 129, 0.1), 0 1px 2px 0 rgba(16, 185, 129, 0.06);
+}
+
+.card-warning {
+  border-color: var(--warning-500);
+  box-shadow: 0 1px 3px 0 rgba(245, 158, 11, 0.1), 0 1px 2px 0 rgba(245, 158, 11, 0.06);
+}
+
+.stat-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--gray-900);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--gray-600);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+/* Sync Progress Modal */
+.sync-progress-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease;
+}
+
+.sync-progress-content {
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  width: 90%;
+  max-width: 420px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  animation: slideUp 0.3s ease;
+}
+
+.sync-progress-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.sync-progress-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--gray-900);
+  margin: 0;
+}
+
+.sync-progress-title {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sync-progress-step {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gray-600);
+  background: var(--gray-100);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  width: fit-content;
+}
+
+.sync-progress-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sync-progress-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sync-progress-description {
+  font-size: 14px;
+  color: var(--gray-700);
+  margin: 0;
+}
+
+.sync-progress-current-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--gray-600);
+  background: var(--gray-50);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.sync-progress-current-item span {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sync-progress-bar-container {
+  width: 100%;
+  height: 8px;
+  background: var(--gray-200);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: var(--space-2) 0;
+}
+
+.sync-progress-bar {
+  height: 100%;
+  background: var(--ardrive-primary);
+  transition: width 0.3s ease;
+}
+
+.sync-progress-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--gray-600);
+}
+
+.sync-progress-footer {
+  margin-top: var(--space-4);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sync-progress-close-button {
+  padding: var(--space-2) var(--space-4);
+  background: var(--ardrive-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.sync-progress-close-button:hover {
+  background: var(--ardrive-primary-hover);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }

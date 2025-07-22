@@ -53,11 +53,10 @@ export class DatabaseManager {
   }
 
   private async createTables(): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-      try {
-        // Create tables directly - no migrations needed
-        
-        const sql = `
+    return new Promise((resolve, reject) => {
+      // Create tables directly - no migrations needed
+      
+      const sql = `
           -- Drive mappings for multi-drive support
           CREATE TABLE IF NOT EXISTS drive_mappings (
             id TEXT PRIMARY KEY,
@@ -265,16 +264,13 @@ export class DatabaseManager {
           CREATE INDEX IF NOT EXISTS idx_downloads_file_id ON downloads(fileId);
       `;
 
-        this.db!.exec(sql, (err) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve();
-          }
-        });
-      } catch (error) {
-        reject(error);
-      }
+      this.db!.exec(sql, (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
     });
   }
   
@@ -455,7 +451,7 @@ export class DatabaseManager {
       
       this.db!.run(sql, [
         upload.id,
-        upload.mappingId,
+        null, // mappingId is deprecated
         upload.driveId,
         upload.localPath,
         upload.fileName,
@@ -586,10 +582,50 @@ export class DatabaseManager {
             ...row,
             createdAt: new Date(row.createdAt)
           }));
-          resolve(uploads);
+          
+          // Sort uploads to ensure proper order for folder structure
+          const sortedUploads = this.sortPendingUploadsForFolderStructure(uploads);
+          resolve(sortedUploads);
         }
       });
     });
+  }
+  
+  private sortPendingUploadsForFolderStructure(uploads: PendingUpload[]): PendingUpload[] {
+    // Separate folders and files
+    const folders = uploads.filter(u => u.fileName.endsWith('/'));
+    const files = uploads.filter(u => !u.fileName.endsWith('/'));
+    
+    // Sort folders by path depth (parent folders first)
+    folders.sort((a, b) => {
+      const depthA = (a.localPath.match(/[/\\]/g) || []).length;
+      const depthB = (b.localPath.match(/[/\\]/g) || []).length;
+      
+      // First sort by depth (shallower paths first)
+      if (depthA !== depthB) {
+        return depthA - depthB;
+      }
+      
+      // Then sort alphabetically within same depth
+      return a.localPath.localeCompare(b.localPath);
+    });
+    
+    // Sort files by path to group them with their parent folders
+    files.sort((a, b) => {
+      const dirA = path.dirname(a.localPath);
+      const dirB = path.dirname(b.localPath);
+      
+      // First sort by directory
+      if (dirA !== dirB) {
+        return dirA.localeCompare(dirB);
+      }
+      
+      // Then by filename within directory
+      return a.fileName.localeCompare(b.fileName);
+    });
+    
+    // Return folders first, then files
+    return [...folders, ...files];
   }
 
   async updatePendingUploadStatus(id: string, status: 'approved' | 'rejected'): Promise<void> {
@@ -682,7 +718,7 @@ export class DatabaseManager {
     return new Promise((resolve, reject) => {
       // SECURITY FIX: Add mappingId filtering to prevent cross-profile data access
       let sql = `SELECT 1 FROM processed_files WHERE fileHash = ?`;
-      let params: any[] = [fileHash];
+      const params: any[] = [fileHash];
       
       if (mappingId) {
         sql += ` AND mappingId = ?`;
@@ -832,7 +868,7 @@ export class DatabaseManager {
     return new Promise((resolve, reject) => {
       // SECURITY FIX: Add mappingId filtering to prevent cross-profile data access
       let sql = `SELECT * FROM file_versions WHERE filePath = ?`;
-      let params: any[] = [filePath];
+      const params: any[] = [filePath];
       
       if (mappingId) {
         sql += ` AND mappingId = ?`;
@@ -878,7 +914,7 @@ export class DatabaseManager {
     return new Promise((resolve, reject) => {
       // SECURITY FIX: Add mappingId filtering to prevent cross-profile data access
       let sql = `SELECT * FROM file_versions WHERE filePath = ? AND isLatest = 1`;
-      let params: any[] = [filePath];
+      const params: any[] = [filePath];
       
       if (mappingId) {
         sql += ` AND mappingId = ?`;
@@ -1007,7 +1043,7 @@ export class DatabaseManager {
     return new Promise((resolve, reject) => {
       // SECURITY FIX: Add mappingId filtering to prevent cross-profile data access
       let sql = `SELECT * FROM folder_structure WHERE isDeleted = 0`;
-      let params: any[] = [];
+      const params: any[] = [];
       
       if (mappingId) {
         sql += ` AND mappingId = ?`;
@@ -1062,6 +1098,24 @@ export class DatabaseManager {
     });
   }
 
+  async checkFolderInDriveMetadata(folderPath: string): Promise<any | null> {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT * FROM drive_metadata_cache 
+        WHERE localPath = ? AND type = 'folder'
+        LIMIT 1
+      `;
+      
+      this.db!.get(sql, [folderPath], (err, row: any) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row || null);
+        }
+      });
+    });
+  }
+
   async markFolderDeleted(folderPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const sql = `UPDATE folder_structure SET isDeleted = 1 WHERE folderPath = ?`;
@@ -1071,6 +1125,33 @@ export class DatabaseManager {
           reject(err);
         } else {
           resolve();
+        }
+      });
+    });
+  }
+
+  async getAllFolders(): Promise<{
+    id: string;
+    folderPath: string;
+    relativePath: string;
+    parentPath?: string;
+    arweaveFolderId?: string;
+    createdAt: Date;
+    isDeleted: boolean;
+  }[]> {
+    return new Promise((resolve, reject) => {
+      const sql = `SELECT * FROM folder_structure ORDER BY folderPath`;
+      
+      this.db!.all(sql, [], (err, rows: any[]) => {
+        if (err) {
+          reject(err);
+        } else {
+          const folders = rows.map(row => ({
+            ...row,
+            isDeleted: !!row.isDeleted,
+            createdAt: new Date(row.createdAt)
+          }));
+          resolve(folders);
         }
       });
     });
@@ -1091,16 +1172,31 @@ export class DatabaseManager {
     });
   }
 
+  async updateFolderArweaveId(folderId: string, arweaveFolderId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `UPDATE folder_structure SET arweaveFolderId = ? WHERE id = ?`;
+      
+      this.db!.run(sql, [arweaveFolderId, folderId], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
   // Downloads management
   async addDownload(download: Omit<FileDownload, 'downloadedAt'>): Promise<void> {
     return new Promise((resolve, reject) => {
       const sql = `
-        INSERT INTO downloads (id, fileName, localPath, fileSize, fileId, dataTxId, metadataTxId, status, progress, error)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO downloads (id, driveId, fileName, localPath, fileSize, fileId, dataTxId, metadataTxId, status, progress, error)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       
       this.db!.run(sql, [
         download.id,
+        download.driveId,
         download.fileName,
         download.localPath,
         download.fileSize,
@@ -1370,16 +1466,16 @@ export class DatabaseManager {
     });
   }
 
-  // Get uploads for a specific drive mapping
-  async getUploadsByMapping(mappingId: string): Promise<FileUpload[]> {
+  // Get uploads for a specific drive
+  async getUploadsByDrive(driveId: string): Promise<FileUpload[]> {
     return new Promise((resolve, reject) => {
       const sql = `
         SELECT * FROM uploads 
-        WHERE mappingId = ?
+        WHERE driveId = ?
         ORDER BY createdAt DESC
       `;
       
-      this.db!.all(sql, [mappingId], (err, rows: any[]) => {
+      this.db!.all(sql, [driveId], (err, rows: any[]) => {
         if (err) {
           reject(err);
         } else {

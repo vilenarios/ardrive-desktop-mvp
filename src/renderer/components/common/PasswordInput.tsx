@@ -28,7 +28,7 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({
 
   return (
     <div className="form-group">
-      <label>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
         {label}
         {tooltip && <InfoButton tooltip={tooltip} />}
       </label>

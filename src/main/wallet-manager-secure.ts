@@ -45,11 +45,9 @@ export class SecureWalletManager {
 
   async generateNewWallet(password: string): Promise<{ seedPhrase: string; address: string }> {
     try {
-      console.log('[WALLET-DEBUG] generateNewWallet called');
       
       // Generate a new 12-word seed phrase
       const seedPhrase = bip39.generateMnemonic(128); // 128 bits = 12 words
-      console.log('[WALLET-DEBUG] Wallet generation initiated');
       
       // Use the import process with 'generated' flag
       const success = await this.importFromSeedPhraseInternal(seedPhrase, password, 'generated');
@@ -63,7 +61,6 @@ export class SecureWalletManager {
         throw new Error('Failed to get wallet info after creation');
       }
       
-      console.log('[WALLET-DEBUG] Wallet generation completed successfully');
       return {
         seedPhrase,
         address: walletInfo.address
@@ -115,12 +112,10 @@ export class SecureWalletManager {
       
       // Generate JWK wallet from seed phrase
       console.log('Generating wallet from seed phrase using ArDrive Core...');
-      console.log('[WALLET-DEBUG] Processing wallet generation from seed phrase');
       const jwkWallet = await walletDAO.generateJWKWallet(seedPhraseObj);
       
       // Extract the JWK JSON
       const walletJson = jwkWallet.getPrivateKey();
-      console.log('[WALLET-DEBUG] Wallet data processed successfully');
       
       // Convert to string for storage
       const walletData = JSON.stringify(walletJson);
@@ -175,9 +170,6 @@ export class SecureWalletManager {
         // Store both wallet formats
         this.wallet = wallet;
         this.walletJson = walletJson;
-        console.log('[WALLET-DEBUG] Wallet formats stored in memory');
-        console.log('[WALLET-DEBUG] this.wallet exists:', !!this.wallet);
-        console.log('[WALLET-DEBUG] this.walletJson exists:', !!this.walletJson);
         
         // Store password securely in encrypted memory for session only
         await this.storeSessionPassword(password);
@@ -201,9 +193,6 @@ export class SecureWalletManager {
           console.error('Failed to initialize Turbo manager:', turboError);
         }
         
-        console.log('[WALLET-DEBUG] Import completed successfully');
-        console.log('[WALLET-DEBUG] Final state - wallet loaded:', this.isWalletLoaded());
-        console.log('[WALLET-DEBUG] Final state - arDrive exists:', !!this.arDrive);
         
         return true;
       } finally {
@@ -336,16 +325,12 @@ export class SecureWalletManager {
 
   async loadWallet(password: string): Promise<boolean> {
     try {
-      console.log('[WALLET-DEBUG] loadWallet called');
-      console.log('[WALLET-DEBUG] Current profile ID:', this.currentProfileId);
       
       // Check if encrypted wallet file exists
       const walletPath = this.getWalletStoragePath();
-      console.log('[WALLET-DEBUG] Wallet path:', walletPath);
       
       try {
         await fs.access(walletPath);
-        console.log('[WALLET-DEBUG] Wallet file exists');
       } catch (error) {
         console.error('[WALLET-DEBUG] Wallet file not found at:', walletPath);
         return false;
@@ -354,9 +339,7 @@ export class SecureWalletManager {
       // Read and decrypt wallet using secure decryption
       let walletData: string;
       try {
-        console.log('[WALLET-DEBUG] Attempting to decrypt wallet...');
         walletData = await readEncryptedFile(walletPath, password);
-        console.log('[WALLET-DEBUG] Wallet decrypted successfully, data length:', walletData.length);
       } catch (error: any) {
         console.error('[WALLET-DEBUG] Decryption failed:', error?.message || error);
         if (error?.message?.includes('invalid password')) {
@@ -383,11 +366,9 @@ export class SecureWalletManager {
         if (walletStorage.type === 'arweave' && walletStorage.metadata) {
           // New format - extract JWK
           walletJson = walletStorage.jwk;
-          console.log('[WALLET-DEBUG] Loaded wallet in new format, created from:', walletStorage.metadata.createdFrom);
         } else {
           // Legacy format - the entire object is the JWK
           walletJson = walletStorage;
-          console.log('[WALLET-DEBUG] Loaded wallet in legacy format');
         }
       } catch (e) {
         throw new Error('Invalid wallet data format');
@@ -711,21 +692,17 @@ export class SecureWalletManager {
 
   // Clear only in-memory wallet data (for logout)
   async logout(): Promise<void> {
-    console.log('[WALLET-DEBUG] Logging out - clearing in-memory data only');
     
     // Close database connection on logout to prevent file locks
     const { databaseManager } = await import('./database-manager');
     await databaseManager.close();
-    console.log('[WALLET-DEBUG] Database connection closed');
     
     this.clearInMemoryWallet();
-    console.log('[WALLET-DEBUG] Logout complete - wallet file preserved on disk');
   }
 
   // Clear all stored wallet data (for complete removal/uninstall)
   async clearStoredWallet(): Promise<void> {
     try {
-      console.log('[WALLET-DEBUG] Permanently deleting wallet data');
       if (this.currentProfileId) {
         // Securely delete encrypted wallet
         await secureDeleteFile(this.getWalletStoragePath()).catch(() => {});
@@ -765,7 +742,6 @@ export class SecureWalletManager {
   async switchProfile(profileId: string, password?: string): Promise<boolean> {
     // Prevent concurrent profile switches using a mutex
     if (this.profileSwitchMutex) {
-      console.log('[PROFILE-DEBUG] Profile switch already in progress, waiting...');
       await this.profileSwitchMutex;
     }
 
@@ -788,11 +764,9 @@ export class SecureWalletManager {
   // Internal method that performs the actual profile switch
   private async _performProfileSwitch(profileId: string, password?: string): Promise<boolean> {
     try {
-      console.log('[PROFILE-DEBUG] switchProfile called with:', { profileId, hasPassword: !!password });
       
       // Quick check: if already on this profile and wallet is loaded, return success
       if (this.currentProfileId === profileId && this.isWalletLoaded()) {
-        console.log('[PROFILE-DEBUG] Already on target profile with loaded wallet');
         return true;
       }
       
@@ -803,7 +777,6 @@ export class SecureWalletManager {
       const previousWalletJson = this.walletJson;
       const previousSessionPassword = await this.getSessionPassword();
       
-      console.log('[PROFILE-DEBUG] Previous profile ID:', previousProfileId);
       
       try {
         // Clear current in-memory wallet (don't delete stored files!)
@@ -811,40 +784,29 @@ export class SecureWalletManager {
         
         // Temporarily set the profile ID to check wallet access
         this.currentProfileId = profileId;
-        console.log('[PROFILE-DEBUG] Set current profile ID to:', profileId);
       
       // If password provided, try to load the wallet FIRST before updating everything
       if (password) {
-        console.log('[PROFILE-DEBUG] Password provided, attempting authentication...');
         
         try {
           const loaded = await this.loadWallet(password);
-          console.log('[PROFILE-DEBUG] Wallet load result:', loaded);
           
           if (!loaded) {
-            console.log('[PROFILE-DEBUG] Wallet failed to load, restoring previous profile');
             // Restore previous profile ID on failure
             this.currentProfileId = previousProfileId;
             return false;
           }
           
-          console.log('[PROFILE-DEBUG] Password is correct, updating all managers atomically');
           // Password is correct, now safely update all managers in a transaction-like manner
           await this._updateAllManagersAtomically(profileId);
           
-          console.log('[PROFILE-DEBUG] Profile switch completed successfully');
           // Clear previous password from memory
           if (previousSessionPassword) {
             this.clearPassword(previousSessionPassword);
           }
           return true;
         } catch (error: any) {
-          console.error('[PROFILE-DEBUG] Failed to load wallet with provided password:', error);
-          console.error('[PROFILE-DEBUG] Error details:', { 
-            message: error?.message, 
-            name: error?.name,
-            stack: error?.stack?.split('\n').slice(0, 3)
-          });
+          console.error('Failed to load wallet with provided password:', error);
           
           // Restore previous state on failure
           this.currentProfileId = previousProfileId;
@@ -859,7 +821,6 @@ export class SecureWalletManager {
           return false;
         }
       } else {
-        console.log('[PROFILE-DEBUG] No password provided, switching profile context only');
         // No password provided, just switch profile context (user will need to provide password later)
         await this._updateAllManagersAtomically(profileId);
         
@@ -871,7 +832,7 @@ export class SecureWalletManager {
       }
       } catch (innerError: any) {
         // Restore previous state on any failure
-        console.error('[PROFILE-DEBUG] Profile switch failed, restoring state:', innerError);
+        console.error('Profile switch failed, restoring state:', innerError);
         this.currentProfileId = previousProfileId;
         this.arDrive = previousArDrive;
         this.wallet = previousWallet;
@@ -883,7 +844,6 @@ export class SecureWalletManager {
         throw innerError;
       }
     } catch (error) {
-      console.error('[PROFILE-DEBUG] Failed to switch profile:', error);
       return false;
     }
   }
@@ -982,16 +942,15 @@ export class SecureWalletManager {
         }
       });
       
-      console.log('[PROFILE-DEBUG] All managers updated successfully');
     } catch (error) {
-      console.error('[PROFILE-DEBUG] Manager update failed, performing rollback:', error);
+      console.error('Manager update failed, performing rollback:', error);
       
       // Perform rollback in reverse order
       for (let i = rollbackActions.length - 1; i >= 0; i--) {
         try {
           await rollbackActions[i]();
         } catch (rollbackError) {
-          console.error('[PROFILE-DEBUG] Rollback action failed:', rollbackError);
+          console.error('Rollback action failed:', rollbackError);
           // Continue with other rollback actions even if one fails
         }
       }

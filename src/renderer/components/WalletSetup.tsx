@@ -31,6 +31,28 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
   // Confirmation state
   const [hasConfirmedSeedPhrase, setHasConfirmedSeedPhrase] = useState(false);
 
+  // Dev mode auto-fill for faster testing
+  React.useEffect(() => {
+    const checkDevMode = async () => {
+      const isDevMode = await window.electronAPI.system.getEnv('ARDRIVE_DEV_MODE');
+      const devWalletPath = await window.electronAPI.system.getEnv('ARDRIVE_DEV_WALLET_PATH');
+      const devPassword = await window.electronAPI.system.getEnv('ARDRIVE_DEV_PASSWORD');
+      
+      if (isDevMode === 'true' && walletAction === 'import' && step === 2) {
+        if (devWalletPath) {
+          setWalletPath(devWalletPath);
+          setImportMethod('file');
+        }
+        if (devPassword) {
+          setPassword(devPassword);
+          setConfirmPassword(devPassword);
+        }
+      }
+    };
+    
+    checkDevMode();
+  }, [walletAction, step]);
+
   // Reset all fields when switching between create/import
   React.useEffect(() => {
     setImportMethod('file');
@@ -52,7 +74,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
         setError(null);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to select wallet');
+      setError(err instanceof Error ? err.message : 'Failed to select wallet file');
     }
   };
 
@@ -121,11 +143,10 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
       
       setGeneratedSeedPhrase(result.seedPhrase);
       setGeneratedAddress(result.address);
-      setSuccess('Wallet created successfully!');
       nextStep();
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create wallet');
+      setError(err instanceof Error ? err.message : 'Failed to create account');
     } finally {
       setLoading(false);
     }
@@ -139,13 +160,11 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
       // Complete wallet creation
       await window.electronAPI.wallet.completeSetup();
       
-      setSuccess('Wallet setup complete!');
-      setTimeout(() => {
-        onWalletImported();
-      }, 1500);
+      // Navigate immediately - no need for success message
+      onWalletImported();
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to complete wallet setup');
+      setError(err instanceof Error ? err.message : 'Failed to complete account setup');
       setLoading(false);
     }
   };
@@ -173,10 +192,10 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
           return;
         }
         
-        // Import wallet from JWK file
+        // Import account from JWK file
         await window.electronAPI.wallet.importFromKeyfile(walletPath, password);
       } else {
-        // Import wallet from seed phrase
+        // Import account from recovery phrase
         const seedValidation = validateSeedPhrase(seedPhrase);
         if (!seedValidation.isValid) {
           setError(seedValidation.error!);
@@ -186,13 +205,11 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
         await window.electronAPI.wallet.importFromSeedPhrase(seedPhrase.trim(), password);
       }
       
-      setSuccess('Wallet imported successfully!');
-      setTimeout(() => {
-        onWalletImported();
-      }, 1500);
+      // Navigate immediately - no need for success message
+      onWalletImported();
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to import wallet');
+      setError(err instanceof Error ? err.message : 'Failed to import account');
     } finally {
       setLoading(false);
     }
@@ -203,7 +220,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
   const prevStep = () => setStep(step - 1);
 
   return (
-    <div className="wallet-setup-container" style={{
+    <div style={{
       position: 'relative',
       minHeight: '100vh',
       display: 'flex',
@@ -211,29 +228,21 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
       justifyContent: 'center',
       overflow: 'hidden'
     }}>
-      {/* Background Pattern */}
+      {/* Background - Permahills */}
       <div style={{
         position: 'absolute',
-        inset: 0,
-        opacity: 0.03,
-        backgroundImage: `
-          repeating-linear-gradient(
-            0deg,
-            transparent,
-            transparent 35px,
-            rgba(227, 84, 35, 0.1) 35px,
-            rgba(227, 84, 35, 0.1) 36px
-          ),
-          repeating-linear-gradient(
-            90deg,
-            transparent,
-            transparent 35px,
-            rgba(227, 84, 35, 0.1) 35px,
-            rgba(227, 84, 35, 0.1) 36px
-          )
-        `,
-        pointerEvents: 'none'
-      }} />
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        zIndex: 1,
+        pointerEvents: 'none',
+        backgroundImage: 'url(permahills_background.jpg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat'
+      }}>
+      </div>
       
       <div className="wallet-setup-card" style={{
         position: 'relative',
@@ -244,7 +253,8 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
         border: '1px solid rgba(0, 0, 0, 0.06)',
         maxWidth: '520px',
         width: '100%',
-        margin: 'var(--space-8)'
+        margin: 'var(--space-8)',
+        zIndex: 2
       }}>
         {/* Header with Logo */}
         <div style={{ marginBottom: 'var(--space-6)' }}>
@@ -261,23 +271,17 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
           </div>
         )}
 
-        {success && (
-          <div className="success-message" style={{ marginBottom: 'var(--space-4)' }}>
-            {success}
-          </div>
-        )}
-
         {/* Step 1: Choose Action */}
         {step === 1 && (
           <div className="step-content">
             <h2 style={{ marginBottom: 'var(--space-6)' }}>Welcome to ArDrive Desktop</h2>
-            <p style={{ fontSize: '16px', color: 'var(--gray-600)', marginBottom: 'var(--space-8)', textAlign: 'center' }}>
+            <p style={{ fontSize: 'var(--text-base)', color: 'var(--gray-600)', marginBottom: 'var(--space-8)', textAlign: 'center' }}>
               Store your files permanently on the decentralized web
             </p>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
               <button
-                className="primary-action-button"
+                className="button large"
                 onClick={() => {
                   setWalletAction('create');
                   setStep(2);
@@ -287,41 +291,22 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  padding: 'var(--space-6)',
-                  backgroundColor: 'var(--ardrive-primary)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 'var(--radius-lg)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  boxShadow: '0 4px 12px rgba(227, 84, 35, 0.15)',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(227, 84, 35, 0.25)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(227, 84, 35, 0.15)';
-                }}
-                onMouseDown={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
+                  gap: 'var(--space-2)',
+                  width: '100%'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
-                  <Wallet size={24} />
-                  <span style={{ fontSize: '18px', fontWeight: '600' }}>Create New Account</span>
-                  <ArrowRight size={20} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <Wallet size={20} />
+                  <span>Create New Account</span>
+                  <ArrowRight size={16} />
                 </div>
-                <p style={{ fontSize: '14px', opacity: 0.9, margin: 0 }}>
-                  Generate a new Arweave wallet
-                </p>
+                <span style={{ fontSize: 'var(--text-xs)', opacity: 0.9 }}>
+                  Get started with a new account
+                </span>
               </button>
 
               <button
-                className="secondary-action-button"
+                className="button outline large"
                 onClick={() => {
                   setWalletAction('import');
                   setStep(2);
@@ -331,40 +316,18 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  padding: 'var(--space-6)',
-                  backgroundColor: 'white',
-                  color: 'var(--gray-800)',
-                  border: '2px solid var(--gray-300)',
-                  borderRadius: 'var(--radius-lg)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  position: 'relative',
-                  overflow: 'hidden',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--ardrive-primary)';
-                  e.currentTarget.style.backgroundColor = 'var(--gray-50)';
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.1)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--gray-300)';
-                  e.currentTarget.style.backgroundColor = 'white';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-                onMouseDown={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
+                  gap: 'var(--space-2)',
+                  width: '100%'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
-                  <FileText size={24} />
-                  <span style={{ fontSize: '18px', fontWeight: '600' }}>Import Existing Account</span>
-                  <ArrowRight size={20} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <FileText size={20} />
+                  <span>Import Existing Account</span>
+                  <ArrowRight size={16} />
                 </div>
-                <p style={{ fontSize: '14px', color: 'var(--gray-600)', margin: 0 }}>
+                <span style={{ fontSize: 'var(--text-xs)', opacity: 0.8 }}>
                   Use your wallet file or recovery phrase
-                </p>
+                </span>
               </button>
             </div>
 
@@ -374,19 +337,19 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
               borderTop: '1px solid var(--gray-200)',
               textAlign: 'center'
             }}>
-              <p style={{ fontSize: '13px', color: 'var(--gray-500)' }}>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--gray-500)' }}>
                 Need help? Check out our <a href="#" style={{ color: 'var(--ardrive-primary)', textDecoration: 'none' }}>getting started guide</a>
               </p>
             </div>
           </div>
         )}
 
-        {/* Step 2: Create Wallet - Set Password */}
+        {/* Step 2: Create Account - Set Password */}
         {step === 2 && walletAction === 'create' && (
           <div className="step-content">
             <h2 style={{ marginBottom: 'var(--space-3)' }}>Secure Your Account</h2>
-            <p style={{ fontSize: '16px', color: 'var(--gray-600)', marginBottom: 'var(--space-6)' }}>
-              Choose a strong password to encrypt your wallet
+            <p style={{ fontSize: 'var(--text-base)', color: 'var(--gray-600)', marginBottom: 'var(--space-6)' }}>
+              Choose a strong password to encrypt your account
             </p>
 
             <PasswordForm
@@ -434,20 +397,46 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                 disabled={loading || !password || !confirmPassword || password !== confirmPassword || password.length < 8}
                 style={{ flex: 2 }}
               >
-                {loading ? 'Creating...' : 'Create Account'}
+                {loading ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)' }}>
+                    <div style={{ 
+                      width: '16px', 
+                      height: '16px', 
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      borderTop: '2px solid white',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite'
+                    }} />
+                    <span>Creating your account...</span>
+                  </div>
+                ) : (
+                  'Create Account'
+                )}
               </button>
             </div>
+            
+            {loading && (
+              <div style={{ 
+                marginTop: 'var(--space-3)', 
+                textAlign: 'center',
+                fontSize: '13px',
+                color: 'var(--gray-600)',
+                animation: 'fadeIn 0.5s ease-in'
+              }}>
+                This may take a moment while we generate your secure wallet...
+              </div>
+            )}
           </div>
         )}
 
-        {/* Step 3: Create Wallet - Show Seed Phrase */}
+        {/* Step 3: Create Account - Show Recovery Phrase */}
         {step === 3 && walletAction === 'create' && generatedSeedPhrase && (
           <div className="step-content" style={{ 
             animation: 'fadeIn 0.3s ease-in'
           }}>
             <h2 style={{ marginBottom: 'var(--space-2)' }}>Save Your Recovery Phrase</h2>
             <p style={{ fontSize: '15px', color: 'var(--gray-600)', marginBottom: 'var(--space-4)' }}>
-              Write down these 12 words in order. You'll need them to recover your wallet.
+              Write down these 12 words in order. You'll need them to recover your account.
             </p>
 
             {/* Address Display - moved up */}
@@ -472,7 +461,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                     Critical: Save This Phrase
                   </h4>
                   <p style={{ fontSize: '12px', color: 'var(--error-800)', lineHeight: '1.4' }}>
-                    This is the ONLY way to recover your wallet. If you lose this phrase, you lose access to your funds forever.
+                    This is the ONLY way to recover your account. If you lose this phrase, you lose access to your files forever.
                   </p>
                 </div>
               </div>
@@ -549,7 +538,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
         )}
 
 
-        {/* Step 2: Import Wallet */}
+        {/* Step 2: Import Account */}
         {step === 2 && walletAction === 'import' && (
           <div className="step-content">
             <h2 style={{ marginBottom: 'var(--space-2)' }}>Import Your Account</h2>
@@ -561,30 +550,20 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
             <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
               <button
                 type="button"
-                className={`button outline ${importMethod === 'file' ? 'active' : ''}`}
+                className={importMethod === 'file' ? 'button' : 'button outline'}
                 onClick={() => setImportMethod('file')}
-                style={{ 
-                  flex: 1,
-                  backgroundColor: importMethod === 'file' ? 'var(--ardrive-primary)' : 'transparent',
-                  color: importMethod === 'file' ? 'white' : 'var(--gray-700)',
-                  borderColor: importMethod === 'file' ? 'var(--ardrive-primary)' : 'var(--gray-300)'
-                }}
+                style={{ flex: 1 }}
               >
-                <Key size={16} style={{ marginRight: 'var(--space-2)' }} />
+                <Key size={16} />
                 Wallet File
               </button>
               <button
                 type="button"
-                className={`button outline ${importMethod === 'seedphrase' ? 'active' : ''}`}
+                className={importMethod === 'seedphrase' ? 'button' : 'button outline'}
                 onClick={() => setImportMethod('seedphrase')}
-                style={{ 
-                  flex: 1,
-                  backgroundColor: importMethod === 'seedphrase' ? 'var(--ardrive-primary)' : 'transparent',
-                  color: importMethod === 'seedphrase' ? 'white' : 'var(--gray-700)',
-                  borderColor: importMethod === 'seedphrase' ? 'var(--ardrive-primary)' : 'var(--gray-300)'
-                }}
+                style={{ flex: 1 }}
               >
-                <Hexagon size={16} style={{ marginRight: 'var(--space-2)' }} />
+                <Hexagon size={16} />
                 Recovery Phrase
               </button>
             </div>
@@ -595,7 +574,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                 <label style={{ marginBottom: 'var(--space-2)' }}>
                   Select Wallet File
                   <span style={{ fontSize: '13px', color: 'var(--gray-500)', fontWeight: 'normal', marginLeft: 'var(--space-3)' }}>
-                    Supports Arweave wallet JSON files only
+                    Arweave wallet (.json) files only
                   </span>
                 </label>
                 <div style={{ 
@@ -603,7 +582,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                   borderRadius: 'var(--radius-md)',
                   padding: 'var(--space-5)',
                   textAlign: 'center',
-                  backgroundColor: isDragging ? 'var(--ardrive-primary-light)' : walletPath ? 'var(--primary-50)' : 'var(--gray-50)',
+                  backgroundColor: isDragging ? 'var(--ardrive-primary-100)' : walletPath ? 'var(--ardrive-primary-50)' : 'var(--gray-50)',
                   transition: 'all 0.2s ease',
                   cursor: 'pointer'
                 }}
@@ -626,7 +605,6 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                             e.stopPropagation();
                             handleSelectWallet();
                           }}
-                          style={{ fontSize: '13px' }}
                         >
                           Change File
                         </button>
@@ -636,16 +614,15 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                             e.stopPropagation();
                             handleCopyPath();
                           }}
-                          style={{ fontSize: '13px' }}
                         >
                           {copiedPath ? (
                             <>
-                              <CheckCircle size={14} style={{ marginRight: 'var(--space-1)' }} />
+                              <CheckCircle size={14} />
                               Copied!
                             </>
                           ) : (
                             <>
-                              <Copy size={14} style={{ marginRight: 'var(--space-1)' }} />
+                              <Copy size={14} />
                               Copy Path
                             </>
                           )}
@@ -665,7 +642,6 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                             e.stopPropagation();
                             handleSelectWallet();
                           }}
-                          style={{ fontSize: '14px' }}
                         >
                           Browse Files
                         </button>
@@ -813,7 +789,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
               />
             </div>
 
-            {/* Security Warning - Same as Create Wallet */}
+            {/* Security Warning - Same as Create Account */}
             <div style={{ 
               backgroundColor: 'var(--warning-50)', 
               padding: 'var(--space-4)', 

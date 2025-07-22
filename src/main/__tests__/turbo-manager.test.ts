@@ -1,5 +1,8 @@
 import { TurboManager } from '../turbo-manager';
 
+// Get mocked modules
+const mockTurboSdk = jest.requireMock('@ardrive/turbo-sdk');
+
 // Mock the entire @ardrive/turbo-sdk module
 jest.mock('@ardrive/turbo-sdk', () => ({
   TurboFactory: {
@@ -78,9 +81,8 @@ describe('TurboManager', () => {
     };
 
     // Mock factory methods
-    const { TurboFactory } = require('@ardrive/turbo-sdk');
-    TurboFactory.authenticated.mockReturnValue(mockAuthenticatedClient);
-    TurboFactory.unauthenticated.mockReturnValue(mockUnauthenticatedClient);
+    mockTurboSdk.TurboFactory.authenticated.mockReturnValue(mockAuthenticatedClient);
+    mockTurboSdk.TurboFactory.unauthenticated.mockReturnValue(mockUnauthenticatedClient);
 
     turboManager = new TurboManager();
   });
@@ -94,8 +96,7 @@ describe('TurboManager', () => {
     });
 
     it('should handle initialization errors', async () => {
-      const { ArweaveSigner } = require('@ardrive/turbo-sdk');
-      ArweaveSigner.mockImplementation(() => {
+      mockTurboSdk.ArweaveSigner.mockImplementation(() => {
         throw new Error('Mock signer error');
       });
 

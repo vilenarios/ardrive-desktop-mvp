@@ -1,0 +1,115 @@
+/* Dashboard Tab Content Standardization */
+/* Following ArDrive Design System Guidelines */
+
+/* Base tab content wrapper - provides consistent width and padding */
+.tab-content {
+  background: var(--ardrive-surface);
+  border: 1px solid var(--ardrive-border);
+  border-radius: var(--radius-lg);
+  min-height: 600px;
+  width: 100%;
+  box-shadow: var(--shadow-sm);
+  margin-top: -1px; /* Connect to tab navigation */
+  
+  /* Remove padding from here - let inner containers handle it */
+  padding: 0;
+  
+  /* Ensure consistent max-width for all tabs */
+  display: flex;
+  justify-content: center;
+}
+
+/* Tab content inner wrapper - controls max width and padding */
+.tab-content-inner {
+  width: 100%;
+  max-width: 1400px; /* Consistent max width for all tabs */
+  padding: var(--space-6);
+}
+
+/* Individual tab containers - reset any conflicting styles */
+.overview-tab-wrapper,
+.upload-queue-tab,
+.download-queue-tab,
+.activity-tab-wrapper,
+.storage-tab-wrapper {
+  width: 100%;
+}
+
+/* Override existing tab-specific padding */
+.overview-tab,
+.upload-queue-tab,
+.download-queue-tab,
+.activity-tab,
+.storage-tab {
+  padding: 0 !important; /* Remove any existing padding */
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* Responsive behavior for smaller screens */
+@media (max-width: 1600px) {
+  .tab-content-inner {
+    max-width: 1200px;
+  }
+}
+
+@media (max-width: 1400px) {
+  .tab-content-inner {
+    max-width: 1000px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .tab-content-inner {
+    max-width: 100%;
+    padding: var(--space-5);
+  }
+}
+
+@media (max-width: 768px) {
+  .tab-content-inner {
+    padding: var(--space-4);
+  }
+}
+
+/* Ensure consistent empty state styling */
+.empty-state,
+.empty-queue,
+.empty-activity {
+  text-align: center;
+  padding: var(--space-12) var(--space-6);
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+/* Headers within tabs should have consistent spacing */
+.activity-header,
+.storage-header {
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+/* Ensure cards and content blocks have consistent spacing */
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+/* File lists and activity streams should be full width */
+.activity-list,
+.file-list,
+.download-list {
+  width: 100%;
+}
+
+/* Ensure modals and overlays are not affected */
+.modal-overlay,
+.settings-modal-backdrop,
+.wallet-export-modal {
+  /* These should remain unaffected by tab content constraints */
+}

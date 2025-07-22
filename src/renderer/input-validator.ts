@@ -19,7 +19,7 @@ export class ClientInputValidator {
     ARWEAVE_ADDRESS: /^[a-zA-Z0-9_-]{43}$/,
     DRIVE_ID: /^[a-zA-Z0-9_-]{43}$/,
     PROFILE_ID: /^[a-zA-Z0-9-]{36}$/,
-    SAFE_STRING: /^[a-zA-Z0-9\s\-_.,!@#$%^&*()+=[\]{}|;':\"<>?`~]*$/,
+    SAFE_STRING: /^[a-zA-Z0-9\s\-_.,!@#$%^&*()+=[\]{}|;':"<>?`~]*$/,
     EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   };
 

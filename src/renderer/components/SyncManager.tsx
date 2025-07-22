@@ -55,7 +55,7 @@ const SyncManager: React.FC<SyncManagerProps> = ({ onSyncFolderSelected }) => {
           {selectedFolder ? (
             <div style={{
               padding: 'var(--space-4)',
-              backgroundColor: 'var(--ardrive-primary-light)',
+              backgroundColor: 'var(--ardrive-primary-100)',
               border: '2px solid var(--ardrive-primary)',
               borderRadius: 'var(--radius-lg)',
               display: 'flex',
@@ -97,7 +97,7 @@ const SyncManager: React.FC<SyncManagerProps> = ({ onSyncFolderSelected }) => {
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = 'var(--ardrive-primary)';
-                e.currentTarget.style.backgroundColor = 'var(--ardrive-primary-light)';
+                e.currentTarget.style.backgroundColor = 'var(--ardrive-primary-100)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.borderColor = 'var(--gray-300)';

@@ -1,34 +1,59 @@
 import React, { useState, useEffect } from 'react';
 import { HardDrive, Plus, FolderOpen, Calendar, Database, ArrowRight, ChevronRight, SkipForward, ArrowLeft, User } from 'lucide-react';
 import { DriveInfo, Profile } from '../../types';
+import { ProfileSkeleton } from './common/ProfileSkeleton';
+import { DriveListSkeleton } from './common/DriveSkeleton';
 
 interface WelcomeBackScreenProps {
   currentProfile?: Profile | null;
+  initialDrives?: DriveInfo[];
   onDriveSelected: (drive: DriveInfo) => void;
   onCreateNewDrive: () => void;
   onSkipSetup: () => void;
   onBack?: () => void;
+  onProfileLoaded?: (profile: Profile) => void;
 }
 
 const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({ 
   currentProfile,
+  initialDrives,
   onDriveSelected, 
   onCreateNewDrive, 
   onSkipSetup,
-  onBack 
+  onBack,
+  onProfileLoaded 
 }) => {
-  const [drives, setDrives] = useState<DriveInfo[]>([]);
+  const [drives, setDrives] = useState<DriveInfo[]>(initialDrives || []);
   const [selectedDriveId, setSelectedDriveId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [drivesLoading, setDrivesLoading] = useState(!initialDrives);
+  const [profileLoading, setProfileLoading] = useState(!currentProfile);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadDrives();
-  }, []);
+    if (!initialDrives) {
+      loadDrives();
+    } else {
+      // Filter and set public drives from initial drives
+      const publicDrives = initialDrives.filter((drive: DriveInfo) => 
+        drive.privacy === 'public' && !drive.isPrivate
+      );
+      console.log('Initial drives:', initialDrives);
+      console.log('Filtered public drives:', publicDrives);
+      
+      // Update the drives state with filtered public drives
+      setDrives(publicDrives);
+      setDrivesLoading(false);
+      
+      // Pre-select the most recent drive if there's only one
+      if (publicDrives.length === 1) {
+        setSelectedDriveId(publicDrives[0].id);
+      }
+    }
+  }, [initialDrives]);
 
   const loadDrives = async () => {
     try {
-      setLoading(true);
+      setDrivesLoading(true);
       const driveList = await window.electronAPI.drive.list();
       console.log('Loaded drives in WelcomeBackScreen:', driveList);
       
@@ -48,7 +73,7 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
       console.error('Failed to load drives:', err);
       setError('Failed to load your drives');
     } finally {
-      setLoading(false);
+      setDrivesLoading(false);
     }
   };
 
@@ -78,30 +103,15 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
     }
   };
 
-  if (loading) {
-    return (
-      <div style={{ 
-        minHeight: '100vh',
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        background: 'var(--gray-50)'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ 
-            width: '48px', 
-            height: '48px', 
-            border: '4px solid var(--gray-200)',
-            borderTop: '4px solid var(--ardrive-primary)',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto var(--space-4)'
-          }} />
-          <p style={{ color: 'var(--gray-600)' }}>Loading your drives...</p>
-        </div>
-      </div>
-    );
-  }
+  // Effect to handle profile updates
+  useEffect(() => {
+    if (currentProfile && profileLoading) {
+      setProfileLoading(false);
+      if (onProfileLoaded) {
+        onProfileLoaded(currentProfile);
+      }
+    }
+  }, [currentProfile, profileLoading, onProfileLoaded]);
 
   return (
     <div style={{
@@ -120,59 +130,66 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
         borderRadius: 'var(--radius-lg)',
         boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
       }}>
-        {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
-                    
-          {/* User Avatar */}
-          {currentProfile && (
-            <div style={{ 
-              width: '64px', 
-              height: '64px', 
-              margin: '0 auto var(--space-4)', 
-              background: 'var(--gray-100)', 
-              borderRadius: '50%', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              position: 'relative', 
-              overflow: 'hidden',
-              border: '3px solid var(--gray-200)'
-            }}>
-              {currentProfile.avatarUrl ? (
-                <img 
-                  src={currentProfile.avatarUrl} 
-                  alt={currentProfile.arnsName || currentProfile.name || 'User'}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0
-                  }}
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    const nextElement = e.currentTarget.nextSibling as HTMLElement;
-                    if (nextElement) {
-                      nextElement.style.display = '';
-                    }
-                  }}
-                />
-              ) : null}
-              <User size={32} style={currentProfile.avatarUrl ? { display: 'none' } : { color: 'var(--gray-600)' }} />
-            </div>
-          )}
-          
-          <h2 style={{ marginBottom: 'var(--space-3)', fontSize: '32px', fontWeight: '600' }}>
-            Welcome Back{currentProfile && (currentProfile.arnsName || currentProfile.name) ? `, ${currentProfile.arnsName || currentProfile.name}` : ''}!
-          </h2>
-          <p style={{ fontSize: '18px', color: 'var(--gray-600)', lineHeight: '1.6' }}>
-            {drives.length > 0 
-              ? `Great news! You already have ${drives.length} public Drive${drives.length !== 1 ? 's' : ''} ready to sync.`
-              : 'You have existing Drives, but they are private. Private drives are not supported yet.'
-            }
-          </p>
-        </div>
+        {/* Header with Progressive Loading */}
+        {profileLoading ? (
+          <ProfileSkeleton />
+        ) : (
+          <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
+                      
+            {/* User Avatar */}
+            {currentProfile && (
+              <div style={{ 
+                width: '64px', 
+                height: '64px', 
+                margin: '0 auto var(--space-4)', 
+                background: 'var(--gray-100)', 
+                borderRadius: '50%', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                position: 'relative', 
+                overflow: 'hidden',
+                border: '3px solid var(--gray-200)',
+                animation: 'fadeIn 0.5s ease-in'
+              }}>
+                {currentProfile.avatarUrl ? (
+                  <img 
+                    src={currentProfile.avatarUrl} 
+                    alt={currentProfile.arnsName || currentProfile.name || 'User'}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      position: 'absolute',
+                      top: 0,
+                      left: 0
+                    }}
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      const nextElement = e.currentTarget.nextSibling as HTMLElement;
+                      if (nextElement) {
+                        nextElement.style.display = '';
+                      }
+                    }}
+                  />
+                ) : null}
+                <User size={32} style={currentProfile.avatarUrl ? { display: 'none' } : { color: 'var(--gray-600)' }} />
+              </div>
+            )}
+            
+            <h2 style={{ marginBottom: 'var(--space-3)', fontSize: '32px', fontWeight: '600', animation: 'fadeIn 0.5s ease-in' }}>
+              Welcome Back{currentProfile && (currentProfile.arnsName || currentProfile.name) ? `, ${currentProfile.arnsName || currentProfile.name}` : ''}!
+            </h2>
+            <p style={{ fontSize: '18px', color: 'var(--gray-600)', lineHeight: '1.6', animation: 'fadeIn 0.5s ease-in' }}>
+              {drivesLoading 
+                ? 'Loading your drives...'
+                : drives.length > 0 
+                  ? `Great news! You already have ${drives.length} public Drive${drives.length !== 1 ? 's' : ''} ready to sync.`
+                  : 'You have existing Drives, but they are private. Private drives are not supported yet.'
+              }
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="error-message" style={{ marginBottom: 'var(--space-4)' }}>
@@ -180,8 +197,10 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
           </div>
         )}
 
-        {/* Drives List */}
-        {drives.length > 0 && (
+        {/* Drives List with Progressive Loading */}
+        {drivesLoading ? (
+          <DriveListSkeleton count={2} />
+        ) : drives.length > 0 ? (
           <div style={{ marginBottom: 'var(--space-6)' }}>
             <h3 style={{ 
               fontSize: '16px', 
@@ -201,7 +220,7 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
                   padding: 'var(--space-4)',
                   border: `2px solid ${selectedDriveId === drive.id ? 'var(--ardrive-primary)' : 'var(--gray-200)'}`,
                   borderRadius: 'var(--radius-md)',
-                  backgroundColor: selectedDriveId === drive.id ? 'var(--primary-50)' : 'white',
+                  backgroundColor: selectedDriveId === drive.id ? 'var(--ardrive-primary-50)' : 'white',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
                   position: 'relative'
@@ -307,7 +326,7 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = 'var(--ardrive-primary)';
-                e.currentTarget.style.backgroundColor = 'var(--primary-50)';
+                e.currentTarget.style.backgroundColor = 'var(--ardrive-primary-50)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.borderColor = 'var(--gray-300)';
@@ -331,7 +350,7 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
             </button>
           </div>
         </div>
-        )}
+        ) : null}
 
         {/* Action Buttons */}
         <div style={{ 
@@ -374,15 +393,15 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
             <button
               className="button large"
               onClick={handleContinue}
-              disabled={!selectedDriveId}
+              disabled={!selectedDriveId || drivesLoading}
               style={{
                 fontSize: '16px',
                 padding: '12px 24px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 'var(--space-2)',
-                opacity: !selectedDriveId ? 0.6 : 1,
-                cursor: !selectedDriveId ? 'not-allowed' : 'pointer'
+                opacity: !selectedDriveId || drivesLoading ? 0.6 : 1,
+                cursor: !selectedDriveId || drivesLoading ? 'not-allowed' : 'pointer'
               }}
             >
               Continue with Selected Drive
@@ -418,6 +437,19 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
           You can add more drives or change your selection later from the dashboard.
         </p>
       </div>
+      
+      <style>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 };

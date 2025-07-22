@@ -24,7 +24,7 @@ const StatusPill: React.FC<StatusPillProps> = ({ status, progress = 0 }) => {
         return {
           label: progress > 0 ? `${Math.round(progress)}%` : 'Uploading...',
           color: 'var(--ardrive-primary)',
-          backgroundColor: 'var(--primary-50)',
+          backgroundColor: 'var(--ardrive-primary-50)',
           borderColor: 'var(--gray-200)',
           icon: <Loader size={14} className="status-spinner" />
         };
@@ -53,6 +53,15 @@ const StatusPill: React.FC<StatusPillProps> = ({ status, progress = 0 }) => {
           color: 'var(--warning-700)',
           backgroundColor: 'var(--warning-50)',
           borderColor: 'var(--warning-200)',
+          icon: <AlertTriangle size={14} />
+        };
+      
+      default:
+        return {
+          label: 'Unknown',
+          color: 'var(--gray-600)',
+          backgroundColor: 'var(--gray-50)',
+          borderColor: 'var(--gray-200)',
           icon: <AlertTriangle size={14} />
         };
     }

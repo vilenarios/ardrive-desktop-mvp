@@ -132,7 +132,7 @@ const DriveManager: React.FC<DriveManagerProps> = ({
                       className="drive-item"
                       style={{
                         border: isCurrentlySelected ? '2px solid var(--ardrive-primary)' : '2px solid var(--gray-300)',
-                        backgroundColor: isCurrentlySelected ? 'var(--ardrive-primary-light)' : 'white',
+                        backgroundColor: isCurrentlySelected ? 'var(--ardrive-primary-100)' : 'white',
                         borderRadius: 'var(--radius-lg)',
                         padding: 'var(--space-5)',
                         transition: 'all 0.2s ease',

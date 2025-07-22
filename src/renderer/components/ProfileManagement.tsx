@@ -72,6 +72,12 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
       await window.electronAPI.profiles.delete(profileId);
       await loadProfiles();
       setDeleteConfirm(null);
+      
+      // Check if this was the last profile and redirect to wallet setup
+      const updatedProfiles = await window.electronAPI.profiles.list();
+      if (!updatedProfiles || updatedProfiles.length === 0) {
+        onCreateNewProfile();
+      }
     } catch (err) {
       console.error('Failed to delete profile:', err);
       setError('Failed to delete profile');
@@ -125,9 +131,34 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
       alignItems: 'center',
       justifyContent: 'center',
       padding: 'var(--space-6)',
-      background: 'var(--gray-50)'
+      background: 'var(--gray-50)',
+      position: 'relative',
+      overflow: 'hidden'
     }}>
+      {/* Background - Permahills */}
+      <img 
+        src="permahills_background.jpg"
+        alt=""
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          opacity: 0.3,
+          pointerEvents: 'none',
+          zIndex: -1
+        }}
+        onError={(e) => {
+          console.log('Background image failed to load:', e);
+          e.currentTarget.style.display = 'none';
+        }}
+        onLoad={() => console.log('Background image loaded successfully')}
+      />
+
       <div style={{
+        position: 'relative',
         width: '100%',
         maxWidth: '600px',
         padding: 'var(--space-8)',
@@ -242,7 +273,7 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
                           color: 'var(--gray-600)',
                           marginBottom: 'var(--space-2)'
                         }}>
-                          {profile.address.slice(0, 8)}...{profile.address.slice(-6)}
+                          {profile.address.slice(0, 4)}...{profile.address.slice(-4)}
                         </div>
                         
                         <div style={{ 
@@ -414,7 +445,7 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.borderColor = 'var(--ardrive-primary)';
-              e.currentTarget.style.backgroundColor = 'var(--primary-50)';
+              e.currentTarget.style.backgroundColor = 'var(--ardrive-primary-50)';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.borderColor = 'var(--gray-300)';
@@ -432,7 +463,7 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
                 Add New Profile
               </h4>
               <p style={{ fontSize: '14px', color: 'var(--gray-600)' }}>
-                Import a wallet or create a new one
+                Import an account or create a new one
               </p>
             </div>
           </button>
@@ -466,7 +497,7 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
           color: 'var(--gray-500)',
           textAlign: 'center'
         }}>
-          Your wallet data is encrypted and stored locally on this device.
+          Your account data is encrypted and stored locally on this device.
         </p>
       </div>
     </div>
