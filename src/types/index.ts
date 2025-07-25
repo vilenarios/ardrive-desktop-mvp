@@ -232,3 +232,22 @@ export interface DownloadItem {
   size?: number;
   error?: string;
 }
+
+// Manifest creation result
+export interface ManifestCreationResult {
+  success: boolean;
+  manifestUrl: string;
+  fileUrls: string[];
+  fees: any;
+  txId: string;
+  fileCount: number;
+  manifestName: string;
+}
+
+// Folder node for tree view
+export interface FolderNode {
+  id: string;
+  name: string;
+  parentId: string;
+  path: string;
+}

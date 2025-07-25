@@ -174,6 +174,14 @@ shell: {
 await window.electronAPI.shell.openPath(config.syncFolder);
 ```
 
+### Creating an Arweave Manifest
+Manifests create a single URL to access all files in a folder:
+1. User selects a folder from the drive structure
+2. Provides a manifest name (default: DriveManifest.json)
+3. System creates manifest without re-uploading files
+4. Manifest URL is automatically copied to clipboard
+5. If manifest with same name exists, it's replaced
+
 ### Running a Single Test
 ```bash
 # Run a specific test file
@@ -206,17 +214,25 @@ npm run test:watch
 ## Core Dependencies
 - **ardrive-core-js**: Drive operations, file uploads, metadata
 - **@ardrive/turbo-sdk**: Turbo Credits purchases and conversions
+- **@ar.io/sdk**: ArNS name resolution and integration
 - **arweave**: Direct blockchain interactions
 - **sqlite3/better-sqlite3**: Local database operations
 - **chokidar**: File system monitoring
 - **react-router-dom**: Navigation between screens
 - **axios**: HTTP requests for API calls
+- **lucide-react**: Modern icon library for UI components
 
 ### Key Services
 - **arns-service.ts**: ArNS name resolution for profile identification
 - **turbo-manager.ts**: Turbo Credits management and conversions
 - **upload-manager.ts**: Upload queue and progress tracking
 - **input-validator.ts**: Input validation for security
+
+### Key UI Components
+- **CreateManifestModal.tsx**: Modal for creating Arweave manifests - creates a single URL to access all files in a folder
+- **Dashboard.tsx**: Main application dashboard with tabs
+- **WalletSetup.tsx**: Onboarding and wallet import flow
+- **DriveAndSyncSetup.tsx**: Drive creation and sync folder setup
 
 ## Testing & Quality Assurance
 
@@ -231,6 +247,7 @@ npm run test:watch
 npm run test          # Run all tests
 npm run test:ui       # Run with Vitest UI
 npm run test:coverage # Generate coverage report
+npm run test:watch    # Run tests in watch mode
 ```
 
 ### UAT Tools
@@ -422,6 +439,13 @@ ELECTRON_ENABLE_LOGGING=1 npm run dev
 npm run dev:main -- --inspect
 ```
 
+### Working with Modified Files
+When you see modified files in git status:
+- `M` prefix means the file has uncommitted changes
+- `??` prefix means the file is untracked (new)
+- Always review changes before implementing new features
+- Check for work-in-progress (wip) commits that may indicate ongoing development
+
 ### Windows-Specific Paths
 On Windows, the database is located at:
 ```
@@ -438,10 +462,12 @@ On Windows, the database is located at:
 
 ### Component Patterns
 - Empty states: Icon + Message + CTA button
-- Loading: Spinning animation with message
+- Loading: Spinning animation with message (using Loader2 from lucide-react)
 - Errors: Red text with clear explanation
 - Success: Green checkmark with message
 - Toast notifications: Bottom-right, auto-dismiss
+- Progress bars: Visual indicators for upload/download progress
+- Modal dialogs: Centered overlays with backdrop
 
 ### Spacing System
 ```css
@@ -453,9 +479,10 @@ On Windows, the database is located at:
 ```
 
 ### Icons
-- Use existing icon set for consistency
+- Use lucide-react icons for consistency
 - File type icons from `getFileIcon()` utility
-- Status icons: ✓ (success), ⚠️ (warning), ✗ (error)
+- Status icons: Check (success), AlertCircle (warning), X (error)
+- Common icons: Folder, File, ChevronRight/Down, Loader2 (spinning)
 
 ## Development Workflow
 

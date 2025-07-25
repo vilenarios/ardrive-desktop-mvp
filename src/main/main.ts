@@ -137,6 +137,32 @@ class ArDriveApp {
       // Sync folder will be restored when needed
       console.log('Sync folder loaded:', config.syncFolder || 'None');
       
+      // Auto-start sync for returning users if we have everything needed
+      if (config.syncFolder && this.walletManager.isWalletLoaded()) {
+        console.log('Auto-starting sync for returning user...');
+        try {
+          // Get drive mappings to start sync
+          const driveMappings = await databaseManager.getDriveMappings();
+          const primaryMapping = driveMappings.find(m => m.isActive) || driveMappings[0];
+          
+          if (primaryMapping) {
+            console.log('Found primary drive mapping, starting sync...');
+            this.syncManager.setSyncFolder(config.syncFolder);
+            await this.syncManager.startSync(
+              primaryMapping.driveId,
+              primaryMapping.rootFolderId,
+              primaryMapping.driveName
+            );
+            console.log('Sync auto-started successfully for returning user');
+          } else {
+            console.log('No drive mappings found, skipping auto-sync');
+          }
+        } catch (syncError) {
+          console.error('Failed to auto-start sync:', syncError);
+          // Don't throw - this is non-critical, user can manually start sync
+        }
+      }
+      
     } catch (error) {
       console.error('Failed to restore sync state:', error);
     }
@@ -743,6 +769,79 @@ class ArDriveApp {
       return await this.walletManager.createDrive(validatedName, validatedPrivacy);
     }));
 
+    ipcMain.handle('drive:rename', safeIpcHandler(async (_, driveId: string, newName: string) => {
+      // Validate inputs
+      const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+      const validatedName = InputValidator.validateDriveName(newName, 'newName');
+      
+      // Get ArDrive instance
+      const arDrive = this.walletManager.getArDrive();
+      if (!arDrive) {
+        throw new Error('ArDrive instance not initialized');
+      }
+      
+      // Get drive info to check if it's public or private
+      const walletInfo = await this.walletManager.getWalletInfo();
+      if (!walletInfo) {
+        throw new Error('Wallet not loaded');
+      }
+      // Import needed types
+      const { ArweaveAddress, stubEntityID } = require('ardrive-core-js');
+      
+      // For public drives, we need to create a stub for privateKeyData
+      const drives = await arDrive.getAllDrivesForAddress({ 
+        address: new ArweaveAddress(walletInfo.address),
+        privateKeyData: stubEntityID  // Use stub for public drives in MVP
+      });
+      const drive = drives.find((d: any) => d.driveId === validatedDriveId);
+      
+      if (!drive) {
+        throw new Error('Drive not found');
+      }
+      
+      // Check if Turbo is available for small metadata transactions
+      let usedTurbo = false;
+      try {
+        if (turboManager.isInitialized()) {
+          // Rename operations are small metadata updates (<1KB) so they qualify for Turbo Free
+          console.log('Using Turbo for drive rename (free under 100KB)');
+          
+          // ArDrive will automatically use Turbo if available
+          // The ardrive-core-js library handles Turbo configuration internally
+          usedTurbo = true;
+        }
+      } catch (err) {
+        console.log('Turbo not available, will use AR tokens:', err);
+      }
+      
+      // Rename the drive based on its privacy setting
+      if (drive.drivePrivacy === 'public') {
+        const { EntityID } = require('ardrive-core-js');
+        const result = await arDrive.renamePublicDrive({
+          driveId: new EntityID(validatedDriveId),
+          newName: validatedName
+        });
+        
+        console.log(`Drive renamed successfully using ${usedTurbo ? 'Turbo (FREE)' : 'AR tokens'}`);
+      } else {
+        // For private drives, we would need the drive key
+        // For MVP, we only support public drives
+        throw new Error('Private drive renaming not supported in MVP');
+      }
+      
+      // Update the drive name in local database
+      const mappings = await databaseManager.getDriveMappings();
+      const mapping = mappings.find(m => m.driveId === validatedDriveId);
+      
+      if (mapping) {
+        await databaseManager.updateDriveMapping(mapping.id, {
+          driveName: validatedName
+        });
+      }
+      
+      return { success: true, newName: validatedName, usedTurbo };
+    }));
+
     ipcMain.handle('drive:select', safeIpcHandler(async (_, driveId: string) => {
       // Validate drive ID
       const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
@@ -904,13 +1003,15 @@ class ArDriveApp {
             name: entity.name || 'Unnamed',
             type: isFile ? 'file' : 'folder',
             size: isFile && entity.size !== undefined ? entity.size.valueOf() : undefined,
-            modifiedAt: entity.lastModifiedDate !== undefined && entity.lastModifiedDate !== null
-              ? new Date(entity.lastModifiedDate)
-              : entity.createdAt !== undefined && entity.createdAt !== null
-                ? new Date(entity.createdAt)
-                : entity.uploadedDate !== undefined && entity.uploadedDate !== null
-                  ? new Date(entity.uploadedDate)
-                  : new Date(Date.now() - 86400000), // Default to 1 day ago instead of current time
+            modifiedAt: (() => {
+              // Try different date fields in order of preference
+              const dateValue = entity.lastModifiedDate || entity.createdAt || entity.uploadedDate;
+              if (dateValue && dateValue > 0) {
+                return new Date(dateValue);
+              }
+              // For folders without dates, use current time minus 1 day
+              return new Date(Date.now() - 86400000);
+            })(),
             isDownloaded: false, // Not relevant for permaweb view
             isUploaded: true, // Everything in permaweb is uploaded
             status: 'synced' as const,
@@ -935,6 +1036,191 @@ class ArDriveApp {
         console.error('Failed to fetch drive entities:', error);
         throw error;
       }
+    }));
+
+    // Create Arweave manifest for a folder
+    ipcMain.handle('drive:create-manifest', safeIpcHandler(async (_, params: {
+      driveId: string;
+      folderId: string;
+      manifestName?: string;
+    }) => {
+      console.log('Creating manifest for folder:', params.folderId);
+      
+      // Validate inputs
+      const validatedDriveId = InputValidator.validateDriveId(params.driveId, 'driveId');
+      const validatedFolderId = InputValidator.validateEntityId(params.folderId, 'folderId');
+      
+      // Get ArDrive instance
+      const arDrive = this.walletManager.getArDrive();
+      if (!arDrive) {
+        throw new Error('ArDrive not initialized');
+      }
+      
+      // Import needed types
+      const { EntityID } = require('ardrive-core-js');
+      
+      // List all files in the folder to check count
+      const entities = await arDrive.listPublicFolder({
+        folderId: new EntityID(validatedFolderId),
+        maxDepth: Number.MAX_SAFE_INTEGER,
+        includeRoot: false
+      });
+      
+      // Filter to only files (not folders)
+      const files = entities.filter(e => e.entityType === 'file');
+      
+      // Validate file count
+      if (files.length === 0) {
+        throw new Error('No files found in the selected folder');
+      }
+      
+      if (files.length > 20000) {
+        throw new Error(`Folder contains ${files.length} files, which exceeds the 20,000 file limit for manifests`);
+      }
+      
+      // Set manifest name
+      const manifestName = params.manifestName || 'DriveManifest.json';
+      
+      console.log(`Creating manifest "${manifestName}" for ${files.length} files`);
+      
+      // Create manifest with replace behavior (creates new version if exists)
+      const result = await arDrive.uploadPublicManifest({
+        folderId: new EntityID(validatedFolderId),
+        destManifestName: manifestName,
+        conflictResolution: 'replace'
+      });
+      
+      // Save manifest to local sync folder
+      const config = await configManager.getConfig();
+      if (config.syncFolder && result.manifest) {
+        const localManifestPath = path.join(
+          config.syncFolder, 
+          `${manifestName.replace('.json', '')}.arweave-manifest.json`
+        );
+        
+        const manifestContent = {
+          _metadata: {
+            created: new Date().toISOString(),
+            txId: result.created[0].dataTxId,
+            arweaveUrl: result.links[0],
+            fileCount: files.length,
+            folderId: validatedFolderId,
+            driveId: validatedDriveId
+          },
+          ...result.manifest
+        };
+        
+        await fs.writeFile(localManifestPath, JSON.stringify(manifestContent, null, 2));
+      }
+      
+      return {
+        success: true,
+        manifestUrl: result.links[0],
+        fileUrls: result.links.slice(1),
+        fees: result.fees,
+        txId: result.created[0].dataTxId,
+        fileCount: files.length,
+        manifestName: manifestName
+      };
+    }));
+
+    // Get folder tree for manifest creation
+    ipcMain.handle('drive:get-folder-tree', safeIpcHandler(async (_, driveId: string) => {
+      console.log('Getting folder tree for drive:', driveId);
+      const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+      
+      // First try to get from local database cache
+      const driveMapping = await databaseManager.getDriveMappings()
+        .then(mappings => mappings.find(m => m.driveId === validatedDriveId));
+      
+      if (driveMapping) {
+        console.log('Found drive mapping, checking metadata cache...');
+        const cachedMetadata = await databaseManager.getDriveMetadata(driveMapping.id);
+        
+        if (cachedMetadata && cachedMetadata.length > 0) {
+          console.log(`Found ${cachedMetadata.length} cached items`);
+          // Filter only folders from cached data
+          const folders = cachedMetadata
+            .filter(item => item.type === 'folder')
+            .map(folder => ({
+              id: folder.fileId,
+              name: folder.name,
+              parentId: folder.parentFolderId || '',
+              path: folder.path || '/'
+            }));
+          
+          // If no folders found, add the root folder
+          if (folders.length === 0 && driveMapping) {
+            console.log('No folders in cache, adding root folder');
+            folders.push({
+              id: driveMapping.rootFolderId || driveMapping.driveId,
+              name: driveMapping.driveName || 'Root',
+              parentId: '',
+              path: '/'
+            });
+          }
+          
+          console.log(`Returning ${folders.length} folders from cache`);
+          return folders;
+        }
+      }
+      
+      // If no cache, fetch from ArDrive API
+      console.log('No cache found, fetching from ArDrive API...');
+      const arDrive = this.walletManager.getArDrive();
+      if (!arDrive) {
+        throw new Error('ArDrive not initialized');
+      }
+      
+      // Import needed types
+      const { EntityID } = require('ardrive-core-js');
+      
+      // Get drive info
+      const drives = await this.walletManager.listDrives();
+      const drive = drives.find(d => d.id === validatedDriveId);
+      
+      if (!drive) {
+        throw new Error('Drive not found');
+      }
+      
+      if (!drive.rootFolderId) {
+        throw new Error('Drive has no root folder ID');
+      }
+      
+      console.log('Fetching folder structure from ArDrive...');
+      // Get folder structure
+      const entities = await arDrive.listPublicFolder({
+        folderId: new EntityID(drive.rootFolderId),
+        maxDepth: 10,
+        includeRoot: true
+      });
+      
+      console.log(`Got ${entities.length} entities from ArDrive`);
+      
+      // Build hierarchical structure - only folders
+      const folders = entities.filter(e => e.entityType === 'folder');
+      console.log(`Filtered to ${folders.length} folders`);
+      
+      // Always include the root folder
+      const folderList = folders.map(folder => ({
+        id: folder.entityId,
+        name: folder.name,
+        parentId: folder.parentFolderId || '',
+        path: folder.path || '/'
+      }));
+      
+      // If no folders found, add the root folder manually
+      if (folderList.length === 0) {
+        console.log('No folders found, adding root folder');
+        folderList.push({
+          id: drive.rootFolderId,
+          name: drive.name,
+          parentId: '',
+          path: '/'
+        } as any);  // Cast to any since frontend expects string IDs
+      }
+      
+      return folderList;
     }));
 
     // Sync operations

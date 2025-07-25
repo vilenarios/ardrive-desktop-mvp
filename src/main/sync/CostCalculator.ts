@@ -2,7 +2,7 @@ import { turboManager } from '../turbo-manager';
 
 export class CostCalculator {
   private readonly TURBO_FREE_SIZE_LIMIT = 100 * 1024; // 100KB
-  private readonly MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB for MVP
+  private readonly MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB for MVP
   private readonly FOLDER_BASE_COST = 0.000001; // Minimal cost for folder metadata
 
   async calculateUploadCosts(fileSize: number): Promise<{

@@ -42,12 +42,21 @@ const api = {
       ipcRenderer.invoke('drive:create', name, privacy),
     select: (driveId: string) => 
       ipcRenderer.invoke('drive:select', driveId),
+    rename: (driveId: string, newName: string) =>
+      ipcRenderer.invoke('drive:rename', driveId, newName),
     getMetadata: (driveId: string) =>
       ipcRenderer.invoke('drive:get-metadata', driveId),
     refreshMetadata: (driveId: string) =>
       ipcRenderer.invoke('drive:refresh-metadata', driveId),
     getPermawebFiles: (driveId: string, forceRefresh?: boolean) =>
       ipcRenderer.invoke('drive:get-permaweb-files', driveId, forceRefresh),
+    createManifest: (params: {
+      driveId: string;
+      folderId: string;
+      manifestName?: string;
+    }) => ipcRenderer.invoke('drive:create-manifest', params),
+    getFolderTree: (driveId: string) => 
+      ipcRenderer.invoke('drive:get-folder-tree', driveId),
   },
 
   // Sync operations

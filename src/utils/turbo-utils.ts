@@ -83,6 +83,8 @@ export function getUploadRecommendation(
 export const ARDRIVE_OPERATION_SIZES = {
   // Drive creation includes metadata
   CREATE_DRIVE: 1024, // ~1KB for drive metadata
+  // Drive rename includes metadata update
+  RENAME_DRIVE: 512, // ~0.5KB for drive rename metadata
   // Folder creation includes metadata
   CREATE_FOLDER: 512, // ~0.5KB for folder metadata
   // File metadata (not the file itself)

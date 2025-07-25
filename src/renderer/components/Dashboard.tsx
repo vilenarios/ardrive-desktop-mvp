@@ -17,7 +17,6 @@ import {
   Pause, 
   RefreshCw, 
   Download, 
-  Settings as SettingsIcon,
   FolderOpen,
   Cloud,
   Clock,
@@ -31,7 +30,8 @@ import {
   FileAudio,
   Archive,
   BookOpen,
-  HardDrive
+  HardDrive,
+  FileJson
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -81,7 +81,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [showSettings, setShowSettings] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'pending' | 'failed'>('all');
-  const [showDriveMenu, setShowDriveMenu] = useState(false);
   const [profileCount, setProfileCount] = useState(1);
   const [showProfileSwitcher, setShowProfileSwitcher] = useState(false);
   const [showWalletExport, setShowWalletExport] = useState(false);
@@ -121,6 +120,11 @@ const Dashboard: React.FC<DashboardProps> = ({
   // File type icon mapping
   const getFileTypeIcon = (fileName: string, size: number = 16) => {
     const extension = fileName.toLowerCase().split('.').pop() || '';
+    
+    // Arweave manifest files
+    if (fileName.toLowerCase().endsWith('.arweave-manifest.json')) {
+      return <FileJson size={size} className="file-type-icon manifest" style={{ color: '#dc2626' }} />;
+    }
     
     // Image files
     if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico', 'tiff', 'tif'].includes(extension)) {
@@ -242,17 +246,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
   }, []);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (showDriveMenu) {
-        setShowDriveMenu(false);
-      }
-    };
-
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [showDriveMenu]);
   
   // Load downloads when switching to download queue tab or activity tab
   useEffect(() => {
@@ -621,99 +614,6 @@ const Dashboard: React.FC<DashboardProps> = ({
               <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
               {isSyncing ? 'Syncing...' : 'Sync'}
             </button>
-            
-            {/* Drive Options Dropdown */}
-            <div style={{ position: 'relative' }}>
-              <button
-                className="button small outline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowDriveMenu(!showDriveMenu);
-                }}
-                style={{
-                  padding: 'var(--space-2)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-1)'
-                }}
-              >
-                <SettingsIcon size={16} />
-              </button>
-              
-              {showDriveMenu && (
-                <div style={{
-                  position: 'absolute',
-                  right: 0,
-                  top: 'calc(100% + 4px)',
-                  backgroundColor: 'white',
-                  border: '1px solid var(--gray-200)',
-                  borderRadius: 'var(--radius-md)',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                  minWidth: '200px',
-                  zIndex: 1000,
-                  overflow: 'hidden'
-                }}>
-                  <button
-                    onClick={() => {
-                      setShowDriveMenu(false);
-                      // TODO: Implement rename
-                      alert('Rename drive feature coming soon');
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-2)',
-                      padding: 'var(--space-3) var(--space-4)',
-                      width: '100%',
-                      border: 'none',
-                      background: 'none',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      textAlign: 'left',
-                      transition: 'background-color 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--gray-50)'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <FileText size={16} />
-                    Rename Drive
-                  </button>
-                  
-                  <button
-                    onClick={async () => {
-                      setShowDriveMenu(false);
-                      if (config.syncFolder) {
-                        await window.electronAPI.shell.openPath(config.syncFolder);
-                      }
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-2)',
-                      padding: 'var(--space-3) var(--space-4)',
-                      width: '100%',
-                      border: 'none',
-                      background: 'none',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      textAlign: 'left',
-                      transition: 'background-color 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--gray-50)'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <FolderOpen size={16} />
-                    Open Local Folder
-                  </button>
-                  
-                  <div style={{ 
-                    height: '1px', 
-                    backgroundColor: 'var(--gray-200)',
-                    margin: 'var(--space-1) 0'
-                  }} />
-                </div>
-              )}
-            </div>
           </div>
         </div>
 
@@ -762,6 +662,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <OverviewTab
                   drive={drive}
                   config={config}
+                  toast={toast}
                 />
               </div>
             )}
@@ -840,6 +741,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     // Pass the file path to the shell API, which will extract the directory
                     await window.electronAPI.shell.openPath(filePath);
                   }}
+                  onSyncDrive={handleSync}
                 />
               </div>
             )}

@@ -32,6 +32,7 @@ interface DownloadQueueTabProps {
   onRetryDownload?: (downloadId: string) => void;
   onPauseDownload?: (downloadId: string) => void;
   onResumeDownload?: (downloadId: string) => void;
+  onSyncDrive?: () => void;
 }
 
 export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
@@ -39,7 +40,8 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
   onOpenFolder,
   onRetryDownload,
   onPauseDownload,
-  onResumeDownload
+  onResumeDownload,
+  onSyncDrive
 }) => {
 
   // Filter to only show active downloads (queue items)
@@ -118,42 +120,47 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
     }
   };
 
-  if (downloads.length === 0) {
+  // Show empty state when there are no active downloads (downloading, paused, or failed)
+  if (activeDownloads.length === 0) {
     return (
-      <div className="download-queue-tab">
-        <div className="empty-queue" style={{
+      <div className="card">
+        <h2 style={{ margin: '0 0 var(--space-6) 0' }}>Download Queue</h2>
+        <div style={{
           textAlign: 'center',
-          padding: 'var(--space-12) var(--space-8)',
-          color: 'var(--gray-600)'
+          padding: 'var(--space-8) var(--space-4)',
+          color: 'var(--gray-500)'
         }}>
-          <div style={{
-            width: '80px',
-            height: '80px',
-            margin: '0 auto var(--space-6)',
-            backgroundColor: 'var(--success-50)',
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <Download size={40} style={{ color: 'var(--success-600)' }} />
-          </div>
-          <h3 style={{ 
-            fontSize: '20px', 
-            fontWeight: '600', 
-            marginBottom: 'var(--space-3)',
-            color: 'var(--gray-900)'
-          }}>
-            No Downloads Yet
-          </h3>
+          <Download size={40} style={{ 
+            color: 'var(--gray-400)', 
+            marginBottom: 'var(--space-4)' 
+          }} />
           <p style={{ 
-            fontSize: '15px', 
-            marginBottom: 'var(--space-6)',
-            maxWidth: '400px',
-            margin: '0 auto'
+            fontSize: '16px', 
+            color: 'var(--gray-600)',
+            marginBottom: 'var(--space-2)'
           }}>
-            Active downloads will appear here. Completed downloads can be found in the Activity tab.
+            No Pending Downloads
           </p>
+          <p style={{ 
+            fontSize: '14px',
+            color: 'var(--gray-500)',
+            maxWidth: '400px',
+            margin: '0 auto',
+            marginBottom: 'var(--space-6)'
+          }}>
+            Files being downloaded from Arweave will show up here
+          </p>
+          {onSyncDrive && (
+            <button
+              className="button primary"
+              onClick={onSyncDrive}
+              style={{
+                marginTop: 'var(--space-2)'
+              }}
+            >
+              Check for new files to download
+            </button>
+          )}
         </div>
       </div>
     );

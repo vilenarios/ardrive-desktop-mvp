@@ -28,7 +28,8 @@ import {
   Loader,
   Wifi,
   WifiOff,
-  Cloud
+  Cloud,
+  Copy
 } from 'lucide-react';
 
 interface StorageTabProps {
@@ -516,11 +517,22 @@ export const StorageTab: React.FC<StorageTabProps> = ({
     });
   };
 
-  const handleItemDoubleClick = (item: FileItem) => {
+  const handleItemClick = (item: FileItem) => {
     if (item.type === 'folder') {
+      // Single click on folder navigates into it
       setCurrentPath([...currentPath, item.name]);
       setExpandedFolders(prev => new Set([...prev, item.id]));
+    } else {
+      // Single click on file opens in ArDrive viewer
+      if (item.ardriveUrl) {
+        window.electronAPI.shell.openExternal(item.ardriveUrl);
+      }
     }
+  };
+
+  const handleItemDoubleClick = (item: FileItem) => {
+    // Keep double-click as fallback for same behavior
+    handleItemClick(item);
   };
 
   const handleBreadcrumbClick = (index: number) => {
@@ -650,8 +662,10 @@ export const StorageTab: React.FC<StorageTabProps> = ({
             {currentFiles.map((item) => (
               <div 
                 key={item.id}
-                className={`file-item ${selectedItems.includes(item.id) ? 'selected' : ''}`}
+                className={`file-item ${selectedItems.includes(item.id) ? 'selected' : ''} ${item.type}`}
+                onClick={() => handleItemClick(item)}
                 onDoubleClick={() => handleItemDoubleClick(item)}
+                style={{ cursor: 'pointer' }}
               >
                 <div className="item-main">
                   <div className="item-icon">
@@ -678,6 +692,36 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                     </div>
                     <div className="col-actions">
                       <div className="item-actions-container" style={{ justifyContent: 'flex-end' }}>
+                        {/* Quick actions on hover */}
+                        {item.type === 'file' && (
+                          <>
+                            <button 
+                              className="quick-action"
+                              title="Open in ArDrive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (item.ardriveUrl) {
+                                  window.electronAPI.shell.openExternal(item.ardriveUrl);
+                                }
+                              }}
+                            >
+                              <ExternalLink size={14} />
+                            </button>
+                            <button 
+                              className="quick-action"
+                              title="Copy ArDrive link"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (item.ardriveUrl) {
+                                  await navigator.clipboard.writeText(item.ardriveUrl);
+                                  // TODO: Add toast notification
+                                }
+                              }}
+                            >
+                              <Copy size={14} />
+                            </button>
+                          </>
+                        )}
                         <button 
                           className="action-menu-trigger"
                           title="More actions"

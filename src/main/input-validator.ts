@@ -142,6 +142,24 @@ export class InputValidator {
   }
 
   /**
+   * Validates an entity ID (ArDrive entity ID format - 43 char base64url)
+   */
+  static validateEntityId(value: any, fieldName: string = 'entityId'): string {
+    const entityId = this.validateString(value, fieldName, {
+      required: true,
+      minLength: 43,
+      maxLength: 43
+    });
+
+    // ArDrive entity IDs are 43-character base64url strings
+    if (!/^[a-zA-Z0-9\-_]{43}$/.test(entityId)) {
+      throw new ValidationError(`${fieldName} is not a valid entity ID format`, fieldName);
+    }
+
+    return entityId;
+  }
+
+  /**
    * Validates a profile ID (UUID format)
    */
   static validateProfileId(value: any, fieldName: string = 'profileId'): string {

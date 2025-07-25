@@ -9,17 +9,28 @@ import {
   Cloud,
   Zap,
   FileDown,
-  ExternalLink
+  ExternalLink,
+  FileJson,
+  Edit,
+  AlertCircle,
+  CreditCard
 } from 'lucide-react';
+import CreateManifestModal from '../CreateManifestModal';
+import { ARDRIVE_OPERATION_SIZES, isArDriveOperationFree } from '../../../utils/turbo-utils';
 
 interface OverviewTabProps {
   drive: DriveInfo;
   config: AppConfig;
+  toast?: {
+    success: (message: string) => void;
+    error: (message: string) => void;
+  };
 }
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({
   drive,
-  config
+  config,
+  toast
 }) => {
   const selectedDrive = drive;
   const [driveStats, setDriveStats] = useState<{
@@ -28,10 +39,18 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     totalSize: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showManifestModal, setShowManifestModal] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [newDriveName, setNewDriveName] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [showRenameCostConfirm, setShowRenameCostConfirm] = useState(false);
+  const [walletBalances, setWalletBalances] = useState<{ ar: number; turbo: number | null }>({ ar: 0, turbo: null });
 
   useEffect(() => {
     if (selectedDrive) {
       loadDriveStats();
+      loadWalletBalances();
     }
   }, [selectedDrive?.id]);
 
@@ -72,6 +91,30 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadWalletBalances = async () => {
+    try {
+      const wallet = await window.electronAPI.wallet.getInfo();
+      let turboBalance = null;
+      
+      try {
+        const turbo = await window.electronAPI.turbo.getBalance();
+        if (turbo && turbo.winc) {
+          // Convert Winston Credits to AR equivalent for display
+          turboBalance = parseFloat(turbo.winc) / 1e12;
+        }
+      } catch (err) {
+        console.log('Turbo not initialized or error getting balance');
+      }
+      
+      setWalletBalances({
+        ar: parseFloat(wallet.balance) || 0,
+        turbo: turboBalance
+      });
+    } catch (error) {
+      console.error('Failed to load wallet balances:', error);
     }
   };
 
@@ -212,6 +255,45 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
+  const handleRenameClick = () => {
+    if (!newDriveName.trim()) {
+      setRenameError('Drive name cannot be empty');
+      return;
+    }
+
+    if (newDriveName === selectedDrive.name) {
+      setShowRenameModal(false);
+      return;
+    }
+
+    // Show cost confirmation
+    setShowRenameCostConfirm(true);
+  };
+
+  const handleRenameDrive = async () => {
+    setIsRenaming(true);
+    setRenameError(null);
+
+    try {
+      // Call the real ArDrive API to rename the drive
+      const result = await window.electronAPI.drive.rename(selectedDrive.id, newDriveName.trim());
+      
+      // Show success with payment method info
+      const paymentMethod = result.usedTurbo ? ' (Free with Turbo!)' : ' (Paid with AR)';
+      toast?.success(`Drive renamed to "${newDriveName}"${paymentMethod}`);
+      setShowRenameModal(false);
+      setShowRenameCostConfirm(false);
+      
+      // The parent Dashboard component should refresh drives list
+      // This will trigger a re-render with the updated drive name
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : 'Failed to rename drive');
+      toast?.error(error instanceof Error ? error.message : 'Failed to rename drive');
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
 
 
   if (!selectedDrive) {
@@ -268,20 +350,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               </span>
             </div>
 
-            <div className="metadata-row">
-              <span className="metadata-label">Drive ID</span>
-              <div className="metadata-value drive-id">
-                <span>{selectedDrive.id}</span>
-                <button 
-                  className="icon-button"
-                  onClick={() => copyToClipboard(selectedDrive.id)}
-                  title="Copy Drive ID"
-                >
-                  <Copy size={14} />
-                </button>
-              </div>
-            </div>
-
             {selectedDrive.dateCreated && (
               <div className="metadata-row">
                 <span className="metadata-label">Created</span>
@@ -302,6 +370,21 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 {loading ? '...' : formatContains(driveStats?.folderCount || 0, driveStats?.fileCount || 0)}
               </span>
             </div>
+
+            <div className="metadata-row">
+              <span className="metadata-label">Drive ID</span>
+              <div className="metadata-value drive-id">
+                <span>{selectedDrive.id}</span>
+                <button 
+                  className="icon-button"
+                  onClick={() => copyToClipboard(selectedDrive.id)}
+                  title="Copy Drive ID"
+                >
+                  <Copy size={14} />
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -336,6 +419,24 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             <button 
               className="button outline large"
               onClick={() => {
+                setNewDriveName(selectedDrive.name);
+                setRenameError(null);
+                setShowRenameModal(true);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+                justifyContent: 'center'
+              }}
+            >
+              <Edit size={16} />
+              Rename Drive
+            </button>
+
+            <button 
+              className="button outline large"
+              onClick={() => {
                 // Open drive in ArDrive web app
                 const encodedName = encodeURIComponent(selectedDrive.name);
                 const driveUrl = `https://app.ardrive.io/#/drives/${selectedDrive.id}?name=${encodedName}`;
@@ -365,10 +466,325 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               <FileDown size={16} />
               Export Metadata
             </button>
+
+            <button 
+              className="button outline large"
+              onClick={() => setShowManifestModal(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+                justifyContent: 'center'
+              }}
+            >
+              <FileJson size={16} />
+              Create Manifest
+            </button>
           </div>
         </div>
       </div>
 
+      {showManifestModal && (
+        <CreateManifestModal
+          driveId={selectedDrive.id}
+          driveName={selectedDrive.name}
+          onClose={() => setShowManifestModal(false)}
+          onSuccess={(manifestUrl) => {
+            window.electronAPI.shell.openExternal(manifestUrl);
+          }}
+          toast={toast}
+        />
+      )}
+
+      {/* Rename Drive Modal */}
+      {showRenameModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-6)',
+            width: '90%',
+            maxWidth: '400px',
+            boxShadow: '0 4px 24px rgba(0, 0, 0, 0.15)'
+          }}>
+            <h2 style={{ 
+              margin: 0, 
+              marginBottom: 'var(--space-4)',
+              fontSize: '20px',
+              fontWeight: '600'
+            }}>
+              Rename Drive
+            </h2>
+            
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <label style={{
+                display: 'block',
+                marginBottom: 'var(--space-2)',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: 'var(--gray-700)'
+              }}>
+                Drive Name
+              </label>
+              <input
+                type="text"
+                value={newDriveName}
+                onChange={(e) => {
+                  setNewDriveName(e.target.value);
+                  setRenameError(null);
+                }}
+                style={{
+                  width: '100%',
+                  padding: 'var(--space-3)',
+                  border: `1px solid ${renameError ? 'var(--red-500)' : 'var(--gray-300)'}`,
+                  borderRadius: 'var(--radius)',
+                  fontSize: '16px',
+                  outline: 'none',
+                  transition: 'border-color 0.2s'
+                }}
+                onFocus={(e) => e.target.style.borderColor = 'var(--ardrive-primary-500)'}
+                onBlur={(e) => e.target.style.borderColor = renameError ? 'var(--red-500)' : 'var(--gray-300)'}
+                disabled={isRenaming}
+                autoFocus
+              />
+              {renameError && (
+                <p style={{
+                  color: 'var(--red-600)',
+                  fontSize: '14px',
+                  marginTop: 'var(--space-1)',
+                  margin: 'var(--space-1) 0 0 0'
+                }}>
+                  {renameError}
+                </p>
+              )}
+            </div>
+
+            <div style={{
+              display: 'flex',
+              gap: 'var(--space-3)',
+              justifyContent: 'flex-end'
+            }}>
+              <button
+                className="button outline"
+                onClick={() => setShowRenameModal(false)}
+                disabled={isRenaming}
+              >
+                Cancel
+              </button>
+              <button
+                className="button"
+                onClick={handleRenameClick}
+                disabled={isRenaming || !newDriveName.trim()}
+                style={{
+                  opacity: isRenaming || !newDriveName.trim() ? 0.6 : 1
+                }}
+              >
+                {isRenaming ? 'Renaming...' : 'Rename'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rename Cost Confirmation Modal */}
+      {showRenameCostConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            padding: '24px',
+            maxWidth: '500px',
+            width: '90%',
+            boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)'
+          }}>
+            <h2 style={{
+              fontSize: '20px',
+              fontWeight: '600',
+              marginBottom: '16px'
+            }}>
+              Confirm Drive Rename
+            </h2>
+            
+            <div style={{
+              backgroundColor: '#f9fafb',
+              padding: '16px',
+              borderRadius: '6px',
+              marginBottom: '16px'
+            }}>
+              <p style={{ marginBottom: '8px', color: '#374151' }}>
+                Renaming <strong>"{selectedDrive.name}"</strong> to <strong>"{newDriveName}"</strong>
+              </p>
+            </div>
+
+            {/* Cost Information */}
+            <div style={{
+              border: '1px solid #e5e7eb',
+              borderRadius: '6px',
+              padding: '16px',
+              marginBottom: '16px'
+            }}>
+              <h3 style={{
+                fontSize: '16px',
+                fontWeight: '500',
+                marginBottom: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <CreditCard size={18} />
+                Transaction Cost
+              </h3>
+              
+              {isArDriveOperationFree('RENAME_DRIVE') ? (
+                <div style={{
+                  backgroundColor: '#d1fae5',
+                  padding: '12px',
+                  borderRadius: '4px',
+                  marginBottom: '12px'
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    color: '#065f46',
+                    fontWeight: '500'
+                  }}>
+                    <Zap size={16} />
+                    FREE with Turbo Credits
+                  </div>
+                  <p style={{
+                    fontSize: '14px',
+                    color: '#047857',
+                    marginTop: '4px'
+                  }}>
+                    This operation is under 100KB and qualifies for free upload via Turbo.
+                  </p>
+                </div>
+              ) : null}
+              
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                fontSize: '14px'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <span style={{ color: '#6b7280' }}>AR Token Cost:</span>
+                  <span style={{ fontWeight: '500' }}>~0.000001 AR</span>
+                </div>
+                
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <span style={{ color: '#6b7280' }}>Your AR Balance:</span>
+                  <span style={{ 
+                    fontWeight: '500',
+                    color: walletBalances.ar < 0.000001 ? '#dc2626' : '#059669'
+                  }}>
+                    {walletBalances.ar.toFixed(6)} AR
+                  </span>
+                </div>
+                
+                {walletBalances.turbo !== null && (
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <span style={{ color: '#6b7280' }}>Turbo Balance:</span>
+                    <span style={{ fontWeight: '500', color: '#059669' }}>
+                      {walletBalances.turbo.toFixed(6)} Credits
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Warning if insufficient balance */}
+            {walletBalances.ar < 0.000001 && !isArDriveOperationFree('RENAME_DRIVE') && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px',
+                padding: '12px',
+                backgroundColor: '#fef2f2',
+                borderRadius: '4px',
+                marginBottom: '16px'
+              }}>
+                <AlertCircle size={16} style={{ color: '#dc2626', marginTop: '2px' }} />
+                <p style={{ fontSize: '14px', color: '#dc2626' }}>
+                  Insufficient AR balance. You need at least 0.000001 AR to rename the drive.
+                </p>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              justifyContent: 'flex-end'
+            }}>
+              <button
+                className="button secondary"
+                onClick={() => setShowRenameCostConfirm(false)}
+                disabled={isRenaming}
+              >
+                Cancel
+              </button>
+              <button
+                className="button primary"
+                onClick={handleRenameDrive}
+                disabled={isRenaming || (walletBalances.ar < 0.000001 && !isArDriveOperationFree('RENAME_DRIVE'))}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                {isRenaming ? (
+                  <>
+                    <div className="spinner" style={{ width: '16px', height: '16px' }} />
+                    Renaming...
+                  </>
+                ) : (
+                  <>
+                    <Edit size={16} />
+                    Confirm Rename
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
