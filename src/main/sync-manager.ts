@@ -159,6 +159,11 @@ export class SyncManager {
     // Step 1: Get authoritative drive state
     await this.downloadManager.syncDriveMetadata();
     
+    // Update metadata sync timestamp
+    const { databaseManager } = require('./database-manager');
+    await databaseManager.updateMetadataSyncTimestamp(this.driveId);
+    console.log('Metadata sync completed and timestamp updated');
+    
     // Step 2: Create all folder structure
     await this.downloadManager.createAllFolders();
     
@@ -677,6 +682,11 @@ export class SyncManager {
     // First, sync all metadata to cache
     try {
       await this.downloadManager.syncDriveMetadata();
+      
+      // Update metadata sync timestamp
+      const { databaseManager } = require('./database-manager');
+      await databaseManager.updateMetadataSyncTimestamp(this.driveId);
+      console.log('Metadata sync completed and timestamp updated');
     } catch (error) {
       console.error('Failed to sync drive metadata:', error);
       console.error('Error details:', {

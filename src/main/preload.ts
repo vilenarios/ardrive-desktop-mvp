@@ -286,6 +286,12 @@ const api = {
   onDriveUpdate: (callback: () => void) => {
     ipcRenderer.on('drive:update', () => callback());
   },
+  onSyncComplete: (callback: () => void) => {
+    ipcRenderer.on('sync:completed', () => callback());
+  },
+  removeAllListeners: (channel: string) => {
+    ipcRenderer.removeAllListeners(channel);
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

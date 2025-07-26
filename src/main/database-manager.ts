@@ -67,6 +67,7 @@ export class DatabaseManager {
             rootFolderId TEXT NOT NULL,
             isActive BOOLEAN DEFAULT 1,
             lastSyncTime DATETIME,
+            lastMetadataSyncAt DATETIME,
             excludePatterns TEXT, -- JSON array of patterns
             maxFileSize INTEGER,
             syncDirection TEXT DEFAULT 'bidirectional' CHECK (syncDirection IN ('bidirectional', 'upload-only', 'download-only')),
@@ -339,15 +340,39 @@ export class DatabaseManager {
           }
           
           // Now record the migration
-          this.db!.run("INSERT INTO schema_version (version) VALUES (2)", (insertErr) => {
+          this.db!.run("INSERT INTO schema_version (version) VALUES (2)", async (insertErr) => {
             if (insertErr) {
               console.error('Failed to record migration to version 2:', insertErr);
               // Don't reject here - migration was successful even if recording failed
             } else {
               console.log('Migration to version 2 recorded successfully');
             }
-            resolve();
+            
+            // Check if we need migration to version 3
+            if (currentVersion < 3) {
+              await this.migrateTo3();
+              this.db!.run("INSERT INTO schema_version (version) VALUES (3)", (err) => {
+                if (err) {
+                  console.error('Failed to record migration to version 3:', err);
+                } else {
+                  console.log('Migration to version 3 recorded successfully');
+                }
+                resolve();
+              });
+            } else {
+              resolve();
+            }
           });
+        });
+      } else if (currentVersion < 3) {
+        await this.migrateTo3();
+        this.db!.run("INSERT INTO schema_version (version) VALUES (3)", (err) => {
+          if (err) {
+            console.error('Failed to record migration to version 3:', err);
+          } else {
+            console.log('Migration to version 3 recorded successfully');
+          }
+          resolve();
         });
       } else {
         resolve();
@@ -439,6 +464,30 @@ export class DatabaseManager {
           });
         });
       });
+    });
+  }
+
+  private async migrateTo3(): Promise<void> {
+    // Migration to add lastMetadataSyncAt column for sync coordination
+    return new Promise((resolve, reject) => {
+      console.log('DatabaseManager - Migrating to schema version 3 (metadata sync timestamp)');
+      
+      // Add lastMetadataSyncAt column to drive_mappings if it doesn't exist
+      this.db!.run(
+        "ALTER TABLE drive_mappings ADD COLUMN lastMetadataSyncAt DATETIME",
+        (err) => {
+          if (err && err.message.includes('duplicate column name')) {
+            console.log('lastMetadataSyncAt column already exists');
+            resolve();
+          } else if (err) {
+            console.error('Failed to add lastMetadataSyncAt column:', err);
+            reject(err);
+          } else {
+            console.log('Successfully added lastMetadataSyncAt column');
+            resolve();
+          }
+        }
+      );
     });
   }
 
@@ -1361,6 +1410,7 @@ export class DatabaseManager {
             rootFolderId: row.rootFolderId,
             isActive: Boolean(row.isActive),
             lastSyncTime: row.lastSyncTime ? new Date(row.lastSyncTime) : undefined,
+            lastMetadataSyncAt: row.lastMetadataSyncAt ? new Date(row.lastMetadataSyncAt) : undefined,
             syncSettings: {
               excludePatterns: row.excludePatterns ? JSON.parse(row.excludePatterns) : undefined,
               maxFileSize: row.maxFileSize || undefined,
@@ -1432,6 +1482,21 @@ export class DatabaseManager {
     });
   }
 
+  async updateMetadataSyncTimestamp(mappingId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `UPDATE drive_mappings SET lastMetadataSyncAt = CURRENT_TIMESTAMP WHERE id = ?`;
+      
+      this.db!.run(sql, [mappingId], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          console.log(`Updated metadata sync timestamp for mapping ${mappingId}`);
+          resolve();
+        }
+      });
+    });
+  }
+
   async getDriveMappingById(id: string): Promise<DriveSyncMapping | null> {
     return new Promise((resolve, reject) => {
       const sql = `SELECT * FROM drive_mappings WHERE id = ?`;
@@ -1451,6 +1516,7 @@ export class DatabaseManager {
             rootFolderId: row.rootFolderId,
             isActive: Boolean(row.isActive),
             lastSyncTime: row.lastSyncTime ? new Date(row.lastSyncTime) : undefined,
+            lastMetadataSyncAt: row.lastMetadataSyncAt ? new Date(row.lastMetadataSyncAt) : undefined,
             syncSettings: {
               excludePatterns: row.excludePatterns ? JSON.parse(row.excludePatterns) : undefined,
               maxFileSize: row.maxFileSize || undefined,

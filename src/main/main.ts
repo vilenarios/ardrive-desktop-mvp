@@ -878,13 +878,38 @@ class ArDriveApp {
         throw new Error('Drive mapping not found');
       }
       
+      // Check if metadata was recently synced
+      const METADATA_FRESH_DURATION = 60 * 1000; // 1 minute
+      const lastSyncTime = driveMapping.lastMetadataSyncAt;
+      const isMetadataFresh = lastSyncTime && 
+        (Date.now() - new Date(lastSyncTime).getTime()) < METADATA_FRESH_DURATION;
+      
       // First, try to get from local cache unless force refresh
       if (!forceRefresh) {
         console.log('Checking local cache for drive metadata...');
-        const cachedMetadata = await databaseManager.getDriveMetadata(driveMapping.id);
         
-        if (cachedMetadata && cachedMetadata.length > 0) {
-          console.log(`Found ${cachedMetadata.length} items in local cache`);
+        // If metadata is fresh from sync, always use cache
+        if (isMetadataFresh) {
+          console.log('Metadata was recently synced, using fresh cache');
+        }
+        
+        let cachedMetadata = await databaseManager.getDriveMetadata(driveMapping.id);
+        
+        // Use cache if we have data OR if metadata was just synced
+        if ((cachedMetadata && cachedMetadata.length > 0) || isMetadataFresh) {
+          // If sync just completed but cache is empty, wait briefly
+          if (!cachedMetadata || cachedMetadata.length === 0) {
+            console.log('Waiting for cache to populate after sync...');
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const refreshedCache = await databaseManager.getDriveMetadata(driveMapping.id);
+            if (refreshedCache && refreshedCache.length > 0) {
+              console.log(`Found ${refreshedCache.length} items after waiting`);
+              cachedMetadata = refreshedCache;
+            }
+          }
+          
+          if (cachedMetadata && cachedMetadata.length > 0) {
+            console.log(`Using ${cachedMetadata.length} items from ${isMetadataFresh ? 'fresh' : 'existing'} cache`);
           
           // Transform cached data to match expected format
           const fileItems = cachedMetadata.map((item: any) => ({
@@ -1436,6 +1461,12 @@ class ArDriveApp {
 
         // Step 6: Complete
         emitProgress('complete', 'Manual sync completed successfully');
+
+        // Emit sync completed event to trigger UI updates
+        if (this.mainWindow) {
+          this.mainWindow.webContents.send('sync:completed');
+          console.log('📤 Emitted sync:completed event to trigger Permaweb refresh');
+        }
 
         return { success: true, message: 'Manual sync completed' };
       } catch (error) {

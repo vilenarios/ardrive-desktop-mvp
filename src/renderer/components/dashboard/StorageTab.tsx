@@ -267,6 +267,23 @@ export const StorageTab: React.FC<StorageTabProps> = ({
     console.log('Cache auto-refresh disabled. User must manually refresh.');
   }, [cacheValid, lastRefreshTime]);
 
+  // Listen for sync completion events
+  useEffect(() => {
+    const handleSyncComplete = () => {
+      console.log('Sync completed, refreshing permaweb view from cache');
+      // Load from cache (not force refresh) since sync just updated it
+      loadDriveMetadata(false);
+    };
+    
+    // Listen for sync completion
+    window.electronAPI.onSyncComplete(handleSyncComplete);
+    
+    return () => {
+      // Cleanup listener
+      window.electronAPI.removeAllListeners('sync:completed');
+    };
+  }, [drive?.id]); // Re-setup if drive changes
+
   // Listen for file upload completion events to update cache
   useEffect(() => {
     const handleUploadComplete = (uploadData: any) => {
