@@ -8,7 +8,7 @@ import * as crypto from 'crypto';
 export class DatabaseManager {
   private db: sqlite3.Database | null = null;
   private currentProfileId: string | null = null;
-  private readonly currentSchemaVersion = 2; // Incremented for multi-drive support
+  private readonly currentSchemaVersion = 3; // Incremented for file size fix
 
   constructor() {
     // Database path will be determined dynamically based on active profile
@@ -115,7 +115,10 @@ export class DatabaseManager {
             lastSyncedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
             localPath TEXT,
             localFileExists BOOLEAN DEFAULT 0,
-            syncStatus TEXT DEFAULT 'pending' CHECK (syncStatus IN ('synced', 'pending', 'downloading', 'error')),
+            syncStatus TEXT DEFAULT 'pending' CHECK (syncStatus IN ('synced', 'pending', 'downloading', 'queued', 'cloud_only', 'error')),
+            syncPreference TEXT DEFAULT 'auto' CHECK (syncPreference IN ('auto', 'always_local', 'cloud_only')),
+            downloadPriority INTEGER DEFAULT 0,
+            lastError TEXT,
             FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
           );
           
@@ -138,6 +141,11 @@ export class DatabaseManager {
             conflictType TEXT DEFAULT 'none',
             conflictDetails TEXT,
             status TEXT DEFAULT 'awaiting_approval',
+            operationType TEXT DEFAULT 'upload',
+            previousPath TEXT,
+            arfsFileId TEXT,
+            arfsFolderId TEXT,
+            metadata TEXT, -- JSON string for extensible metadata
             createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
           );
@@ -200,10 +208,25 @@ export class DatabaseManager {
             folderPath TEXT NOT NULL,
             relativePath TEXT NOT NULL,
             parentPath TEXT,
-            arweaveFolderId TEXT,
+            arfsFolderId TEXT,
             createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
             isDeleted BOOLEAN DEFAULT 0,
             UNIQUE(folderPath, mappingId),
+            FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
+          );
+          
+          -- Folder operations tracking
+          CREATE TABLE IF NOT EXISTS folder_operations (
+            id TEXT PRIMARY KEY,
+            mappingId TEXT,
+            operationType TEXT NOT NULL CHECK (operationType IN ('rename', 'move', 'rename_and_move', 'delete')),
+            oldPath TEXT NOT NULL,
+            newPath TEXT,
+            arfsFolderId TEXT,
+            status TEXT NOT NULL CHECK (status IN ('pending', 'in_progress', 'completed', 'failed')),
+            error TEXT,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            completedAt DATETIME,
             FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
           );
         
@@ -220,6 +243,8 @@ export class DatabaseManager {
             metadataTxId TEXT,
             status TEXT NOT NULL,
             progress REAL DEFAULT 0,
+            priority INTEGER DEFAULT 0,
+            isCancelled BOOLEAN DEFAULT 0,
             error TEXT,
             downloadedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
             completedAt DATETIME,
@@ -589,8 +614,12 @@ export class DatabaseManager {
   async addPendingUpload(upload: Omit<PendingUpload, 'createdAt'>): Promise<void> {
     return new Promise((resolve, reject) => {
       const sql = `
-        INSERT INTO pending_uploads (id, localPath, fileName, fileSize, estimatedCost, estimatedTurboCost, recommendedMethod, hasSufficientTurboBalance, conflictType, conflictDetails, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO pending_uploads (
+          id, localPath, fileName, fileSize, estimatedCost, estimatedTurboCost, 
+          recommendedMethod, hasSufficientTurboBalance, conflictType, conflictDetails, 
+          status, operationType, previousPath, arfsFileId, arfsFolderId, metadata
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       
       this.db!.run(sql, [
@@ -604,7 +633,12 @@ export class DatabaseManager {
         upload.hasSufficientTurboBalance,
         upload.conflictType || 'none',
         upload.conflictDetails,
-        upload.status
+        upload.status,
+        upload.operationType || 'upload',
+        upload.previousPath || null,
+        upload.arfsFileId || null,
+        upload.arfsFolderId || null,
+        upload.metadata ? JSON.stringify(upload.metadata) : null
       ], (err) => {
         if (err) {
           reject(err);
@@ -629,7 +663,8 @@ export class DatabaseManager {
         } else {
           const uploads = rows.map(row => ({
             ...row,
-            createdAt: new Date(row.createdAt)
+            createdAt: new Date(row.createdAt),
+            metadata: row.metadata ? JSON.parse(row.metadata) : undefined
           }));
           
           // Sort uploads to ensure proper order for folder structure
@@ -1056,11 +1091,11 @@ export class DatabaseManager {
     folderPath: string;
     relativePath: string;
     parentPath?: string;
-    arweaveFolderId?: string;
+    arfsFolderId?: string;
   }): Promise<void> {
     return new Promise((resolve, reject) => {
       const sql = `
-        INSERT OR REPLACE INTO folder_structure (id, folderPath, relativePath, parentPath, arweaveFolderId, isDeleted)
+        INSERT OR REPLACE INTO folder_structure (id, folderPath, relativePath, parentPath, arfsFolderId, isDeleted)
         VALUES (?, ?, ?, ?, ?, 0)
       `;
       
@@ -1069,7 +1104,7 @@ export class DatabaseManager {
         folder.folderPath,
         folder.relativePath,
         folder.parentPath,
-        folder.arweaveFolderId
+        folder.arfsFolderId
       ], (err) => {
         if (err) {
           reject(err);
@@ -1085,7 +1120,7 @@ export class DatabaseManager {
     folderPath: string;
     relativePath: string;
     parentPath?: string;
-    arweaveFolderId?: string;
+    arfsFolderId?: string;
     createdAt: Date;
     isDeleted: boolean;
   }>> {
@@ -1124,7 +1159,7 @@ export class DatabaseManager {
     folderPath: string;
     relativePath: string;
     parentPath?: string;
-    arweaveFolderId?: string;
+    arfsFolderId?: string;
     createdAt: Date;
     isDeleted: boolean;
   } | null> {
@@ -1148,7 +1183,8 @@ export class DatabaseManager {
   }
 
   async checkFolderInDriveMetadata(folderPath: string): Promise<any | null> {
-    return new Promise((resolve, reject) => {
+    // First try exact localPath match
+    const exactMatch = await new Promise<any | null>((resolve, reject) => {
       const sql = `
         SELECT * FROM drive_metadata_cache 
         WHERE localPath = ? AND type = 'folder'
@@ -1163,6 +1199,56 @@ export class DatabaseManager {
         }
       });
     });
+
+    if (exactMatch) {
+      return exactMatch;
+    }
+
+    // If no match on localPath, try to find by constructing the path
+    const mappings = await this.getDriveMappings();
+    if (mappings.length === 0) {
+      return null;
+    }
+    
+    for (const mapping of mappings) {
+      const syncFolder = mapping.localFolderPath;
+      if (folderPath.startsWith(syncFolder)) {
+        // Extract relative path
+        let relativePath = folderPath.substring(syncFolder.length);
+        if (relativePath.startsWith('\\') || relativePath.startsWith('/')) {
+          relativePath = relativePath.substring(1);
+        }
+        const parts = relativePath.replace(/\\/g, '/').split('/');
+        const folderName = parts[parts.length - 1] || '';
+        const parentPath = parts.slice(0, -1).join('/');
+        
+        // Try to find by path and name combination
+        const pathMatch = await new Promise<any | null>((resolve, reject) => {
+          const sql2 = `
+            SELECT * FROM drive_metadata_cache 
+            WHERE type = 'folder' 
+            AND name = ? 
+            AND path = ?
+            AND mappingId = ?
+            LIMIT 1
+          `;
+          
+          this.db!.get(sql2, [folderName, parentPath, mapping.id], (err2, row2: any) => {
+            if (err2) {
+              reject(err2);
+            } else {
+              resolve(row2 || null);
+            }
+          });
+        });
+
+        if (pathMatch) {
+          return pathMatch;
+        }
+      }
+    }
+    
+    return null;
   }
 
   async markFolderDeleted(folderPath: string): Promise<void> {
@@ -1184,7 +1270,7 @@ export class DatabaseManager {
     folderPath: string;
     relativePath: string;
     parentPath?: string;
-    arweaveFolderId?: string;
+    arfsFolderId?: string;
     createdAt: Date;
     isDeleted: boolean;
   }[]> {
@@ -1221,11 +1307,11 @@ export class DatabaseManager {
     });
   }
 
-  async updateFolderArweaveId(folderId: string, arweaveFolderId: string): Promise<void> {
+  async updateFolderArweaveId(folderId: string, arfsFolderId: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const sql = `UPDATE folder_structure SET arweaveFolderId = ? WHERE id = ?`;
+      const sql = `UPDATE folder_structure SET arfsFolderId = ? WHERE id = ?`;
       
-      this.db!.run(sql, [arweaveFolderId, folderId], (err) => {
+      this.db!.run(sql, [arfsFolderId, folderId], (err) => {
         if (err) {
           reject(err);
         } else {
@@ -1236,11 +1322,11 @@ export class DatabaseManager {
   }
 
   // Downloads management
-  async addDownload(download: Omit<FileDownload, 'downloadedAt'>): Promise<void> {
+  async addDownload(download: Omit<FileDownload, 'downloadedAt'> & { priority?: number; isCancelled?: boolean }): Promise<void> {
     return new Promise((resolve, reject) => {
       const sql = `
-        INSERT INTO downloads (id, driveId, fileName, localPath, fileSize, fileId, dataTxId, metadataTxId, status, progress, error)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO downloads (id, driveId, fileName, localPath, fileSize, fileId, dataTxId, metadataTxId, status, progress, priority, isCancelled, error)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       
       this.db!.run(sql, [
@@ -1254,6 +1340,8 @@ export class DatabaseManager {
         download.metadataTxId,
         download.status,
         download.progress,
+        download.priority || 0,
+        download.isCancelled ? 1 : 0,
         download.error
       ], (err) => {
         if (err) {
@@ -1355,6 +1443,52 @@ export class DatabaseManager {
           resolve(download);
         } else {
           resolve(null);
+        }
+      });
+    });
+  }
+
+  async cancelDownload(downloadId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        UPDATE downloads 
+        SET isCancelled = 1, status = 'failed', error = 'Cancelled by user', completedAt = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `;
+      
+      this.db!.run(sql, [downloadId], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  async getQueuedDownloads(mappingId?: string): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+      let sql = `
+        SELECT * FROM downloads 
+        WHERE status IN ('downloading', 'pending') AND isCancelled = 0
+        ORDER BY priority DESC, fileSize ASC
+      `;
+      let params: any[] = [];
+      
+      if (mappingId) {
+        sql = `
+          SELECT * FROM downloads 
+          WHERE mappingId = ? AND status IN ('downloading', 'pending') AND isCancelled = 0
+          ORDER BY priority DESC, fileSize ASC
+        `;
+        params = [mappingId];
+      }
+      
+      this.db!.all(sql, params, (err, rows) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows || []);
         }
       });
     });
@@ -1614,14 +1748,17 @@ export class DatabaseManager {
     localPath?: string;
     localFileExists?: boolean;
     syncStatus?: string;
+    syncPreference?: string;
+    downloadPriority?: number;
+    lastError?: string;
   }): Promise<void> {
     return new Promise((resolve, reject) => {
       const sql = `
         INSERT INTO drive_metadata_cache (
           id, mappingId, fileId, parentFolderId, name, path, type, size,
           lastModifiedDate, dataTxId, metadataTxId, contentType, fileHash,
-          localPath, localFileExists, syncStatus
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          localPath, localFileExists, syncStatus, syncPreference, downloadPriority, lastError
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(fileId) DO UPDATE SET
           mappingId = excluded.mappingId,
           parentFolderId = excluded.parentFolderId,
@@ -1637,6 +1774,9 @@ export class DatabaseManager {
           localPath = excluded.localPath,
           localFileExists = excluded.localFileExists,
           syncStatus = excluded.syncStatus,
+          syncPreference = COALESCE(excluded.syncPreference, syncPreference),
+          downloadPriority = COALESCE(excluded.downloadPriority, downloadPriority),
+          lastError = excluded.lastError,
           lastSyncedAt = CURRENT_TIMESTAMP
       `;
       
@@ -1657,7 +1797,10 @@ export class DatabaseManager {
         metadata.fileHash || null,
         metadata.localPath || null,
         metadata.localFileExists ? 1 : 0,
-        metadata.syncStatus || 'pending'
+        metadata.syncStatus || 'pending',
+        metadata.syncPreference || 'auto',
+        metadata.downloadPriority || 0,
+        metadata.lastError || null
       ], (err) => {
         if (err) {
           reject(err);
@@ -1731,6 +1874,338 @@ export class DatabaseManager {
           reject(err);
         } else {
           resolve();
+        }
+      });
+    });
+  }
+
+  // Sync preference management
+  async updateFileSyncPreference(fileId: string, syncPreference: 'auto' | 'always_local' | 'cloud_only'): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        UPDATE drive_metadata_cache 
+        SET syncPreference = ?, updatedAt = CURRENT_TIMESTAMP
+        WHERE fileId = ?
+      `;
+      
+      this.db!.run(sql, [syncPreference, fileId], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  async updateFileSyncStatus(fileId: string, syncStatus: string, lastError?: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        UPDATE drive_metadata_cache 
+        SET syncStatus = ?, lastError = ?, lastSyncedAt = CURRENT_TIMESTAMP
+        WHERE fileId = ?
+      `;
+      
+      this.db!.run(sql, [syncStatus, lastError || null, fileId], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  async getFilesByStatus(mappingId: string, syncStatus: string): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT * FROM drive_metadata_cache 
+        WHERE mappingId = ? AND syncStatus = ?
+        ORDER BY downloadPriority DESC, size ASC
+      `;
+      
+      this.db!.all(sql, [mappingId, syncStatus], (err, rows) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows || []);
+        }
+      });
+    });
+  }
+
+  // Get the active mapping ID
+  private async getActiveMappingId(): Promise<string | null> {
+    const mappings = await this.getDriveMappings();
+    const activeMapping = mappings.find((m: any) => m.isActive);
+    return activeMapping?.id || null;
+  }
+
+  // Add folder operation to history
+  async addFolderOperation(operation: {
+    id: string;
+    operationType: 'rename' | 'move' | 'rename_and_move' | 'delete';
+    oldPath: string;
+    newPath?: string;
+    arfsFolderId?: string;
+    status: 'pending' | 'in_progress' | 'completed' | 'failed';
+    error?: string;
+    createdAt: string;
+    completedAt?: string;
+  }): Promise<void> {
+    const mappingId = await this.getActiveMappingId();
+    
+    return new Promise((resolve, reject) => {
+      const sql = `
+        INSERT INTO folder_operations 
+        (id, mappingId, operationType, oldPath, newPath, arfsFolderId, status, error, createdAt, completedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+      
+      this.db!.run(sql, [
+        operation.id,
+        mappingId,
+        operation.operationType,
+        operation.oldPath,
+        operation.newPath,
+        operation.arfsFolderId,
+        operation.status,
+        operation.error,
+        operation.createdAt,
+        operation.completedAt
+      ], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  // Get child folders of a parent path
+  async getChildFolders(parentPath: string): Promise<Array<{
+    id: string;
+    folderPath: string;
+    relativePath: string;
+    parentPath?: string;
+    arfsFolderId?: string;
+    createdAt: Date;
+    isDeleted: boolean;
+  }>> {
+    const mappingId = await this.getActiveMappingId();
+    
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT * FROM folder_structure 
+        WHERE parentPath = ? AND mappingId = ? AND isDeleted = 0
+      `;
+      
+      this.db!.all(sql, [parentPath, mappingId], (err, rows) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows as any[]);
+        }
+      });
+    });
+  }
+
+  // Get child files of a parent folder
+  async getChildFiles(parentFolderPath: string): Promise<Array<{
+    id: string;
+    localPath: string;
+    fileName: string;
+    fileSize: number;
+  }>> {
+    const mappingId = await this.getActiveMappingId();
+    
+    return new Promise((resolve, reject) => {
+      // First get all uploads in this folder
+      const uploadsSql = `
+        SELECT id, localPath, fileName, fileSize 
+        FROM uploads 
+        WHERE mappingId = ? 
+          AND localPath LIKE ? 
+          AND localPath NOT LIKE ?
+          AND status IN ('completed', 'pending', 'uploading')
+      `;
+      
+      const pathPattern = parentFolderPath + '/%';
+      const excludeSubfolders = parentFolderPath + '/%/%';
+      
+      this.db!.all(uploadsSql, [mappingId, pathPattern, excludeSubfolders], (err, uploadRows) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        
+        // Also get processed files
+        const processedSql = `
+          SELECT localPath, fileName, fileSize 
+          FROM processed_files 
+          WHERE mappingId = ? 
+            AND localPath LIKE ? 
+            AND localPath NOT LIKE ?
+        `;
+        
+        this.db!.all(processedSql, [mappingId, pathPattern, excludeSubfolders], (err, processedRows) => {
+          if (err) {
+            reject(err);
+          } else {
+            // Combine results, avoiding duplicates
+            const allFiles = new Map();
+            
+            // Add uploads
+            (uploadRows as any[]).forEach(row => {
+              allFiles.set(row.localPath, {
+                id: row.id,
+                localPath: row.localPath,
+                fileName: row.fileName,
+                fileSize: row.fileSize
+              });
+            });
+            
+            // Add processed files not in uploads
+            (processedRows as any[]).forEach(row => {
+              if (!allFiles.has(row.localPath)) {
+                allFiles.set(row.localPath, {
+                  id: crypto.randomUUID(),
+                  localPath: row.localPath,
+                  fileName: row.fileName,
+                  fileSize: row.fileSize
+                });
+              }
+            });
+            
+            resolve(Array.from(allFiles.values()));
+          }
+        });
+      });
+    });
+  }
+
+  // Update file path (for move operations)
+  async updateFilePath(fileId: string, newPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // Update in uploads table
+      const uploadSql = `UPDATE uploads SET localPath = ? WHERE id = ?`;
+      
+      this.db!.run(uploadSql, [newPath, fileId], (err) => {
+        if (err) {
+          // If not found in uploads, it might be in processed_files
+          // For processed files, we need to update by the old path
+          console.log('File not found in uploads, checking processed_files');
+          resolve();
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  // Get file information by path (checks multiple tables)
+  async getFilesByHash(hash: string): Promise<Array<{
+    id: string;
+    localPath: string;
+    fileName: string;
+    fileHash: string;
+    fileSize: number;
+  }>> {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT fileHash as id, localPath, fileName, fileHash, fileSize
+        FROM processed_files
+        WHERE fileHash = ?
+        AND fileHash NOT LIKE 'downloading-%'
+        ORDER BY processedAt DESC
+      `;
+      
+      this.db!.all(sql, [hash], (err, rows: any[]) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(rows || []);
+      });
+    });
+  }
+
+  async getFileByPath(filePath: string): Promise<{
+    id?: string;
+    fileHash?: string;
+    arweaveId?: string;
+    arfsFileId?: string;
+    mimeType?: string;
+    fileSize?: number;
+  } | null> {
+    return new Promise((resolve, reject) => {
+      // First check uploads table
+      const uploadSql = `
+        SELECT id, localPath, fileName, fileSize, fileId as arfsFileId
+        FROM uploads 
+        WHERE localPath = ? 
+        ORDER BY createdAt DESC 
+        LIMIT 1
+      `;
+      
+      this.db!.get(uploadSql, [filePath], (err, uploadRow: any) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        
+        if (uploadRow) {
+          // Found in uploads, now get the hash from processed_files
+          const processedSql = `
+            SELECT fileHash, arweaveId 
+            FROM processed_files 
+            WHERE localPath = ? 
+            AND fileHash NOT LIKE 'downloading-%'
+            ORDER BY processedAt DESC
+            LIMIT 1
+          `;
+          
+          this.db!.get(processedSql, [filePath], (err2, processedRow: any) => {
+            if (err2) {
+              reject(err2);
+              return;
+            }
+            
+            resolve({
+              id: uploadRow.id,
+              fileHash: processedRow?.fileHash,
+              arweaveId: processedRow?.arweaveId || uploadRow.arfsFileId,
+              arfsFileId: uploadRow.arfsFileId,
+              mimeType: undefined, // mimeType column doesn't exist in uploads table
+              fileSize: uploadRow.fileSize
+            });
+          });
+        } else {
+          // Not in uploads, check processed_files
+          const processedSql = `
+            SELECT fileHash, arweaveId, fileName, fileSize
+            FROM processed_files 
+            WHERE localPath = ? 
+            AND fileHash NOT LIKE 'downloading-%'
+            ORDER BY processedAt DESC
+            LIMIT 1
+          `;
+          
+          this.db!.get(processedSql, [filePath], (err, row: any) => {
+            if (err) {
+              reject(err);
+            } else if (row) {
+              resolve({
+                fileHash: row.fileHash,
+                arweaveId: row.arweaveId,
+                arfsFileId: row.arweaveId, // Same thing for processed files
+                fileSize: row.fileSize
+              });
+            } else {
+              resolve(null);
+            }
+          });
         }
       });
     });

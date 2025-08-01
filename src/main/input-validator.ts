@@ -23,8 +23,9 @@ export class InputValidator {
     DRIVE_ID: /^[a-zA-Z0-9_-]{43}$/,
     PROFILE_ID: /^[a-zA-Z0-9-]{36}$/,
     HEX_COLOR: /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/,
+    // eslint-disable-next-line no-control-regex
     FILE_PATH: /^[^<>:"|?*\x00-\x1f\x80-\x9f]*$/,
-    SAFE_STRING: /^[a-zA-Z0-9\s\-_.,!@#$%^&*()+=[\]{}|;':\"<>?`~]*$/
+    SAFE_STRING: /^[a-zA-Z0-9\s\-_.,!@#$%^&*()+=[\]{}|;':"<>?`~]*$/
   };
 
   // Security constraints
@@ -142,18 +143,18 @@ export class InputValidator {
   }
 
   /**
-   * Validates an entity ID (ArDrive entity ID format - 43 char base64url)
+   * Validates an entity ID (ArDrive entity ID format - UUID)
    */
   static validateEntityId(value: any, fieldName: string = 'entityId'): string {
     const entityId = this.validateString(value, fieldName, {
       required: true,
-      minLength: 43,
-      maxLength: 43
+      minLength: 36,
+      maxLength: 36
     });
 
-    // ArDrive entity IDs are 43-character base64url strings
-    if (!/^[a-zA-Z0-9\-_]{43}$/.test(entityId)) {
-      throw new ValidationError(`${fieldName} is not a valid entity ID format`, fieldName);
+    // ArDrive entity IDs are UUIDs (36 characters with dashes)
+    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(entityId)) {
+      throw new ValidationError(`${fieldName} is not a valid entity ID format (expected UUID)`, fieldName);
     }
 
     return entityId;

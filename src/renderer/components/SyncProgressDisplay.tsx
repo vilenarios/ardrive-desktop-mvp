@@ -16,6 +16,37 @@ interface SyncProgressDisplayProps {
 }
 
 export const SyncProgressDisplay: React.FC<SyncProgressDisplayProps> = ({ progress, onClose }) => {
+  // Log when component mounts
+  React.useEffect(() => {
+    console.log('🔴 [SYNC-MODAL] SyncProgressDisplay mounted with:', {
+      phase: progress.phase,
+      description: progress.description,
+      timestamp: new Date().toISOString()
+    });
+    
+    return () => {
+      console.log('🔴 [SYNC-MODAL] SyncProgressDisplay unmounted');
+    };
+  }, []);
+  
+  // Auto-close when metadata sync is complete
+  React.useEffect(() => {
+    if (progress.phase === 'complete' && onClose) {
+      console.log('🔴 [SYNC-MODAL] Phase complete, will close in 1.5s');
+      // Give users time to see the completion message
+      const timer = setTimeout(() => {
+        console.log('🔴 [SYNC-MODAL] Calling onClose');
+        onClose();
+      }, 1500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [progress.phase, onClose]);
+
+  // Don't render if phase is complete (metadata sync finished)
+  if (progress.phase === 'complete') {
+    return null;
+  }
   const getIcon = () => {
     switch (progress.phase) {
       case 'starting':
@@ -45,12 +76,12 @@ export const SyncProgressDisplay: React.FC<SyncProgressDisplayProps> = ({ progre
 
   const getStepInfo = () => {
     const steps = [
-      { phase: 'starting', step: 1, total: 4, description: 'Loading drive metadata' },
-      { phase: 'metadata', step: 1, total: 4, description: 'Loading drive metadata' },
-      { phase: 'folders', step: 2, total: 4, description: 'Processing folders' },
-      { phase: 'files', step: 3, total: 4, description: 'Syncing files' },
-      { phase: 'verification', step: 3, total: 4, description: 'Syncing files' },
-      { phase: 'complete', step: 4, total: 4, description: 'Sync complete' }
+      { phase: 'starting', step: 1, total: 3, description: 'Initializing sync' },
+      { phase: 'metadata', step: 2, total: 3, description: 'Loading drive metadata' },
+      { phase: 'folders', step: 3, total: 3, description: 'Creating folder structure' },
+      { phase: 'files', step: 3, total: 3, description: 'Preparing file downloads' },
+      { phase: 'verification', step: 3, total: 3, description: 'Verifying sync state' },
+      { phase: 'complete', step: 3, total: 3, description: 'Metadata sync complete' }
     ];
     
     return steps.find(s => s.phase === progress.phase) || steps[0];
@@ -110,16 +141,7 @@ export const SyncProgressDisplay: React.FC<SyncProgressDisplayProps> = ({ progre
           )}
         </div>
 
-        {progress.phase === 'complete' && onClose && (
-          <div className="sync-progress-footer">
-            <button 
-              className="sync-progress-close-button"
-              onClick={onClose}
-            >
-              Close
-            </button>
-          </div>
-        )}
+        {/* Auto-close handles completion - no manual close button needed */}
       </div>
     </div>
   );

@@ -44,6 +44,7 @@ const App: React.FC = () => {
   }, []);
 
   const initializeApp = async () => {
+    console.log('🔴 [RENDERER] initializeApp called at:', new Date().toISOString());
     try {
       // Load config
       const appConfig = await window.electronAPI.config.get();
@@ -181,6 +182,8 @@ const App: React.FC = () => {
   };
 
   const startSyncMonitoring = () => {
+    console.log('🔴 [RENDERER] startSyncMonitoring called at:', new Date().toISOString());
+    
     // Listen for sync status updates
     window.electronAPI.onSyncStatusUpdate((status) => {
       setSyncStatus(status);
@@ -188,8 +191,20 @@ const App: React.FC = () => {
 
     // Listen for sync progress updates
     window.electronAPI.onSyncProgress((progress) => {
-      console.log('Received sync progress:', progress);
-      setSyncProgress(progress);
+      console.log('🔴 [RENDERER] Received sync progress:', {
+        phase: progress.phase,
+        description: progress.description,
+        timestamp: new Date().toISOString(),
+        currentSyncProgress: syncProgress
+      });
+      // Only set progress if it's not a duplicate complete phase
+      if (progress.phase === 'complete') {
+        // Set progress briefly to show completion, then clear
+        setSyncProgress(progress);
+        setTimeout(() => setSyncProgress(null), 2000);
+      } else {
+        setSyncProgress(progress);
+      }
     });
 
     // Listen for upload updates
@@ -486,6 +501,7 @@ const App: React.FC = () => {
             uploads={uploads}
             onLogout={handleLogout}
             onDriveDeleted={handleDriveDeleted}
+            onSyncProgressClear={() => setSyncProgress(null)}
             onRefreshUploads={async () => {
               try {
                 const uploadData = await window.electronAPI.files.getUploads();

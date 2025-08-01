@@ -1,0 +1,286 @@
+/* Modern Upload Queue Styles */
+
+/* Responsive breakpoints */
+@media (max-width: 768px) {
+  /* Unified cost banner - stack on mobile */
+  .upload-queue-cost-banner {
+    grid-template-columns: 1fr !important;
+    gap: var(--space-3) !important;
+  }
+  
+  .upload-queue-cost-banner .balance-section {
+    flex-direction: column;
+    gap: var(--space-2) !important;
+    align-items: flex-start !important;
+  }
+  
+  .upload-queue-cost-banner .balance-divider {
+    display: none !important;
+  }
+  
+  .upload-queue-cost-banner .total-cost-section {
+    border-left: none !important;
+    border-top: 1px solid var(--gray-300);
+    padding-left: 0 !important;
+    padding-top: var(--space-3);
+    text-align: left !important;
+  }
+  
+  /* File list - stack columns on mobile */
+  .upload-queue-file-item {
+    grid-template-columns: 20px 1fr !important;
+    grid-template-rows: auto auto;
+    gap: var(--space-2) !important;
+  }
+  
+  .upload-queue-file-item .file-info {
+    grid-column: 2;
+  }
+  
+  .upload-queue-file-item .file-meta {
+    grid-column: 2;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+  }
+  
+  .upload-queue-file-item .file-cost {
+    text-align: left !important;
+  }
+  
+  .upload-queue-file-item .file-actions {
+    grid-column: 2;
+    justify-self: end;
+    margin-top: calc(var(--space-2) * -1);
+  }
+  
+  /* Action buttons - stack on mobile */
+  .upload-queue-actions {
+    flex-direction: column !important;
+    gap: var(--space-2) !important;
+    align-items: stretch !important;
+  }
+  
+  .upload-queue-actions .left-actions,
+  .upload-queue-actions .right-actions {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .upload-queue-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Even smaller screens */
+  .upload-queue-cost-banner {
+    padding: var(--space-2) !important;
+  }
+  
+  .upload-queue-cost-banner .balance-item {
+    font-size: 12px;
+  }
+  
+  .upload-queue-cost-banner .balance-value {
+    font-size: 13px !important;
+  }
+  
+  .upload-queue-cost-banner .total-cost-value {
+    font-size: 14px !important;
+  }
+  
+  /* Reduce padding on file items */
+  .upload-queue-file-item {
+    padding: 8px 12px !important;
+  }
+  
+  /* Hide USD estimates on very small screens to save space */
+  .upload-queue-file-item .cost-usd {
+    display: none;
+  }
+}
+
+/* Animations */
+@keyframes upload-progress {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 30px 0;
+  }
+}
+
+.upload-item--uploading {
+  background-image: linear-gradient(
+    -45deg,
+    transparent 25%,
+    rgba(var(--ardrive-primary-rgb), 0.05) 25%,
+    rgba(var(--ardrive-primary-rgb), 0.05) 50%,
+    transparent 50%,
+    transparent 75%,
+    rgba(var(--ardrive-primary-rgb), 0.05) 75%,
+    rgba(var(--ardrive-primary-rgb), 0.05)
+  );
+  background-size: 30px 30px;
+  animation: upload-progress 1s linear infinite;
+}
+
+.upload-item--uploaded {
+  background-color: rgba(var(--success-rgb), 0.05);
+  transition: all 0.3s ease;
+}
+
+/* Hover states */
+.upload-queue-file-item:hover {
+  background-color: var(--gray-50);
+}
+
+.upload-queue-file-item.has-conflict:hover {
+  background-color: var(--warning-100);
+}
+
+/* Focus states for accessibility */
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--ardrive-primary);
+  outline-offset: 2px;
+}
+
+/* Cost banner refinements */
+.upload-queue-cost-banner {
+  position: relative;
+}
+
+.upload-queue-cost-banner .refresh-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+}
+
+/* File operation descriptions */
+.file-operation-desc {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.file-operation-desc .old-name,
+.file-operation-desc .new-name {
+  font-weight: 500;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-operation-desc .arrow {
+  color: var(--gray-400);
+  flex-shrink: 0;
+}
+
+/* Smooth transitions */
+.upload-queue-file-item,
+.upload-queue-cost-banner,
+button {
+  transition: all 0.2s ease;
+}
+
+/* Conflict resolution modal */
+.conflict-modal-backdrop {
+  backdrop-filter: blur(4px);
+}
+
+.conflict-modal-content {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Loading states */
+.loading-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--gray-200) 0%,
+    var(--gray-100) 50%,
+    var(--gray-200) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Tooltips */
+.tooltip {
+  position: relative;
+}
+
+.tooltip:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background-color: var(--gray-900);
+  color: white;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  z-index: 10;
+  margin-bottom: 4px;
+}
+
+/* Payment method selector */
+.payment-method-selector {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.payment-method-selector label {
+  flex: 1;
+  min-width: 120px;
+  padding: 8px 12px;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.payment-method-selector label:hover {
+  border-color: var(--gray-400);
+  background-color: var(--gray-50);
+}
+
+.payment-method-selector input[type="radio"]:checked + label {
+  border-color: var(--ardrive-primary);
+  background-color: rgba(var(--ardrive-primary-rgb), 0.05);
+}
+
+/* Success animation */
+@keyframes success-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--success-rgb), 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(var(--success-rgb), 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--success-rgb), 0);
+  }
+}
+
+.upload-success {
+  animation: success-pulse 1s ease-out;
+}

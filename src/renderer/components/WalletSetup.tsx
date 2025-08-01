@@ -733,7 +733,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                       backgroundColor: 'white',
                       border: `2px solid ${seedPhrase && !validateSeedPhrase(seedPhrase).isValid ? 'var(--danger-400)' : 'var(--gray-300)'}`,
                       borderRadius: 'var(--radius-md)',
-                      // @ts-ignore - WebKit specific property
+                      // @ts-expect-error - WebKit specific property
                       WebkitTextSecurity: showSeedPhraseText ? 'none' : 'disc',
                       color: showSeedPhraseText ? 'var(--gray-900)' : 'var(--gray-600)'
                     }}

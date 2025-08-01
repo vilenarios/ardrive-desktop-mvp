@@ -8,7 +8,8 @@ import {
   Loader,
   XCircle,
   Pause,
-  Play
+  Play,
+  Cloud
 } from 'lucide-react';
 
 interface FileDownload {
@@ -43,6 +44,34 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
   onResumeDownload,
   onSyncDrive
 }) => {
+  const [queueStatus, setQueueStatus] = React.useState<{ queued: number; active: number; total: number } | null>(null);
+  const [queuedDownloads, setQueuedDownloads] = React.useState<any[]>([]);
+
+  // Fetch queue status and queued downloads periodically
+  React.useEffect(() => {
+    const fetchQueueData = async () => {
+      try {
+        // Fetch queue status
+        const statusResult = await window.electronAPI.files.getQueueStatus();
+        if (statusResult.success) {
+          setQueueStatus(statusResult.data);
+        }
+        
+        // Fetch queued downloads (show up to 30)
+        const queuedResult = await window.electronAPI.files.getQueuedDownloads(30);
+        if (queuedResult.success) {
+          setQueuedDownloads(queuedResult.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch queue data:', error);
+      }
+    };
+
+    fetchQueueData();
+    const interval = setInterval(fetchQueueData, 2000); // Update every 2 seconds
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Filter to only show active downloads (queue items)
   const activeDownloads = useMemo(() => {
@@ -115,13 +144,20 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
         return <XCircle size={16} style={{ color: 'var(--error-600)' }} />;
       case 'paused':
         return <Pause size={16} style={{ color: 'var(--warning-600)' }} />;
+      case 'queued':
+        return <Clock size={16} style={{ color: 'var(--gray-500)' }} />;
       default:
         return <Clock size={16} style={{ color: 'var(--gray-500)' }} />;
     }
   };
 
-  // Show empty state when there are no active downloads (downloading, paused, or failed)
-  if (activeDownloads.length === 0) {
+  // Combine active downloads and queued downloads
+  const allDownloads = useMemo(() => {
+    return [...activeDownloads, ...queuedDownloads];
+  }, [activeDownloads, queuedDownloads]);
+  
+  // Show empty state when there are no downloads at all
+  if (allDownloads.length === 0) {
     return (
       <div className="card">
         <h2 style={{ margin: '0 0 var(--space-6) 0' }}>Download Queue</h2>
@@ -174,8 +210,26 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
         borderBottom: '1px solid var(--gray-200)',
         backgroundColor: 'var(--gray-50)'
       }}>
-        <div>
-          <h2 style={{ fontSize: '20px', fontWeight: '600', margin: 0, marginBottom: 'var(--space-4)' }}>Download Queue</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: '600', margin: 0 }}>Download Queue</h2>
+          {queueStatus && (
+            <div style={{ 
+              fontSize: '14px', 
+              color: 'var(--gray-600)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)'
+            }}>
+              {queueStatus.total > 0 ? (
+                <>
+                  <Loader size={14} className={queueStatus.active > 0 ? 'animate-spin' : ''} />
+                  <span>{queueStatus.active} downloading, {queueStatus.queued} queued</span>
+                </>
+              ) : (
+                <span>Queue empty</span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Stats */}
@@ -215,20 +269,37 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
         overflowY: 'auto',
         maxHeight: 'calc(100vh - 400px)'
       }}>
-        {activeDownloads.length === 0 ? (
+        {allDownloads.length === 0 ? (
           <div style={{
             padding: 'var(--space-8)',
             textAlign: 'center',
             color: 'var(--gray-500)'
           }}>
-            No active downloads in queue
+            No downloads in queue
           </div>
         ) : (
           <div style={{ padding: 'var(--space-4)' }}>
-            {activeDownloads.map((download) => (
-              <div
-                key={download.id}
-                style={{
+            {allDownloads.map((download, index) => {
+              // Check if we need to show a separator before queued items
+              const showQueueSeparator = index === activeDownloads.length && activeDownloads.length > 0 && queuedDownloads.length > 0;
+              
+              return (
+                <React.Fragment key={download.id}>
+                  {showQueueSeparator && (
+                    <div style={{
+                      margin: 'var(--space-4) 0',
+                      padding: 'var(--space-2) 0',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      color: 'var(--gray-600)',
+                      borderTop: '1px solid var(--gray-200)',
+                      paddingTop: 'var(--space-4)'
+                    }}>
+                      Queued Downloads {queueStatus && queueStatus.queued > 30 && `(showing first 30 of ${queueStatus.queued})`}
+                    </div>
+                  )}
+                  <div
+                    style={{
                   padding: 'var(--space-4)',
                   border: '1px solid var(--gray-200)',
                   borderRadius: 'var(--radius-md)',
@@ -272,8 +343,18 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
                       gap: 'var(--space-3)'
                     }}>
                       <span>{formatFileSize(download.fileSize)}</span>
-                      <span>•</span>
-                      <span>{formatDate(download.downloadedAt)}</span>
+                      {download.status === 'queued' && download.queuePosition && (
+                        <>
+                          <span>•</span>
+                          <span>Position #{download.queuePosition} in queue</span>
+                        </>
+                      )}
+                      {download.status !== 'queued' && download.downloadedAt && (
+                        <>
+                          <span>•</span>
+                          <span>{formatDate(download.downloadedAt)}</span>
+                        </>
+                      )}
                       {download.status === 'downloading' && (
                         <>
                           <span>•</span>
@@ -349,6 +430,18 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
                         <Play size={14} />
                       </button>
                     )}
+                    {(download.status === 'downloading' || download.status === 'paused' || download.status === 'queued') && (
+                      <button
+                        className="button small outline"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          await window.electronAPI.files.cancelDownload(download.fileId);
+                        }}
+                        title={download.status === 'queued' ? "Remove from queue" : "Make cloud-only (cancel download)"}
+                      >
+                        <Cloud size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -371,8 +464,10 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
                     />
                   </div>
                 )}
-              </div>
-            ))}
+                  </div>
+                </React.Fragment>
+              );
+            })}
           </div>
         )}
       </div>

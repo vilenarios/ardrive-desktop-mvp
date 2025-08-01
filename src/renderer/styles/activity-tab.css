@@ -324,6 +324,7 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
+  margin-bottom: 10px;
 }
 
 .load-more-button:hover {

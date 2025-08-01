@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { v4 as uuidv4 } from 'uuid';
 import { SecureWalletManager } from './wallet-manager-secure';
 import { configManager } from './config-manager';
 import { SyncManager } from './sync-manager';
@@ -13,6 +14,7 @@ import InputValidator, { ValidationError } from './input-validator';
 
 // Load .env file in development
 if (process.env.NODE_ENV !== 'production') {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   require('dotenv').config();
 }
 
@@ -105,11 +107,12 @@ class ArDriveApp {
   }
 
   private async restoreSyncState() {
+    console.log('🔵 [AUTO-SYNC] restoreSyncState() called');
     try {
       // Check if we have an active profile and set up database isolation
       const activeProfile = await profileManager.getActiveProfile();
       if (activeProfile) {
-        console.log('Setting up database for active profile:', activeProfile.id);
+        console.log('🔵 [AUTO-SYNC] Setting up database for active profile:', activeProfile.id);
         await databaseManager.setActiveProfile(activeProfile.id);
       }
       
@@ -139,21 +142,31 @@ class ArDriveApp {
       
       // Auto-start sync for returning users if we have everything needed
       if (config.syncFolder && this.walletManager.isWalletLoaded()) {
-        console.log('Auto-starting sync for returning user...');
+        console.log('🔵 [AUTO-SYNC] Conditions met for auto-sync:', {
+          hasSyncFolder: !!config.syncFolder,
+          isWalletLoaded: this.walletManager.isWalletLoaded(),
+          timestamp: new Date().toISOString()
+        });
         try {
           // Get drive mappings to start sync
           const driveMappings = await databaseManager.getDriveMappings();
           const primaryMapping = driveMappings.find(m => m.isActive) || driveMappings[0];
           
           if (primaryMapping) {
-            console.log('Found primary drive mapping, starting sync...');
+            console.log('🔵 [AUTO-SYNC] Found primary drive mapping:', {
+              driveId: primaryMapping.driveId,
+              driveName: primaryMapping.driveName,
+              timestamp: new Date().toISOString()
+            });
             this.syncManager.setSyncFolder(config.syncFolder);
+            console.log('🔵 [AUTO-SYNC] About to call startSync with silent=true');
             await this.syncManager.startSync(
               primaryMapping.driveId,
               primaryMapping.rootFolderId,
-              primaryMapping.driveName
+              primaryMapping.driveName,
+              true // silent = true for auto-sync
             );
-            console.log('Sync auto-started successfully for returning user');
+            console.log('🔵 [AUTO-SYNC] startSync completed successfully');
           } else {
             console.log('No drive mappings found, skipping auto-sync');
           }
@@ -872,10 +885,24 @@ class ArDriveApp {
       
       // Get the drive mapping for this drive
       const driveMappings = await databaseManager.getDriveMappings();
+      console.log('Available drive mappings:', driveMappings.map((m: any) => ({ 
+        id: m.id, 
+        driveId: m.driveId, 
+        driveName: m.driveName,
+        isActive: m.isActive 
+      })));
+      
       const driveMapping = driveMappings.find((m: any) => m.driveId === validatedDriveId);
       
       if (!driveMapping) {
-        throw new Error('Drive mapping not found');
+        console.error('Drive mapping not found for driveId:', validatedDriveId);
+        console.error('Available drive IDs:', driveMappings.map((m: any) => m.driveId));
+        
+        // Return empty array for now - the drive exists but mapping is temporarily missing
+        console.log('Drive exists but mapping is missing, returning empty array');
+        return [];
+        
+        throw new Error(`Drive mapping not found for drive ID: ${validatedDriveId}`);
       }
       
       // Check if metadata was recently synced
@@ -924,9 +951,9 @@ class ArDriveApp {
                 : item.uploadedDate
                   ? new Date(item.uploadedDate)
                   : new Date(Date.now() - 86400000), // Default to 1 day ago instead of current time
-            isDownloaded: item.localFileExists,
+            isDownloaded: item.localFileExists === 1,
             isUploaded: true,
-            status: item.syncStatus || 'synced',
+            status: item.syncStatus || 'pending',
             path: item.path,
             parentId: item.parentFolderId || '',
             ardriveUrl: item.type === 'file' ? `https://app.ardrive.io/#/file/${item.fileId}/view` : undefined,
@@ -936,8 +963,9 @@ class ArDriveApp {
           }));
           
           return fileItems;
+          }
+          console.log('No cached data found, will query ArDrive API');
         }
-        console.log('No cached data found, will query ArDrive API');
       }
       
       // If no cache or force refresh, query ArDrive API
@@ -1056,7 +1084,31 @@ class ArDriveApp {
           };
         });
         
-        return fileItems;
+        // Check local database for actual sync status of these files
+        const localMetadata = await databaseManager.getDriveMetadata(driveMapping.id);
+        const localStatusMap = new Map(localMetadata.map((item: any) => [item.fileId, item]));
+        
+        // Merge local sync status with ArDrive data
+        const mergedItems = fileItems.map((item: any) => {
+          const localData = localStatusMap.get(item.id);
+          if (localData) {
+            return {
+              ...item,
+              isDownloaded: localData.localFileExists,
+              status: localData.syncStatus || (localData.localFileExists ? 'synced' : 'cloud_only'),
+              localPath: localData.localPath,
+              syncPreference: localData.syncPreference
+            };
+          }
+          // No local data means it's cloud-only
+          return {
+            ...item,
+            isDownloaded: false,
+            status: 'cloud_only'
+          };
+        });
+        
+        return mergedItems;
       } catch (error) {
         console.error('Failed to fetch drive entities:', error);
         throw error;
@@ -1108,34 +1160,38 @@ class ArDriveApp {
       
       console.log(`Creating manifest "${manifestName}" for ${files.length} files`);
       
-      // Create manifest with replace behavior (creates new version if exists)
+      // Create manifest with upsert behavior (updates existing manifest with same name)
       const result = await arDrive.uploadPublicManifest({
         folderId: new EntityID(validatedFolderId),
         destManifestName: manifestName,
-        conflictResolution: 'replace'
+        conflictResolution: 'upsert'
       });
       
-      // Save manifest to local sync folder
-      const config = await configManager.getConfig();
-      if (config.syncFolder && result.manifest) {
-        const localManifestPath = path.join(
-          config.syncFolder, 
-          `${manifestName.replace('.json', '')}.arweave-manifest.json`
-        );
-        
-        const manifestContent = {
-          _metadata: {
-            created: new Date().toISOString(),
-            txId: result.created[0].dataTxId,
-            arweaveUrl: result.links[0],
-            fileCount: files.length,
-            folderId: validatedFolderId,
-            driveId: validatedDriveId
-          },
-          ...result.manifest
-        };
-        
-        await fs.writeFile(localManifestPath, JSON.stringify(manifestContent, null, 2));
+      // Add manifest creation to upload history
+      const manifestUpload: FileUpload = {
+        id: uuidv4(),
+        driveId: validatedDriveId,
+        localPath: path.join(validatedFolderId, manifestName), // Virtual path
+        fileName: manifestName,
+        fileSize: JSON.stringify(result.manifest).length,
+        status: 'completed',
+        progress: 100,
+        uploadMethod: 'turbo', // Manifests use Turbo Credits (free for small files)
+        dataTxId: result.created[0].dataTxId?.toString(),
+        metadataTxId: result.created[0].metadataTxId?.toString(),
+        transactionId: result.created[0].dataTxId?.toString(),
+        completedAt: new Date(),
+        createdAt: new Date()
+      };
+      
+      await databaseManager.addUpload(manifestUpload);
+      console.log('Added manifest to upload history:', manifestUpload.fileName);
+      
+      // Emit event to refresh UI
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send('drive:metadata-updated', validatedDriveId);
+        this.mainWindow.webContents.send('drive:update');
+        console.log('Emitted metadata update event for drive:', validatedDriveId);
       }
       
       return {
@@ -1149,7 +1205,58 @@ class ArDriveApp {
       };
     }));
 
+    // Count files in folder for manifest estimation
+    ipcMain.handle('drive:count-folder-files', safeIpcHandler(async (_, driveId: string, folderId: string) => {
+      console.log('Counting files in folder:', folderId);
+      
+      const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+      const validatedFolderId = InputValidator.validateEntityId(folderId, 'folderId');
+      
+      // Try to count from cache first
+      const driveMapping = await databaseManager.getDriveMappings()
+        .then(mappings => mappings.find(m => m.driveId === validatedDriveId));
+        
+      if (driveMapping) {
+        const cachedMetadata = await databaseManager.getDriveMetadata(driveMapping.id);
+        if (cachedMetadata && cachedMetadata.length > 0) {
+          // Count files that belong to this folder (including subfolders)
+          const folderFiles = cachedMetadata.filter(item => {
+            if (item.type !== 'file') return false;
+            
+            // Check if file is in this folder or a subfolder
+            if (item.parentFolderId === validatedFolderId) return true;
+            
+            // Check if file is in a subfolder by traversing up the tree
+            let parentId = item.parentFolderId;
+            const maxDepth = 10;
+            let depth = 0;
+            
+            while (parentId && depth < maxDepth) {
+              if (parentId === validatedFolderId) return true;
+              const parent = cachedMetadata.find(m => m.fileId === parentId && m.type === 'folder');
+              parentId = parent?.parentFolderId;
+              depth++;
+            }
+            
+            return false;
+          });
+          
+          return {
+            fileCount: folderFiles.length,
+            estimatedCost: 0.000001 // Manifest creation has minimal cost
+          };
+        }
+      }
+      
+      // If no cache, estimate based on typical folder
+      return {
+        fileCount: 0,
+        estimatedCost: 0.000001
+      };
+    }));
+
     // Get folder tree for manifest creation
+    const walletManager = this.walletManager;
     ipcMain.handle('drive:get-folder-tree', safeIpcHandler(async (_, driveId: string) => {
       console.log('Getting folder tree for drive:', driveId);
       const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
@@ -1164,6 +1271,14 @@ class ArDriveApp {
         
         if (cachedMetadata && cachedMetadata.length > 0) {
           console.log(`Found ${cachedMetadata.length} cached items`);
+          // Debug: log first few items to see the structure
+          console.log('Sample cached items:', cachedMetadata.slice(0, 3).map(item => ({
+            type: item.type,
+            fileId: item.fileId,
+            parentFolderId: item.parentFolderId,
+            name: item.name
+          })));
+          
           // Filter only folders from cached data
           const folders = cachedMetadata
             .filter(item => item.type === 'folder')
@@ -1174,11 +1289,12 @@ class ArDriveApp {
               path: folder.path || '/'
             }));
           
-          // If no folders found, add the root folder
-          if (folders.length === 0 && driveMapping) {
-            console.log('No folders in cache, adding root folder');
-            folders.push({
-              id: driveMapping.rootFolderId || driveMapping.driveId,
+          // Always add the root folder if it's not already in the list
+          const hasRootFolder = folders.some(f => f.id === driveMapping.rootFolderId);
+          if (!hasRootFolder && driveMapping.rootFolderId) {
+            console.log('Adding root folder to folder list');
+            folders.unshift({
+              id: driveMapping.rootFolderId,
               name: driveMapping.driveName || 'Root',
               parentId: '',
               path: '/'
@@ -1192,7 +1308,7 @@ class ArDriveApp {
       
       // If no cache, fetch from ArDrive API
       console.log('No cache found, fetching from ArDrive API...');
-      const arDrive = this.walletManager.getArDrive();
+      const arDrive = walletManager.getArDrive();
       if (!arDrive) {
         throw new Error('ArDrive not initialized');
       }
@@ -1201,7 +1317,7 @@ class ArDriveApp {
       const { EntityID } = require('ardrive-core-js');
       
       // Get drive info
-      const drives = await this.walletManager.listDrives();
+      const drives = await walletManager.listDrives();
       const drive = drives.find(d => d.id === validatedDriveId);
       
       if (!drive) {
@@ -1417,50 +1533,106 @@ class ArDriveApp {
       }
     });
 
+    // Sync preference operations
+    ipcMain.handle('sync:set-file-preference', async (_, fileId: string, preference: 'auto' | 'always_local' | 'cloud_only') => {
+      try {
+        await databaseManager.updateFileSyncPreference(fileId, preference);
+        
+        // Emit file state change event
+        if (this.mainWindow) {
+          this.mainWindow.webContents.send('sync:file-state-changed', { fileId, syncPreference: preference });
+        }
+        
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to set file sync preference:', error);
+        return { 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        };
+      }
+    });
+
+    ipcMain.handle('sync:queue-download', async (_, fileId: string, priority?: number) => {
+      try {
+        // Get file metadata
+        const mappings = await databaseManager.getDriveMappings();
+        const activeMapping = mappings.find(m => m.isActive);
+        if (!activeMapping) {
+          throw new Error('No active drive mapping found');
+        }
+
+        const allMetadata = await databaseManager.getDriveMetadata(activeMapping.id);
+        const fileData = allMetadata.find(item => item.fileId === fileId);
+        if (!fileData) {
+          throw new Error('File not found in metadata');
+        }
+
+        // Queue the download
+        await this.syncManager.queueDownload(fileData, priority || 0);
+        
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to queue download:', error);
+        return { 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        };
+      }
+    });
+
+    ipcMain.handle('sync:cancel-download', async (_, fileId: string) => {
+      try {
+        await this.syncManager.cancelDownload(fileId);
+        
+        // Emit file state change event
+        if (this.mainWindow) {
+          this.mainWindow.webContents.send('sync:file-state-changed', { fileId, syncStatus: 'cloud_only' });
+        }
+        
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to cancel download:', error);
+        return { 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        };
+      }
+    });
+
+    ipcMain.handle('sync:get-queue-status', async () => {
+      try {
+        const status = await this.syncManager.getQueueStatus();
+        return { success: true, data: status };
+      } catch (error) {
+        console.error('Failed to get queue status:', error);
+        return { 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        };
+      }
+    });
+    
+    ipcMain.handle('sync:get-queued-downloads', async (_, limit?: number) => {
+      try {
+        const queuedDownloads = await this.syncManager.getQueuedDownloads(limit);
+        return { success: true, data: queuedDownloads };
+      } catch (error) {
+        console.error('Failed to get queued downloads:', error);
+        return { 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        };
+      }
+    });
+
     // Manual sync operation (different from background sync monitoring)
     ipcMain.handle('sync:manual', safeIpcHandler(async () => {
       console.log('Manual sync requested from UI');
       try {
-        // Emit sync progress phases for UI
-        const emitProgress = (phase: string, description: string, itemsProcessed?: number, estimatedRemaining?: number) => {
-          const progress = {
-            phase,
-            description,
-            currentItem: undefined,
-            itemsProcessed,
-            estimatedRemaining
-          };
-          console.log(`🔄 Emitting sync progress:`, progress);
-          if (this.mainWindow) {
-            this.mainWindow.webContents.send('sync:progress', progress);
-            console.log(`📤 Sending sync:progress to renderer`);
-          }
-        };
-
-        // Step 1: Starting
-        emitProgress('starting', 'Initializing manual sync...');
-        await new Promise(resolve => setTimeout(resolve, 500)); // Brief delay for UI
-
-        // Step 2: Metadata - Check for new local files (scan upload queue)
-        emitProgress('metadata', 'Scanning local folder for new files...');
-        // Note: This will trigger file watcher to detect new files for upload queue
-        // The actual upload scanning happens in the background via file monitoring
-        await new Promise(resolve => setTimeout(resolve, 300));
-
-        // Step 3: Folders phase
-        emitProgress('folders', 'Processing folder structure...');
-        await new Promise(resolve => setTimeout(resolve, 300));
-
-        // Step 4: Files - Download existing drive files
-        emitProgress('files', 'Checking permaweb for updates...');
+        // Let the sync operations emit their own progress events
+        // This prevents duplicate progress modals
         await this.syncManager.forceDownloadExistingFiles();
-
-        // Step 5: Verification
-        emitProgress('verification', 'Verifying sync results...');
-        await new Promise(resolve => setTimeout(resolve, 200));
-
-        // Step 6: Complete
-        emitProgress('complete', 'Manual sync completed successfully');
 
         // Emit sync completed event to trigger UI updates
         if (this.mainWindow) {
@@ -1509,7 +1681,59 @@ class ArDriveApp {
         throw new Error('Pending upload not found');
       }
       
-      // Use specified method or fall back to recommended method
+      // Check if this is a metadata-only operation (move, rename, hide, etc.)
+      const isMetadataOperation = pendingUpload.operationType && 
+        ['move', 'rename', 'hide', 'unhide', 'delete'].includes(pendingUpload.operationType);
+      
+      if (isMetadataOperation) {
+        // Handle metadata operations immediately
+        console.log(`Processing ${pendingUpload.operationType} operation for: ${pendingUpload.fileName}`);
+        
+        try {
+          const result = await this.syncManager.executeMetadataOperation(pendingUpload);
+          
+          // Create an upload record for activity tracking
+          const activityRecord: FileUpload = {
+            id: pendingUpload.id,
+            driveId: pendingUpload.driveId,
+            localPath: pendingUpload.localPath,
+            fileName: pendingUpload.fileName,
+            fileSize: pendingUpload.fileSize,
+            status: 'completed',
+            progress: 100,
+            uploadMethod: 'turbo', // Metadata operations use Turbo
+            dataTxId: result?.created?.[0]?.dataTxId?.toString(),
+            metadataTxId: result?.created?.[0]?.metadataTxId?.toString(),
+            fileId: pendingUpload.arfsFileId,
+            createdAt: new Date(),
+            completedAt: new Date()
+          };
+          
+          // Add to upload history for activity tracking
+          await databaseManager.addUpload(activityRecord);
+          
+          // Remove from pending uploads
+          await databaseManager.removePendingUpload(uploadId);
+          
+          // Notify UI of completion
+          const mainWindow = BrowserWindow.getAllWindows()[0];
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('sync:pending-uploads-updated');
+            mainWindow.webContents.send('sync:upload-completed', {
+              fileName: pendingUpload.fileName,
+              operationType: pendingUpload.operationType
+            });
+            mainWindow.webContents.send('drive:update');
+          }
+          
+          return { success: true, operationType: pendingUpload.operationType };
+        } catch (error) {
+          console.error(`Failed to execute ${pendingUpload.operationType} operation:`, error);
+          throw error;
+        }
+      }
+      
+      // Regular upload handling
       const selectedMethod = uploadMethod || pendingUpload.recommendedMethod || 'ar';
       
       // Validate Turbo balance if Turbo method is selected and file is not free
@@ -1597,6 +1821,49 @@ class ArDriveApp {
       
       for (const pendingUpload of pendingUploads) {
         try {
+          // Check if this is a metadata-only operation (move, rename, hide, etc.)
+          const isMetadataOperation = pendingUpload.operationType && 
+            ['move', 'rename', 'hide', 'unhide', 'delete'].includes(pendingUpload.operationType);
+          
+          if (isMetadataOperation) {
+            // Handle metadata operations immediately
+            console.log(`Processing ${pendingUpload.operationType} operation for: ${pendingUpload.fileName}`);
+            
+            try {
+              const result = await this.syncManager.executeMetadataOperation(pendingUpload);
+              
+              // Create an upload record for activity tracking
+              const activityRecord: FileUpload = {
+                id: pendingUpload.id,
+                driveId: pendingUpload.driveId,
+                localPath: pendingUpload.localPath,
+                fileName: pendingUpload.fileName,
+                fileSize: pendingUpload.fileSize,
+                status: 'completed',
+                progress: 100,
+                uploadMethod: 'turbo', // Metadata operations use Turbo
+                dataTxId: result?.created?.[0]?.dataTxId?.toString(),
+                metadataTxId: result?.created?.[0]?.metadataTxId?.toString(),
+                fileId: pendingUpload.arfsFileId,
+                createdAt: new Date(),
+                completedAt: new Date()
+              };
+              
+              // Add to upload history for activity tracking
+              await databaseManager.addUpload(activityRecord);
+              
+              // Remove from pending uploads
+              await databaseManager.removePendingUpload(pendingUpload.id);
+              
+              approvedCount++;
+              continue; // Skip to next upload
+            } catch (error) {
+              console.error(`Failed to execute ${pendingUpload.operationType} operation:`, error);
+              errors.push(`${pendingUpload.fileName}: ${error instanceof Error ? error.message : 'Failed to execute operation'}`);
+              continue;
+            }
+          }
+          
           // Determine which payment method to use
           const selectedMethod = pendingUpload.recommendedMethod || 'ar';
           const isFreeWithTurbo = pendingUpload.fileSize <= TURBO_FREE_SIZE_LIMIT;
@@ -1655,6 +1922,14 @@ class ArDriveApp {
         } catch (error) {
           console.error(`Failed to approve upload ${pendingUpload.fileName}:`, error);
           errors.push(`${pendingUpload.fileName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+      
+      // Notify UI to refresh if any operations completed
+      if (approvedCount > 0) {
+        const mainWindow = BrowserWindow.getAllWindows()[0];
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('drive:update');
         }
       }
       

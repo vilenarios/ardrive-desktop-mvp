@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DriveInfo, AppConfig, SyncStatus, FileUpload } from '../../../types';
 import { InfoButton } from '../common/InfoButton';
 import { 
@@ -54,7 +54,8 @@ interface FileItem {
   isUploaded: boolean;
   downloadProgress?: number;
   uploadProgress?: number;
-  status: 'synced' | 'downloading' | 'uploading' | 'pending' | 'error';
+  status: 'synced' | 'downloading' | 'uploading' | 'pending' | 'queued' | 'cloud_only' | 'error';
+  syncPreference?: 'auto' | 'always_local' | 'cloud_only';
   children?: FileItem[];
   path: string;
   parentId?: string;
@@ -101,6 +102,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 
   const selectedDrive = drive;
+  const loadDriveMetadataRef = useRef<(isManualRefresh?: boolean) => Promise<void>>();
 
   // Load drive metadata from Arweave permaweb
   const loadDriveMetadata = async (isManualRefresh = false) => {
@@ -136,9 +138,10 @@ export const StorageTab: React.FC<StorageTabProps> = ({
           type: item.type,
           size: item.size,
           modifiedAt: new Date(item.modifiedAt),
-          isDownloaded: false,
+          isDownloaded: item.localFileExists || false,
           isUploaded: true,
-          status: 'synced' as const,
+          status: item.syncStatus || 'pending',
+          syncPreference: item.syncPreference || 'auto',
           path: item.path || '/',
           parentId: item.parentId,
           children: item.type === 'folder' ? [] : undefined,
@@ -213,13 +216,18 @@ export const StorageTab: React.FC<StorageTabProps> = ({
     return elapsed < CACHE_DURATION;
   };
 
+  // Update ref to always have latest loadDriveMetadata
+  useEffect(() => {
+    loadDriveMetadataRef.current = loadDriveMetadata;
+  });
+
   // Load real file data from API or sync status
   useEffect(() => {
     if (!selectedDrive) return;
 
     // Initialize with cached data from parent if available
-    if (cachedData && cachedData.length > 0 && fileData.length === 0) {
-      console.log('Initializing with cached data from parent');
+    if (cachedData && cachedData.length > 0) {
+      console.log('Setting file data from cached data');
       setFileData(cachedData);
     }
 
@@ -256,7 +264,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
         syncedFiles: syncStatus?.uploadedFiles || 0
       });
     }
-  }, [selectedDrive, syncStatus]);
+  }, [selectedDrive, syncStatus, cachedData]);
 
   // Set up auto-refresh timer
   useEffect(() => {
@@ -376,6 +384,101 @@ export const StorageTab: React.FC<StorageTabProps> = ({
     };
   }, []);
 
+  // Listen for file state changes
+  useEffect(() => {
+    const handleFileStateChange = (data: { fileId: string; syncStatus?: string; syncPreference?: string }) => {
+      console.log('File state changed:', data, {
+        currentFileCount: fileData.length,
+        fileExists: fileData.some(f => f.id === data.fileId)
+      });
+      
+      // Update the file data with new state
+      setFileData(prevData => {
+        const updateItemRecursively = (items: FileItem[]): FileItem[] => {
+          return items.map(item => {
+            if (item.id === data.fileId) {
+              return {
+                ...item,
+                status: (data.syncStatus as any) || item.status,
+                syncPreference: (data.syncPreference as any) || item.syncPreference,
+                // Update isDownloaded based on sync status
+                isDownloaded: data.syncStatus === 'synced' ? true : 
+                             data.syncStatus === 'cloud_only' ? false : 
+                             item.isDownloaded
+              };
+            }
+            if (item.children) {
+              return {
+                ...item,
+                children: updateItemRecursively(item.children)
+              };
+            }
+            return item;
+          });
+        };
+        
+        return updateItemRecursively(prevData);
+      });
+      
+      // Also update the cached data in parent component if callback provided
+      if (onCacheUpdate && cachedData) {
+        const updatedCache = (function updateCacheRecursively(items: FileItem[]): FileItem[] {
+          return items.map(item => {
+            if (item.id === data.fileId) {
+              return {
+                ...item,
+                status: (data.syncStatus as any) || item.status,
+                syncPreference: (data.syncPreference as any) || item.syncPreference,
+                isDownloaded: data.syncStatus === 'synced' ? true : 
+                             data.syncStatus === 'cloud_only' ? false : 
+                             item.isDownloaded
+              };
+            }
+            if (item.children) {
+              return {
+                ...item,
+                children: updateCacheRecursively(item.children)
+              };
+            }
+            return item;
+          });
+        })(cachedData);
+        onCacheUpdate(updatedCache, lastRefreshTime || null, cacheValid || false);
+      }
+    };
+
+    window.electronAPI.onFileStateChanged(handleFileStateChange);
+    
+    // Listen for drive updates (uploads, moves, renames, etc.)
+    const handleDriveUpdate = () => {
+      console.log('Drive update detected, refreshing...', { 
+        currentDrive: drive?.id,
+        currentFileCount: fileData.length 
+      });
+      // Auto-refresh to get the newly uploaded file from cache
+      if (loadDriveMetadataRef.current) {
+        loadDriveMetadataRef.current(false); // Auto-refresh, not manual
+      }
+    };
+    
+    const handleDriveMetadataUpdated = (updatedDriveId: string) => {
+      console.log('Drive metadata updated for drive:', updatedDriveId);
+      if (drive && drive.id === updatedDriveId) {
+        console.log('Refreshing metadata for current drive');
+        loadDriveMetadata(false); // Auto-refresh after metadata sync
+      }
+    };
+    
+    window.electronAPI.onDriveUpdate(handleDriveUpdate);
+    window.electronAPI.onDriveMetadataUpdated(handleDriveMetadataUpdated);
+    
+    return () => {
+      window.electronAPI.removeFileStateChangedListener();
+      window.electronAPI.removeDriveUpdateListener();
+      window.electronAPI.removeDriveMetadataUpdatedListener();
+    };
+  }, []);
+
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = () => {
@@ -443,15 +546,19 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   const getStatusIcon = (item: FileItem) => {
     switch (item.status) {
       case 'synced':
-        return <div title="Synced"><CheckCircle size={14} className="status-icon synced" /></div>;
+        return <div title="Synced locally"><CheckCircle size={14} className="status-icon synced" style={{ color: 'var(--success-600)' }} /></div>;
       case 'downloading':
-        return <div title="Downloading"><Download size={14} className="status-icon downloading animate-pulse" /></div>;
+        return <div title="Downloading"><Loader size={14} className="status-icon downloading animate-spin" style={{ color: 'var(--ardrive-primary-600)' }} /></div>;
       case 'uploading':
-        return <div title="Uploading"><Cloud size={14} className="status-icon uploading animate-pulse" /></div>;
+        return <div title="Uploading"><Cloud size={14} className="status-icon uploading animate-pulse" style={{ color: 'var(--ardrive-primary-600)' }} /></div>;
+      case 'queued':
+        return <div title="Queued for download"><Clock size={14} className="status-icon queued" style={{ color: 'var(--warning-600)' }} /></div>;
+      case 'cloud_only':
+        return <div title="Cloud-only (not stored locally)"><Cloud size={14} className="status-icon cloud-only" style={{ color: 'var(--gray-500)' }} /></div>;
       case 'pending':
-        return <div title="Pending sync"><Clock size={14} className="status-icon pending" /></div>;
+        return <div title="Pending sync"><Clock size={14} className="status-icon pending" style={{ color: 'var(--gray-500)' }} /></div>;
       case 'error':
-        return <div title="Sync error"><AlertCircle size={14} className="status-icon error" /></div>;
+        return <div title="Sync error"><AlertCircle size={14} className="status-icon error" style={{ color: 'var(--error-600)' }} /></div>;
       default:
         return null;
     }
@@ -685,8 +792,9 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                 style={{ cursor: 'pointer' }}
               >
                 <div className="item-main">
-                  <div className="item-icon">
+                  <div className="item-icon" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     {getFileIcon(item)}
+                    {item.type === 'file' && getStatusIcon(item)}
                   </div>
                   <div className="item-info">
                     <div className="item-name">{item.name}</div>
@@ -796,6 +904,50 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                               <FolderOpen size={14} />
                               Open Folder
                             </button>
+                          )}
+                          {/* Sync preference options for files */}
+                          {item.type === 'file' && (
+                            <>
+                              {item.status === 'cloud_only' && (
+                                <button 
+                                  className="action-menu-item"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    await window.electronAPI.files.queueDownload(item.id);
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  <Download size={14} />
+                                  Download now
+                                </button>
+                              )}
+                              {(item.status === 'synced' || item.status === 'downloading' || item.status === 'queued') && (
+                                <button 
+                                  className="action-menu-item"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    await window.electronAPI.files.setFileSyncPreference(item.id, 'cloud_only');
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  <Cloud size={14} />
+                                  Free up space
+                                </button>
+                              )}
+                              {item.syncPreference !== 'always_local' && (
+                                <button 
+                                  className="action-menu-item"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    await window.electronAPI.files.setFileSyncPreference(item.id, 'always_local');
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  <CheckCircle size={14} />
+                                  Always keep on device
+                                </button>
+                              )}
+                            </>
                           )}
                           <button 
                             className="action-menu-item"
@@ -943,8 +1095,8 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                 }}>
                   {loadError ? loadError :
                    isNewDrive ? 'Your new drive is being created on Arweave. This process may take a few moments. Please try refreshing in a minute.' :
-                   currentPath.length > 0 ? 'This folder doesn\'t contain any files yet. Add files to your sync folder in the corresponding location to see them here.' :
-                   "Add files to your sync folder and approve them for upload. Once uploaded to Arweave, they'll be permanently stored and accessible here."}
+                   currentPath.length > 0 ? 'This folder does not contain any files yet. Add files to your sync folder in the corresponding location to see them here.' :
+                   'Add files to your sync folder and approve them for upload. Once uploaded to Arweave, they will be permanently stored and accessible here.'}
                 </p>
                 <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center', flexWrap: 'wrap' }}>
                   {(loadError || isNewDrive) && (

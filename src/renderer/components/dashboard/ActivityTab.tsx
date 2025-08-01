@@ -42,7 +42,9 @@ import {
   MoreHorizontal,
   FolderOpen,
   Share,
-  Copy
+  Copy,
+  RefreshCw,
+  X
 } from 'lucide-react';
 
 interface FileDownload {
@@ -278,8 +280,6 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
       case 'bz2':
       case 'xz':
       case 'lz':
-      case 'dmg':
-      case 'iso':
         return <Archive size={iconSize} className="file-icon archive" style={{ color: '#8b5cf6' }} />;
       
       // Executables and packages
@@ -550,8 +550,16 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
       onViewFile(activity.originalItem as FileUpload);
     } else if (activity.type === 'download') {
       const download = activity.originalItem as FileDownload;
-      // Open file location
-      if (download.localPath) {
+      
+      // Handle failed downloads differently
+      if (download.status === 'failed') {
+        // Show details modal for failed downloads
+        setSelectedActivityDetails(activity);
+        return;
+      }
+      
+      // Open file location for successful downloads
+      if (download.localPath && download.status === 'completed') {
         try {
           await window.electronAPI.shell.openPath(download.localPath);
         } catch (error) {
@@ -589,7 +597,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
     <div className="activity-tab">
       {/* Header */}
       <div className="activity-header">
-        <h2>Activity for "{selectedDrive.name}"</h2>
+        <h2>Activity for &quot;{selectedDrive.name}&quot;</h2>
         <p>Recent upload and download activity for this drive</p>
       </div>
 
@@ -1139,7 +1147,44 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                   </button>
                 )}
                 
-                {selectedActivityDetails.type === 'download' && (selectedActivityDetails.originalItem as FileDownload).localPath && (
+                {selectedActivityDetails.type === 'download' && (selectedActivityDetails.originalItem as FileDownload).status === 'failed' && (
+                  <>
+                    <button 
+                      className="button small primary"
+                      onClick={async () => {
+                        const download = selectedActivityDetails.originalItem as FileDownload;
+                        if (download.fileId) {
+                          // Queue for re-download
+                          await window.electronAPI.files.queueDownload(download.fileId, 100);
+                          setSelectedActivityDetails(null);
+                          // Refresh the activity list
+                          window.location.reload();
+                        }
+                      }}
+                    >
+                      <RefreshCw size={14} />
+                      Retry Download
+                    </button>
+                    <button 
+                      className="button small outline"
+                      onClick={async () => {
+                        const download = selectedActivityDetails.originalItem as FileDownload;
+                        if (download.fileId) {
+                          // Cancel/remove this download
+                          await window.electronAPI.files.cancelDownload(download.fileId);
+                          setSelectedActivityDetails(null);
+                          // Refresh the activity list
+                          window.location.reload();
+                        }
+                      }}
+                    >
+                      <X size={14} />
+                      Remove from Queue
+                    </button>
+                  </>
+                )}
+                
+                {selectedActivityDetails.type === 'download' && (selectedActivityDetails.originalItem as FileDownload).localPath && (selectedActivityDetails.originalItem as FileDownload).status === 'completed' && (
                   <>
                     <button 
                       className="button small secondary"

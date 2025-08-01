@@ -200,7 +200,7 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
                   {syncFolder}
                 </p>
                 <p style={{ fontSize: '13px', color: 'var(--gray-600)', marginBottom: 'var(--space-3)' }}>
-                  A folder named "{drive.name}" will be created here
+                  A folder named &ldquo;{drive.name}&rdquo; will be created here
                 </p>
                 <button
                   className="button small outline"

@@ -40,8 +40,10 @@
       "Bash(npm ls:*)",
       "Bash(npm outdated)",
       "Bash(npx jest:*)",
-      "Bash(awk:*)"
+      "Bash(awk:*)",
+      "Bash(python:*)"
     ],
     "deny": []
-  }
+  },
+  "$schema": "https://json.schemastore.org/claude-code-settings.json"
 }

@@ -13,6 +13,7 @@ export interface DriveSyncMapping {
   rootFolderId: string;         // Root folder ID in the drive
   isActive: boolean;            // Whether sync is enabled
   lastSyncTime?: Date;          // Last successful sync
+  lastMetadataSyncAt?: Date;    // Last time metadata was synced
   syncSettings?: DriveSyncSettings;
   createdAt: Date;
   updatedAt: Date;
@@ -123,6 +124,16 @@ export interface PendingUpload {
   conflictType?: 'none' | 'duplicate' | 'filename_conflict' | 'content_conflict';
   conflictDetails?: string;
   status: 'awaiting_approval' | 'approved' | 'rejected';
+  operationType?: 'upload' | 'move' | 'rename' | 'hide' | 'unhide' | 'delete'; // Type of operation
+  previousPath?: string;        // For moves/renames - the original path
+  arfsFileId?: string;          // For operations on existing files
+  arfsFolderId?: string;        // For folder operations
+  metadata?: {                  // Operation-specific metadata
+    newParentFolderId?: string; // For moves
+    isHidden?: boolean;         // For hide/unhide
+    tags?: string[];            // For future tag operations
+    [key: string]: any;         // Extensible for future operations
+  };
   createdAt: Date;
 }
 
@@ -150,11 +161,48 @@ export interface FileDownload {
   fileId: string;           // ArDrive File ID
   dataTxId?: string;        // Arweave transaction ID for file data
   metadataTxId?: string;    // Arweave transaction ID for metadata
-  status: 'downloading' | 'completed' | 'failed';
+  status: 'downloading' | 'completed' | 'failed' | 'pending';
   progress: number;
+  priority?: number;        // Download priority (higher = more important)
+  isCancelled?: boolean;    // Whether download was cancelled
   error?: string;
   downloadedAt: Date;
   completedAt?: Date;
+}
+
+// File sync preferences and state
+export type FileSyncPreference = 'auto' | 'always_local' | 'cloud_only';
+export type FileSyncStatus = 'synced' | 'downloading' | 'queued' | 'cloud_only' | 'pending' | 'error';
+
+export interface FileSyncState {
+  fileId: string;
+  syncStatus: FileSyncStatus;
+  syncPreference: FileSyncPreference;
+  localFileExists: boolean;
+  downloadPriority: number;
+  lastError?: string;
+  lastSyncedAt?: Date;
+}
+
+export interface FileMetadata {
+  id: string;
+  fileId: string;
+  name: string;
+  type: 'file' | 'folder';
+  size?: number;
+  path: string;
+  parentFolderId?: string;
+  dataTxId?: string;
+  metadataTxId?: string;
+  contentType?: string;
+  lastModifiedDate?: number;
+  // Sync-related fields
+  syncStatus: FileSyncStatus;
+  syncPreference: FileSyncPreference;
+  localFileExists: boolean;
+  downloadPriority: number;
+  lastError?: string;
+  lastSyncedAt?: Date;
 }
 
 // File Version Control Types

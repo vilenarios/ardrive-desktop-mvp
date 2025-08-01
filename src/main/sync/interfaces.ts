@@ -1,6 +1,16 @@
 export interface ISyncProgressTracker {
   emitSyncProgress(progress: any): void;
   emitUploadProgress(uploadId: string, progress: number, status: string, error?: string): void;
+  emitDownloadProgress(progress: {
+    downloadId: string;
+    fileName: string;
+    progress: number;
+    bytesDownloaded: number;
+    totalBytes: number;
+    speed: number;
+    remainingTime: number;
+  }): void;
+  destroy(): void;
 }
 
 export interface IFileStateManager {

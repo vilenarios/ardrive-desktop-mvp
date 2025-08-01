@@ -1,0 +1,26 @@
+diff --git a/node_modules/ardrive-core-js/lib/arfs/arfs_file_wrapper.js b/node_modules/ardrive-core-js/lib/arfs/arfs_file_wrapper.js
+index 1234567..abcdefg 100644
+--- a/node_modules/ardrive-core-js/lib/arfs/arfs_file_wrapper.js
++++ b/node_modules/ardrive-core-js/lib/arfs/arfs_file_wrapper.js
+@@ -123,7 +123,7 @@ class ArFSManifestWrapper extends ArFSFileWrapper {
+             paths: pathMap
+         };
+         // Create new current unix, as we just created this manifest
+-        this.lastModifiedDateMS = new types_1.UnixTime(Math.round(Date.now() / 1000));
++        this.lastModifiedDateMS = new types_1.UnixTime(Date.now());
+     }
+     getLinksOutput(dataTxId, gateway = new URL(constants_1.defaultArweaveGatewayPath)) {
+         const allPaths = Object.keys(this.manifest.paths);
+diff --git a/node_modules/ardrive-core-js/lib/arfs/tx/arfs_prototypes.js b/node_modules/ardrive-core-js/lib/arfs/tx/arfs_prototypes.js
+index 1234567..abcdefg 100644
+--- a/node_modules/ardrive-core-js/lib/arfs/tx/arfs_prototypes.js
++++ b/node_modules/ardrive-core-js/lib/arfs/tx/arfs_prototypes.js
+@@ -56,7 +56,7 @@ class ArFSEntityMetaDataPrototype extends ArFSObjectMetadataPrototype {
+         super(customMetaDataTags);
+         this.customMetaDataTags = customMetaDataTags;
+         // Get the current time so the app can display the "created" data later on
+-        this.unixTime = new types_1.UnixTime(Math.round(Date.now() / 1000));
++        this.unixTime = new types_1.UnixTime(Date.now());
+     }
+     get protectedTags() {
+         return [

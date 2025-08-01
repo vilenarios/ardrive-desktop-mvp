@@ -490,7 +490,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           driveName={selectedDrive.name}
           onClose={() => setShowManifestModal(false)}
           onSuccess={(manifestUrl) => {
-            window.electronAPI.shell.openExternal(manifestUrl);
+            // Refresh the permaweb files to show the new manifest
+            console.log('Manifest created successfully:', manifestUrl);
+            // The URL is already copied to clipboard by CreateManifestModal
           }}
           toast={toast}
         />
@@ -634,7 +636,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               marginBottom: '16px'
             }}>
               <p style={{ marginBottom: '8px', color: '#374151' }}>
-                Renaming <strong>"{selectedDrive.name}"</strong> to <strong>"{newDriveName}"</strong>
+                Renaming <strong>&quot;{selectedDrive.name}&quot;</strong> to <strong>&quot;{newDriveName}&quot;</strong>
               </p>
             </div>
 

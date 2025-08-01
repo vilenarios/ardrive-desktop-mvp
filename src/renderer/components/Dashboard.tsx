@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { AppConfig, DriveInfo, WalletInfo, SyncStatus, FileUpload, PendingUpload, ConflictResolution, Profile, SyncProgress } from '../../types';
-import UploadApprovalQueue from './UploadApprovalQueue';
+import UploadApprovalQueueModern from './UploadApprovalQueueModern';
 import TurboCreditsManager from './TurboCreditsManager';
 import FileMetadataModal from './FileMetadataModal';
 import UserMenu from './UserMenu';
@@ -44,6 +44,7 @@ interface DashboardProps {
   uploads: FileUpload[];
   onLogout: () => void;
   onDriveDeleted: () => void;
+  onSyncProgressClear?: () => void;
   onRefreshUploads?: () => Promise<void>;
   toast?: {
     success: (message: string) => void;
@@ -62,6 +63,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   uploads,
   onLogout,
   onDriveDeleted,
+  onSyncProgressClear,
   onRefreshUploads,
   toast
 }) => {
@@ -70,7 +72,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [showTurboManager, setShowTurboManager] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileUpload | null>(null);
   const [downloads, setDownloads] = useState<any[]>([]);
-  const [downloadRefreshInterval, setDownloadRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  const downloadRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [downloadQueueStatus, setDownloadQueueStatus] = useState<{ queued: number; active: number; total: number } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResults, setSyncResults] = useState<{
     uploadsFound: number;
@@ -200,25 +203,61 @@ const Dashboard: React.FC<DashboardProps> = ({
       const downloadList = await window.electronAPI.files.getDownloads();
       setDownloads(downloadList);
       
-      // Check if there are any active downloads
-      const hasActiveDownloads = downloadList.some((d: any) => d.status === 'downloading');
+      // Also fetch queue status
+      const statusResult = await window.electronAPI.files.getQueueStatus();
+      if (statusResult.success) {
+        setDownloadQueueStatus(statusResult.data);
+      }
+      
+      // Check if there are any active downloads (exclude stuck downloads)
+      const now = Date.now();
+      const hasActiveDownloads = downloadList.some((d: any) => {
+        if (d.status !== 'downloading') return false;
+        
+        // Check if download is stuck (no progress update for more than 30 seconds)
+        if (d.lastProgressUpdate) {
+          const timeSinceUpdate = now - new Date(d.lastProgressUpdate).getTime();
+          if (timeSinceUpdate > 30000) {
+            console.warn(`Download ${d.fileName} appears stuck - no progress for ${Math.round(timeSinceUpdate / 1000)}s`);
+            return false;
+          }
+        }
+        
+        return true;
+      });
       
       // Manage refresh interval based on active downloads
-      if (hasActiveDownloads && !downloadRefreshInterval) {
-        // Start refreshing every 2 seconds when downloads are active
-        console.log('Starting download refresh interval - active downloads detected');
-        const interval = setInterval(() => {
-          loadDownloads();
-        }, 2000); // Faster refresh during active downloads
-        setDownloadRefreshInterval(interval);
-      } else if (!hasActiveDownloads && downloadRefreshInterval) {
-        // Stop refreshing when no downloads are active
-        console.log('Stopping download refresh interval - no active downloads');
-        clearInterval(downloadRefreshInterval);
-        setDownloadRefreshInterval(null);
+      if (hasActiveDownloads) {
+        if (!downloadRefreshIntervalRef.current) {
+          // Only create new interval if one doesn't exist
+          console.log('Starting download refresh interval - active downloads detected');
+          
+          // Clear any existing interval as a safety measure
+          if (downloadRefreshIntervalRef.current) {
+            clearInterval(downloadRefreshIntervalRef.current);
+          }
+          
+          downloadRefreshIntervalRef.current = setInterval(() => {
+            loadDownloads();
+          }, 2000); // Refresh every 2 seconds
+        }
+        // If interval already exists, do nothing
+      } else {
+        // No active downloads - stop refreshing
+        if (downloadRefreshIntervalRef.current) {
+          console.log('Stopping download refresh interval - no active downloads');
+          clearInterval(downloadRefreshIntervalRef.current);
+          downloadRefreshIntervalRef.current = null;
+        }
       }
     } catch (err) {
       console.error('Failed to load downloads:', err);
+      
+      // Clear interval on error to prevent runaway intervals
+      if (downloadRefreshIntervalRef.current) {
+        clearInterval(downloadRefreshIntervalRef.current);
+        downloadRefreshIntervalRef.current = null;
+      }
     }
   };
 
@@ -226,7 +265,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     // Refresh drive info is handled by App.tsx through event listeners
     // Just trigger a refresh of pending uploads
     await loadPendingUploads();
-    // Downloads manage their own refresh based on active status
+    await loadDownloads();
   };
 
   useEffect(() => {
@@ -236,13 +275,84 @@ const Dashboard: React.FC<DashboardProps> = ({
     const interval = setInterval(() => {
       refreshDriveState();
     }, 5000);
-
+    
+    // Cleanup function
     return () => {
       clearInterval(interval);
-      // Clean up download refresh interval if it exists
-      if (downloadRefreshInterval) {
-        clearInterval(downloadRefreshInterval);
+      // Clear download refresh interval if it exists
+      if (downloadRefreshIntervalRef.current) {
+        clearInterval(downloadRefreshIntervalRef.current);
+        downloadRefreshIntervalRef.current = null;
       }
+    };
+  }, []); // Empty dependency array - only run on mount/unmount
+  
+  useEffect(() => {
+    // Listen for download progress updates
+    const handleDownloadProgress = (progressData: {
+      downloadId: string;
+      fileName: string;
+      progress: number;
+      bytesDownloaded: number;
+      totalBytes: number;
+      speed: number;
+      remainingTime: number;
+    }) => {
+      // Update the specific download in the list
+      setDownloads(prevDownloads => 
+        prevDownloads.map(download => 
+          download.id === progressData.downloadId
+            ? { ...download, progress: progressData.progress }
+            : download
+        )
+      );
+    };
+    
+    window.electronAPI.onDownloadProgress(handleDownloadProgress);
+
+    return () => {
+      // Remove download progress listener
+      window.electronAPI.removeDownloadProgressListener();
+    };
+  }, []);
+
+  // Listen for file state changes and update permaweb cache
+  useEffect(() => {
+    const handleFileStateChange = (data: { fileId: string; syncStatus?: string; syncPreference?: string }) => {
+      console.log('Dashboard: File state changed:', data);
+      
+      // Update the permaweb cache with new state
+      setPermawebCache(prevCache => {
+        if (!prevCache) return prevCache;
+        
+        const updateItemRecursively = (items: any[]): any[] => {
+          return items.map(item => {
+            if (item.id === data.fileId) {
+              return {
+                ...item,
+                status: data.syncStatus || item.status,
+                syncPreference: data.syncPreference || item.syncPreference,
+                isDownloaded: data.syncStatus === 'synced'
+              };
+            }
+            if (item.children) {
+              return {
+                ...item,
+                children: updateItemRecursively(item.children)
+              };
+            }
+            return item;
+          });
+        };
+        
+        return updateItemRecursively(prevCache);
+      });
+    };
+
+    window.electronAPI.onFileStateChanged(handleFileStateChange);
+    
+    return () => {
+      window.electronAPI.removeFileStateChangedListener();
     };
   }, []);
 
@@ -258,6 +368,13 @@ const Dashboard: React.FC<DashboardProps> = ({
       // Refresh uploads data if handler is provided
       if (onRefreshUploads) {
         onRefreshUploads();
+      }
+    } else {
+      // Switched away from download/activity tabs - stop refresh interval
+      if (downloadRefreshIntervalRef.current) {
+        console.log('Left download/activity tab - stopping refresh interval');
+        clearInterval(downloadRefreshIntervalRef.current);
+        downloadRefreshIntervalRef.current = null;
       }
     }
   }, [dashboardTab]);
@@ -636,7 +753,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               id: 'download-queue',
               label: 'Download Queue',
               icon: <Download size={16} />,
-              count: downloads.filter(d => d.status === 'downloading').length || undefined
+              count: downloadQueueStatus?.total || downloads.filter(d => d.status === 'downloading' || d.status === 'queued' || d.status === 'paused' || d.status === 'failed').length || undefined
             },
             {
               id: 'activity',
@@ -670,7 +787,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             {dashboardTab === 'upload-queue' && (
               <div className="upload-queue-tab">
                 {pendingUploads.length > 0 ? (
-                  <UploadApprovalQueue
+                  <UploadApprovalQueueModern
                     pendingUploads={pendingUploads}
                     onApproveUpload={handleApproveUpload}
                     onRejectUpload={handleRejectUpload}
@@ -893,9 +1010,14 @@ const Dashboard: React.FC<DashboardProps> = ({
       )}
 
       {/* Sync Progress Modal */}
-      {syncProgress && syncProgress.phase !== 'complete' && (
+      {syncProgress && (
         <SyncProgressDisplay 
           progress={syncProgress}
+          onClose={() => {
+            // Clear sync progress when modal is closed
+            // This will be called by the component when phase is 'complete'
+            onSyncProgressClear?.();
+          }}
         />
       )}
     </div>

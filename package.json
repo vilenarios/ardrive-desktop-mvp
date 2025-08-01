@@ -28,7 +28,8 @@
     "uat:new-user": "cross-env NODE_ENV=test UAT_SCENARIO=new-user npm run start",
     "uat:existing-user": "cross-env NODE_ENV=test UAT_SCENARIO=existing-user npm run start",
     "uat:dashboard": "cross-env NODE_ENV=test UAT_SCENARIO=dashboard npm run start",
-    "uat:clean": "npm run clean && npm run build && npm run uat"
+    "uat:clean": "npm run clean && npm run build && npm run uat",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@ar.io/sdk": "^3.13.0",
@@ -84,6 +85,7 @@
     "identity-obj-proxy": "^3.0.0",
     "jsdom": "^25.0.0",
     "mini-css-extract-plugin": "^2.9.2",
+    "patch-package": "^8.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "rimraf": "^5.0.5",

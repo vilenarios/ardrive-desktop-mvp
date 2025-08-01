@@ -2,16 +2,52 @@ import * as chokidar from 'chokidar';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
-import { ArDrive, wrapFileOrFolder, EID, FolderID } from 'ardrive-core-js';
+import { BrowserWindow } from 'electron';
+import { ArDrive, wrapFileOrFolder, EID } from 'ardrive-core-js';
 import { DatabaseManager } from './database-manager';
 import { VersionManager, ChangeType } from './version-manager';
 import { FileUpload, SyncStatus, PendingUpload } from '../types';
-import { turboManager } from './turbo-manager';
 import { SyncProgressTracker } from './sync/SyncProgressTracker';
 import { FileStateManager } from './sync/FileStateManager';
 import { CostCalculator } from './sync/CostCalculator';
 import { UploadQueueManager } from './sync/UploadQueueManager';
 import { DownloadManager } from './sync/DownloadManager';
+import { FolderOperationDetector, OperationDetection } from './sync/FolderOperationDetector';
+import { FileOperationDetector } from './sync/FileOperationDetector';
+
+interface SyncProgress {
+  phase?: string;
+  stage?: string;
+  description?: string;
+  totalItems?: number;
+  currentItem?: number;
+  itemsProcessed?: number;
+  estimatedRemaining?: number;
+  message?: string;
+  [key: string]: unknown;
+}
+
+interface ArweaveTag {
+  name: string;
+  value: string;
+}
+
+interface ArweaveTransaction {
+  id: string;
+  tags: ArweaveTag[];
+}
+
+interface ArweaveEdge {
+  node: ArweaveTransaction;
+}
+
+interface ArweaveQueryResult {
+  data?: {
+    transactions?: {
+      edges: ArweaveEdge[];
+    };
+  };
+}
 
 export class SyncManager {
   private watcher: chokidar.FSWatcher | null = null;
@@ -27,8 +63,8 @@ export class SyncManager {
   private costCalculator: CostCalculator;
   private uploadQueueManager: UploadQueueManager;
   private downloadManager: DownloadManager;
-  private pendingDeletes = new Map<string, NodeJS.Timeout>();
-  private pendingFolderDeletes = new Map<string, NodeJS.Timeout>();
+  private folderOperationDetector: FolderOperationDetector;
+  private fileOperationDetector: FileOperationDetector;
   // REMOVED: File state tracking properties - now managed by FileStateManager
   
   // New sync state management
@@ -61,10 +97,52 @@ export class SyncManager {
       null, // rootFolderId will be set later
       null  // syncFolderPath will be set later
     );
+    
+    this.folderOperationDetector = new FolderOperationDetector();
+    this.fileOperationDetector = new FileOperationDetector(databaseManager);
   }
 
-  private emitSyncProgress(progress: any) {
-    this.progressTracker.emitSyncProgress(progress);
+  private emitSyncProgress(progress: SyncProgress, silent = false) {
+    console.log('🟡 [SYNC-PROGRESS] emitSyncProgress called:', {
+      phase: progress.phase,
+      description: progress.description,
+      silent: silent,
+      willEmit: !silent,
+      timestamp: new Date().toISOString()
+    });
+    if (!silent) {
+      this.progressTracker.emitSyncProgress(progress);
+    }
+  }
+
+  private notifyRenderer(channel: string, data?: unknown) {
+    const mainWindow = BrowserWindow.getAllWindows()[0];
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(channel, data);
+    }
+  }
+
+  // Helper to get parent folder ID from path
+  private async getParentFolderIdFromPath(folderPath: string, mappingId: string): Promise<string | null> {
+    try {
+      if (folderPath === '/' || !folderPath) {
+        // Root folder - get from drive mapping
+        const driveMappings = await this.databaseManager.getDriveMappings();
+        const mapping = driveMappings.find((m: any) => m.id === mappingId);
+        return mapping?.rootFolderId || null;
+      }
+      
+      // Look up folder in metadata cache
+      const metadata = await this.databaseManager.getDriveMetadata(mappingId);
+      const folder = metadata.find((item: any) => 
+        item.type === 'folder' && item.path === folderPath
+      );
+      
+      return folder?.fileId || null;
+    } catch (error) {
+      console.error('Error getting parent folder ID:', error);
+      return null;
+    }
   }
 
   setSyncFolder(folderPath: string) {
@@ -83,19 +161,24 @@ export class SyncManager {
     this.downloadManager.setArDrive(arDrive);
   }
 
-  async startSync(driveId: string, rootFolderId: string, driveName?: string): Promise<boolean> {
-    console.log('SyncManager.startSync called with:', { 
+  async startSync(driveId: string, rootFolderId: string, driveName?: string, silent = false): Promise<boolean> {
+    console.log('🟢 [SYNC-MANAGER] startSync called with:', { 
       driveId, 
       rootFolderId,
       driveName,
+      silent,
       hasSyncFolder: !!this.syncFolderPath,
       hasArDrive: !!this.arDrive,
-      currentState: this.syncState
+      currentState: this.syncState,
+      timestamp: new Date().toISOString()
     });
     
     if (!this.syncFolderPath || !this.arDrive) {
       throw new Error('Sync folder and ArDrive instance must be set');
     }
+    
+    // Clean up any orphaned .downloading files on startup
+    await this.cleanupTempFiles();
 
     if (this.syncState !== 'idle') {
       console.log('Sync already in progress or monitoring active, current state:', this.syncState);
@@ -121,7 +204,7 @@ export class SyncManager {
     try {
       console.log('🚀 About to perform full drive sync...');
       // Step 1: Complete full drive sync (no file watcher yet)
-      await this.performFullDriveSync();
+      await this.performFullDriveSync(silent);
       
       console.log('✅ Full drive sync completed, starting file monitoring...');
       
@@ -145,43 +228,47 @@ export class SyncManager {
   }
 
   // NEW: Complete drive sync without file monitoring
-  private async performFullDriveSync(): Promise<void> {
-    console.log('🔄 Starting full drive sync (no local monitoring)...');
+  private async performFullDriveSync(silent = false): Promise<void> {
+    console.log('🟢 [SYNC-MANAGER] performFullDriveSync started:', {
+      silent: silent,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Set silent mode on DownloadManager
+    console.log('🟢 [SYNC-MANAGER] Setting DownloadManager silent mode to:', silent);
+    this.downloadManager.setSilentMode(silent);
     
     this.emitSyncProgress({
       phase: 'starting',
       description: 'Initializing drive sync...'
-    });
+    }, silent);
 
     // Small delay to ensure UI shows the starting phase
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Step 1: Get authoritative drive state
+    // Step 1: Get authoritative drive state (BLOCKING - needed for UI)
     await this.downloadManager.syncDriveMetadata();
     
     // Update metadata sync timestamp
-    const { databaseManager } = require('./database-manager');
-    await databaseManager.updateMetadataSyncTimestamp(this.driveId);
+    if (this.driveId) {
+      await this.databaseManager.updateMetadataSyncTimestamp(this.driveId);
+    }
     console.log('Metadata sync completed and timestamp updated');
     
-    // Step 2: Create all folder structure
+    // Step 2: Create all folder structure (BLOCKING - fast operation)
     await this.downloadManager.createAllFolders();
     
-    // Step 3: Download all missing files
+    // Step 3: Queue all missing files for background download (NON-BLOCKING)
     await this.downloadManager.downloadMissingFilesWithProgress();
     
-    // Step 4: Verify sync completeness
-    await this.downloadManager.verifySyncState();
-    
-    // Small delay to ensure user sees the verification complete
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
+    // Step 4: Mark sync as ready (no verification needed for queue)
     this.emitSyncProgress({
       phase: 'complete',
-      description: 'Drive sync completed successfully'
-    });
+      description: 'Metadata sync complete. Files downloading in background.'
+    }, silent);
     
-    console.log('✅ Full drive sync completed');
+    console.log('✅ Metadata sync completed, files queued for background download');
+    console.log('🚀 Users can now upload files while downloads continue in background');
   }
 
   // NEW: Start file watcher only after sync complete
@@ -195,7 +282,10 @@ export class SyncManager {
     console.log(`📊 Current sync state: ${this.syncState}`);
     
     this.watcher = chokidar.watch(this.syncFolderPath!, {
-      ignored: /(^|[\/\\])\../, // ignore dotfiles
+      ignored: [
+        /(^|[/\\])\../, // ignore dotfiles
+        /\.downloading$/ // ignore temp download files
+      ],
       persistent: true,
       ignoreInitial: true, // Critical: ignore existing files
       awaitWriteFinish: {
@@ -248,6 +338,13 @@ export class SyncManager {
     // Stop upload queue processing
     this.uploadQueueManager.stopProcessing();
     
+    // Stop and clean up download manager
+    await this.downloadManager.stopAllDownloads();
+    this.downloadManager.destroy();
+    
+    // Clean up progress tracker
+    this.progressTracker.destroy();
+    
     // Clear all pending file processing timeouts
     this.fileStateManager.clearAllProcessing();
 
@@ -277,7 +374,6 @@ export class SyncManager {
 
   async getStatus(): Promise<SyncStatus> {
     const uploads = await this.databaseManager.getUploads();
-    const pendingFiles = uploads.filter(u => u.status === 'pending' || u.status === 'uploading').length;
     const uploadedFiles = uploads.filter(u => u.status === 'completed').length;
     const failedFiles = uploads.filter(u => u.status === 'failed').length;
 
@@ -316,11 +412,35 @@ export class SyncManager {
       throw new Error('Sync not properly initialized');
     }
     
-    // Download existing files (the DownloadManager handles the downloading flag internally)
+    // Make sure DownloadManager is not in silent mode for manual operations
+    this.downloadManager.setSilentMode(false);
+    
+    // Emit starting progress
+    this.emitSyncProgress({
+      phase: 'starting',
+      description: 'Initializing sync...'
+    });
+    
+    // Small delay to ensure UI shows the starting phase
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // Step 1: Sync metadata (the DownloadManager will emit its own progress)
     await this.downloadExistingDriveFiles();
     
+    // Step 2: Create all folder structure (fast operation)
+    await this.downloadManager.createAllFolders();
+    
+    // Step 3: Queue all missing files for background download (NON-BLOCKING)
+    await this.downloadManager.downloadMissingFilesWithProgress();
+    
+    // Emit completion - files are downloading in background
+    this.emitSyncProgress({
+      phase: 'complete',
+      description: 'Sync complete. Files downloading in background.'
+    });
+    
     // Wait a bit more to ensure all database transactions are complete
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
 
   // Scan downloaded files and add them to database
@@ -399,13 +519,6 @@ export class SyncManager {
     console.log('Querying Arweave directly for files in this folder...');
     
     try {
-      // Use the raw Arweave instance to query for files
-      const arweave = require('arweave').init({
-        host: 'arweave.net',
-        port: 443,
-        protocol: 'https'
-      });
-      
       // Query for transactions with Parent-Folder-Id tag matching our root folder
       const query = `
         query GetFolderFiles($folderId: String!) {
@@ -444,7 +557,7 @@ export class SyncManager {
         })
       });
       
-      const result = await response.json();
+      const result: ArweaveQueryResult = await response.json();
       console.log('Direct GraphQL result:', result);
       
       if (result.data?.transactions?.edges) {
@@ -456,8 +569,8 @@ export class SyncManager {
           const tags = tx.tags || [];
           
           // Extract file info from tags
-          const fileName = tags.find((t: any) => t.name === 'File-Name')?.value;
-          const fileId = tags.find((t: any) => t.name === 'File-Id')?.value;
+          const fileName = tags.find(t => t.name === 'File-Name')?.value;
+          const fileId = tags.find(t => t.name === 'File-Id')?.value;
           const dataTxId = tx.id;
           
           console.log(`Found file via direct query: ${fileName} (fileId: ${fileId}, dataTxId: ${dataTxId})`);
@@ -615,7 +728,7 @@ export class SyncManager {
       });
       
       // Add a small delay to ensure file system operations are complete
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Verify the file was downloaded and get its size
       const stats = await fs.stat(localFilePath);
@@ -684,9 +797,19 @@ export class SyncManager {
       await this.downloadManager.syncDriveMetadata();
       
       // Update metadata sync timestamp
-      const { databaseManager } = require('./database-manager');
-      await databaseManager.updateMetadataSyncTimestamp(this.driveId);
+      if (this.driveId) {
+        await this.databaseManager.updateMetadataSyncTimestamp(this.driveId);
+      }
       console.log('Metadata sync completed and timestamp updated');
+      
+      // Create all folders
+      await this.downloadManager.createAllFolders();
+      console.log('Folder structure created');
+      
+      // Queue missing files for download
+      await this.downloadManager.downloadMissingFilesWithProgress();
+      console.log('Files queued for download');
+      
     } catch (error) {
       console.error('Failed to sync drive metadata:', error);
       console.error('Error details:', {
@@ -1129,36 +1252,39 @@ export class SyncManager {
   }
 
   private async handleFileDelete(filePath: string) {
-    // Use pending delete to detect moves
-    this.pendingDeletes.set(filePath, setTimeout(async () => {
-      try {
-        await this.confirmFileDelete(filePath);
-      } catch (error) {
-        console.error('Failed to confirm file delete:', error);
-      } finally {
-        this.pendingDeletes.delete(filePath);
-      }
-    }, 1000)); // Wait 1 second before confirming delete
-  }
-
-  private async confirmFileDelete(filePath: string) {
+    console.log(`File delete detected: ${filePath}`);
+    
+    // Get existing hash if available
+    let existingHash: string | undefined;
+    let fileInfo: any;
     try {
-      const fileHash = await this.versionManager.calculateFileHash(filePath).catch(() => null);
-      if (fileHash) {
-        await this.versionManager.recordFileOperation({
-          id: crypto.randomUUID(),
-          fileHash,
-          operation: 'delete',
-          fromPath: filePath,
-          metadata: {
-            timestamp: new Date().toISOString()
-          }
-        });
+      fileInfo = await this.databaseManager.getFileByPath(filePath);
+      console.log(`File info retrieved for ${filePath}:`, fileInfo ? {
+        id: fileInfo.id,
+        hasHash: !!fileInfo.fileHash,
+        hash: fileInfo.fileHash?.substring(0, 16) + '...',
+        fullHash: fileInfo.fileHash,
+        arfsFileId: fileInfo.arfsFileId,
+        fileSize: fileInfo.fileSize
+      } : 'null');
+      
+      if (fileInfo && fileInfo.fileHash) {
+        existingHash = fileInfo.fileHash;
+        console.log(`Found existing hash for deleted file: ${fileInfo.fileHash.substring(0, 16)}... (full: ${fileInfo.fileHash})`);
+      } else {
+        // If not found in uploads/processed_files, try to get from version manager
+        const latestVersion = await this.databaseManager.getLatestFileVersion(filePath);
+        if (latestVersion && latestVersion.fileHash) {
+          existingHash = latestVersion.fileHash;
+          console.log(`Found hash from version history: ${latestVersion.fileHash.substring(0, 16)}... (full: ${latestVersion.fileHash})`);
+        }
       }
-      console.log(`Confirmed file deletion: ${filePath}`);
     } catch (error) {
-      console.error(`Error confirming file deletion for ${filePath}:`, error);
+      console.error(`Error getting file info for deleted file ${filePath}:`, error);
     }
+    
+    // Use the file operation detector
+    await this.fileOperationDetector.onFileDelete(filePath, existingHash, fileInfo?.arfsFileId);
   }
 
   private async handleFolderAdd(dirPath: string) {
@@ -1176,28 +1302,46 @@ export class SyncManager {
       const relativePath = this.versionManager.getRelativePath(dirPath);
       const folderName = path.basename(dirPath);
       
-      // Check if this folder already exists in our database
+      // FIRST: Check if folder exists in ArDrive (drive_metadata_cache)
+      const folderInDriveMetadata = await this.databaseManager.checkFolderInDriveMetadata(dirPath);
+      if (folderInDriveMetadata) {
+        console.log(`Folder already exists in ArDrive: ${relativePath}, syncing to local database`);
+        // Sync to folder_structure table if not already there
+        const existingFolder = await this.databaseManager.getFolderByPath(dirPath);
+        if (!existingFolder) {
+          await this.databaseManager.addFolder({
+            id: crypto.randomUUID(),
+            folderPath: dirPath,
+            relativePath: relativePath,
+            parentPath: path.dirname(dirPath),
+            arfsFolderId: folderInDriveMetadata.fileId
+          });
+        }
+        return; // DO NOT add to upload queue since it already exists in ArDrive
+      }
+      
+      // Check if this folder already exists in our local database
       const existingFolder = await this.databaseManager.getFolderByPath(dirPath);
       if (existingFolder && !existingFolder.isDeleted) {
         console.log(`Folder already exists in database: ${relativePath}, skipping`);
         return; // Folder already tracked, no need to add to queue
       }
       
-      // Check if this folder was recently deleted (might be a rename)
-      for (const [deletedPath, timeout] of this.pendingFolderDeletes) {
-        const deletedName = path.basename(deletedPath);
-        const deletedParent = path.dirname(deletedPath);
-        const currentParent = path.dirname(dirPath);
-        
-        // If folder with same parent but different name, it's likely a rename
-        if (deletedParent === currentParent && deletedName !== folderName) {
-          console.log(`Detected folder rename: ${deletedName} -> ${folderName}`);
-          clearTimeout(timeout);
-          this.pendingFolderDeletes.delete(deletedPath);
-          
-          // Update the existing folder instead of creating new one
-          await this.handleFolderRename(deletedPath, dirPath);
-          return;
+      // Use the new FolderOperationDetector to detect operations
+      const operation = await this.folderOperationDetector.onFolderAdd(dirPath);
+      
+      if (operation) {
+        switch (operation.type) {
+          case 'rename':
+          case 'move':
+          case 'rename_and_move':
+            await this.handleFolderOperation(operation);
+            return;
+          case 'new':
+            // Continue with normal new folder handling
+            break;
+          default:
+            console.log(`Unknown operation type: ${operation.type}`);
         }
       }
       
@@ -1213,7 +1357,7 @@ export class SyncManager {
         folderPath: dirPath,
         relativePath,
         parentPath: parentPath !== this.syncFolderPath ? parentPath : undefined,
-        arweaveFolderId: undefined // Will be set after upload
+        arfsFolderId: undefined // Will be set after upload
       });
       
       // Add to pending uploads table for user approval (NOT to uploadQueue yet)
@@ -1232,11 +1376,7 @@ export class SyncManager {
       await this.databaseManager.addPendingUpload(pendingUpload);
       
       // Notify renderer about new pending folder (don't send uploadQueue since folder isn't in it yet)
-      const { BrowserWindow } = require('electron');
-      const mainWindow = BrowserWindow.getAllWindows()[0];
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('sync:pending-uploads-updated');
-      }
+      this.notifyRenderer('sync:pending-uploads-updated');
       
       console.log(`Folder added to pending uploads queue: ${relativePath}`);
     } catch (error) {
@@ -1244,37 +1384,273 @@ export class SyncManager {
     }
   }
   
-  private async handleFolderRename(oldPath: string, newPath: string) {
+  private async handleFolderOperation(operation: OperationDetection) {
+    console.log(`Handling folder operation: ${operation.type}`);
+    console.log(`Reason: ${operation.reason}`);
+    
+    if (!operation.oldPath || !operation.newPath) {
+      console.error('Invalid operation: missing paths');
+      return;
+    }
+    
     try {
-      const folder = await this.databaseManager.getFolderByPath(oldPath);
-      if (folder) {
-        // Update folder path in database
-        await this.databaseManager.updateFolderPath(folder.id, newPath);
+      const folder = await this.databaseManager.getFolderByPath(operation.oldPath);
+      if (!folder) {
+        console.warn(`Folder not found in database: ${operation.oldPath}`);
         
-        // If folder was already uploaded to Arweave, we need to handle the rename there too
-        if (folder.arweaveFolderId && this.arDrive) {
-          // Note: ArDrive doesn't support renaming, so we'd need to create new and mark old as deleted
-          console.log(`Folder rename on Arweave not yet implemented for: ${oldPath} -> ${newPath}`);
+        // Check if the old folder exists in drive metadata (might not be tracked locally)
+        const oldFolderInDrive = await this.databaseManager.checkFolderInDriveMetadata(operation.oldPath);
+        if (oldFolderInDrive && operation.oldArweaveFolderId) {
+          console.log(`Folder exists in ArDrive but not tracked locally, syncing and executing operation`);
+          
+          // Create a temporary folder entry to execute the operation
+          const tempFolder = {
+            id: crypto.randomUUID(),
+            arfsFolderId: operation.oldArweaveFolderId
+          };
+          
+          // Execute the ArDrive operation
+          if (this.arDrive && this.driveId) {
+            switch (operation.type) {
+              case 'rename':
+                await this.executeFolderRename(tempFolder.arfsFolderId, operation.oldPath, operation.newPath);
+                break;
+              case 'move':
+                await this.executeFolderMove(tempFolder.arfsFolderId, operation.oldPath, operation.newPath);
+                break;
+              case 'rename_and_move':
+                await this.executeFolderMove(tempFolder.arfsFolderId, operation.oldPath, operation.newPath);
+                await this.executeFolderRename(tempFolder.arfsFolderId, operation.oldPath, operation.newPath);
+                break;
+            }
+          }
+          
+          // Add the folder to local tracking with new path
+          await this.databaseManager.addFolder({
+            id: tempFolder.id,
+            folderPath: operation.newPath,
+            relativePath: this.versionManager.getRelativePath(operation.newPath),
+            parentPath: path.dirname(operation.newPath),
+            arfsFolderId: tempFolder.arfsFolderId
+          });
+          
+          return;
         }
         
-        console.log(`Folder renamed: ${oldPath} -> ${newPath}`);
+        // The folder might not be tracked yet, handle as new folder
+        await this.handleNewFolder(operation.newPath!);
+        return;
       }
+      
+      // Update local database first
+      await this.databaseManager.updateFolderPath(folder.id, operation.newPath);
+      
+      // If folder has been synced to ArDrive, execute the operation there
+      if (folder.arfsFolderId && this.arDrive && this.driveId) {
+        switch (operation.type) {
+          case 'rename':
+            await this.executeFolderRename(folder.arfsFolderId, operation.oldPath, operation.newPath);
+            break;
+          case 'move':
+            await this.executeFolderMove(folder.arfsFolderId, operation.oldPath, operation.newPath);
+            break;
+          case 'rename_and_move':
+            // Execute as two operations: move first, then rename
+            await this.executeFolderMove(folder.arfsFolderId, operation.oldPath, operation.newPath);
+            await this.executeFolderRename(folder.arfsFolderId, operation.oldPath, operation.newPath);
+            break;
+        }
+      } else if (!folder.arfsFolderId) {
+        console.log(`Folder not yet synced to ArDrive, only updating local database`);
+      }
+      
+      // Update all child paths in the database
+      await this.updateChildPaths(operation.oldPath, operation.newPath);
+      
+      console.log(`Successfully handled ${operation.type} operation: ${operation.oldPath} -> ${operation.newPath}`);
     } catch (error) {
-      console.error(`Error handling folder rename:`, error);
+      console.error(`Error handling folder operation:`, error);
+      // TODO: Add to operation queue for retry
     }
+  }
+  
+  private async executeFolderRename(arfsFolderId: string, oldPath: string, newPath: string) {
+    if (!this.arDrive) {
+      throw new Error('ArDrive not initialized');
+    }
+    
+    const newName = path.basename(newPath);
+    console.log(`Renaming folder on ArDrive: ${path.basename(oldPath)} -> ${newName}`);
+    
+    try {
+      const result = await this.arDrive.renamePublicFolder({
+        folderId: EID(arfsFolderId),
+        newName: newName
+      });
+      
+      console.log(`ArDrive folder rename successful:`, result);
+      
+      // Update operation history in database
+      await this.databaseManager.addFolderOperation({
+        id: crypto.randomUUID(),
+        operationType: 'rename',
+        oldPath: oldPath,
+        newPath: newPath,
+        arfsFolderId: arfsFolderId,
+        status: 'completed',
+        createdAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`Failed to rename folder on ArDrive:`, error);
+      // Add to operation history as failed
+      await this.databaseManager.addFolderOperation({
+        id: crypto.randomUUID(),
+        operationType: 'rename',
+        oldPath: oldPath,
+        newPath: newPath,
+        arfsFolderId: arfsFolderId,
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        createdAt: new Date().toISOString()
+      });
+      throw error;
+    }
+  }
+  
+  private async executeFolderMove(arfsFolderId: string, oldPath: string, newPath: string) {
+    if (!this.arDrive) {
+      throw new Error('ArDrive not initialized');
+    }
+    
+    const newParentPath = path.dirname(newPath);
+    console.log(`Moving folder on ArDrive from ${path.dirname(oldPath)} to ${newParentPath}`);
+    
+    try {
+      // Get the new parent folder's ArDrive ID
+      const newParentFolder = await this.databaseManager.getFolderByPath(newParentPath);
+      if (!newParentFolder || !newParentFolder.arfsFolderId) {
+        throw new Error(`New parent folder not found or not synced: ${newParentPath}`);
+      }
+      
+      const result = await this.arDrive.movePublicFolder({
+        folderId: EID(arfsFolderId),
+        newParentFolderId: EID(newParentFolder.arfsFolderId)
+      });
+      
+      console.log(`ArDrive folder move successful:`, result);
+      
+      // Update operation history in database
+      await this.databaseManager.addFolderOperation({
+        id: crypto.randomUUID(),
+        operationType: 'move',
+        oldPath: oldPath,
+        newPath: newPath,
+        arfsFolderId: arfsFolderId,
+        status: 'completed',
+        createdAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`Failed to move folder on ArDrive:`, error);
+      // Add to operation history as failed
+      await this.databaseManager.addFolderOperation({
+        id: crypto.randomUUID(),
+        operationType: 'move',
+        oldPath: oldPath,
+        newPath: newPath,
+        arfsFolderId: arfsFolderId,
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        createdAt: new Date().toISOString()
+      });
+      throw error;
+    }
+  }
+  
+  private async updateChildPaths(oldParentPath: string, newParentPath: string) {
+    // Update all child folders
+    const childFolders = await this.databaseManager.getChildFolders(oldParentPath);
+    for (const childFolder of childFolders) {
+      const oldChildPath = childFolder.folderPath;
+      const newChildPath = oldChildPath.replace(oldParentPath, newParentPath);
+      await this.databaseManager.updateFolderPath(childFolder.id, newChildPath);
+    }
+    
+    // Update all child files
+    const childFiles = await this.databaseManager.getChildFiles(oldParentPath);
+    for (const childFile of childFiles) {
+      const oldFilePath = childFile.localPath;
+      const newFilePath = oldFilePath.replace(oldParentPath, newParentPath);
+      await this.databaseManager.updateFilePath(childFile.id, newFilePath);
+    }
+  }
+  
+  private async handleNewFolder(folderPath: string) {
+    // Extract the existing logic from handleFolderAdd for new folders
+    const relativePath = this.versionManager.getRelativePath(folderPath);
+    const folderName = path.basename(folderPath);
+    const folderId = crypto.randomUUID();
+    const parentPath = path.dirname(folderPath);
+    
+    // Add to database first (local tracking)
+    await this.databaseManager.addFolder({
+      id: folderId,
+      folderPath: folderPath,
+      relativePath,
+      parentPath: parentPath !== this.syncFolderPath ? parentPath : undefined,
+      arfsFolderId: undefined // Will be set after upload
+    });
+    
+    // Add to pending uploads table for user approval
+    const pendingUpload: Omit<PendingUpload, 'createdAt'> = {
+      id: folderId,
+      driveId: this.driveId || undefined,
+      localPath: folderPath,
+      fileName: folderName,
+      fileSize: 0,
+      mimeType: 'folder',
+      estimatedCost: this.costCalculator.getFolderCost(),
+      status: 'awaiting_approval',
+      conflictType: 'none'
+    };
+    
+    await this.databaseManager.addPendingUpload(pendingUpload);
+    
+    // Notify renderer about new pending folder
+    this.notifyRenderer('sync:pending-uploads-updated');
+    
+    console.log(`Folder added to pending uploads queue: ${relativePath}`);
+  }
+  
+  // Keep the old method for backward compatibility but deprecated
+  private async handleFolderRename(oldPath: string, newPath: string) {
+    console.warn('handleFolderRename is deprecated, use handleFolderOperation instead');
+    const operation: OperationDetection = {
+      type: 'rename',
+      oldPath,
+      newPath,
+      reason: 'Direct call to deprecated method'
+    };
+    await this.handleFolderOperation(operation);
   }
 
   private async handleFolderDelete(dirPath: string) {
-    // Use pending delete to detect folder renames
-    this.pendingFolderDeletes.set(dirPath, setTimeout(async () => {
-      try {
-        await this.confirmFolderDelete(dirPath);
-      } catch (error) {
-        console.error('Failed to confirm folder delete:', error);
-      } finally {
-        this.pendingFolderDeletes.delete(dirPath);
-      }
-    }, 1000)); // Wait 1 second before confirming delete
+    try {
+      // Get the folder's ArDrive ID before it's deleted
+      const folder = await this.databaseManager.getFolderByPath(dirPath);
+      const arfsFolderId = folder?.arfsFolderId;
+      
+      // Notify the detector about the deletion with a callback to confirm the delete
+      await this.folderOperationDetector.onFolderDelete(
+        dirPath, 
+        arfsFolderId,
+        async () => {
+          await this.confirmFolderDelete(dirPath);
+        }
+      );
+      
+    } catch (error) {
+      console.error(`Error handling folder delete for ${dirPath}:`, error);
+    }
   }
   
   private async confirmFolderDelete(dirPath: string) {
@@ -1286,25 +1662,33 @@ export class SyncManager {
     }
   }
 
-  private async handleFileWithVersioning(filePath: string, expectedChange: ChangeType) {
+  private async handleFileWithVersioning(filePath: string, _expectedChange: ChangeType) {
     try {
-      // Check if this is actually a move (file appeared after a recent delete)
-      const fileName = path.basename(filePath);
-      for (const [deletedPath, timeout] of this.pendingDeletes) {
-        if (path.basename(deletedPath) === fileName) {
-          // This might be a move
-          clearTimeout(timeout);
-          this.pendingDeletes.delete(deletedPath);
-          
-          const isMove = await this.versionManager.detectMove(deletedPath, filePath);
-          if (isMove) {
-            await this.versionManager.handleFileMove(deletedPath, filePath);
+      // Use the file operation detector
+      const fileHash = await this.calculateFileHash(filePath);
+      const operation = await this.fileOperationDetector.onFileAdd(filePath, fileHash);
+      
+      if (operation && operation.type !== 'new') {
+        console.log(`File operation detected: ${operation.type}`);
+        console.log(`Reason: ${operation.reason}`);
+        
+        if (operation.type === 'move' || operation.type === 'rename') {
+          if (operation.oldPath) {
+            // Create file info object with the arfsFileId from the operation
+            const fileInfo = operation.oldArfsFileId ? {
+              arfsFileId: operation.oldArfsFileId
+            } : undefined;
+            
+            await this.handleFileMove(operation.oldPath, filePath, fileHash, fileInfo);
             return;
           }
+        } else if (operation.type === 'copy') {
+          console.log(`Copy operation detected from ${operation.oldPath} to ${filePath}`);
+          // Handle as new file for now
         }
       }
 
-      // Detect actual change type
+      // Not a move - detect actual change type
       const actualChange = await this.versionManager.detectFileChange(filePath);
       
       if (actualChange === 'unchanged') {
@@ -1358,7 +1742,7 @@ export class SyncManager {
       const fileName = path.basename(filePath);
 
       console.log(`File hash check for ${fileName}:`);
-      console.log(`  - Generated hash: ${hash}`);
+      console.log(`  - Generated hash: ${hash.substring(0, 16)}... (full: ${hash})`);
       console.log(`  - File size: ${stats.size}`);
       console.log(`  - File path: ${filePath}`);
       
@@ -1431,7 +1815,19 @@ export class SyncManager {
         
         if (folderInDriveMetadata) {
           console.log(`  - ✅ Parent folder exists in drive metadata: ${fileDir}`);
-          // Folder exists in drive metadata, no need to add
+          // Folder exists in drive metadata, sync it to folder_structure table if needed
+          const folder = await this.databaseManager.getFolderByPath(fileDir);
+          if (!folder) {
+            console.log(`  - Syncing folder from drive metadata to local folder structure`);
+            await this.databaseManager.addFolder({
+              id: crypto.randomUUID(),
+              folderPath: fileDir,
+              relativePath: this.versionManager.getRelativePath(fileDir),
+              parentPath: path.dirname(fileDir),
+              arfsFolderId: folderInDriveMetadata.fileId
+            });
+          }
+          // DO NOT call handleFolderAdd since folder already exists in ArDrive
         } else {
           // Fallback to checking the folder_structure table
           const folder = await this.databaseManager.getFolderByPath(fileDir);
@@ -1439,7 +1835,7 @@ export class SyncManager {
             id: folder.id,
             folderPath: folder.folderPath,
             isDeleted: folder.isDeleted,
-            arweaveFolderId: folder.arweaveFolderId
+            arfsFolderId: folder.arfsFolderId
           } : 'null');
           
           if (!folder) {
@@ -1572,7 +1968,7 @@ export class SyncManager {
       try {
         // Check if folder exists in our database AND has been uploaded to Arweave
         const existingFolder = await this.databaseManager.getFolderByPath(dirPath);
-        const isAlreadyOnArweave = existingFolder && existingFolder.arweaveFolderId;
+        const isAlreadyOnArweave = existingFolder && existingFolder.arfsFolderId;
         
         // Check if folder exists in drive metadata cache (another way to verify it's on Arweave)
         const inDriveMetadata = await this.databaseManager.checkFolderInDriveMetadata(dirPath);
@@ -1597,7 +1993,7 @@ export class SyncManager {
             folderPath: dirPath,
             relativePath,
             parentPath: path.dirname(dirPath) !== this.syncFolderPath ? path.dirname(dirPath) : undefined,
-            arweaveFolderId: undefined // Will be set after upload
+            arfsFolderId: undefined // Will be set after upload
           });
           
           // Add to pending uploads
@@ -1618,7 +2014,7 @@ export class SyncManager {
         } else {
           // Log why we're skipping this folder
           if (isAlreadyOnArweave) {
-            console.log(`Skipping folder ${dirPath} - already uploaded to Arweave (ID: ${existingFolder?.arweaveFolderId})`);
+            console.log(`Skipping folder ${dirPath} - already uploaded to Arweave (ID: ${existingFolder?.arfsFolderId})`);
           } else if (inDriveMetadata) {
             console.log(`Skipping folder ${dirPath} - exists in drive metadata`);
           } else if (alreadyPending) {
@@ -1686,8 +2082,8 @@ export class SyncManager {
         // Find parent folder ID for nested folders
         if (parentPath !== this.syncFolderPath) {
           const parentFolder = await this.databaseManager.getFolderByPath(parentPath);
-          if (parentFolder?.arweaveFolderId) {
-            parentFolderId = parentFolder.arweaveFolderId;
+          if (parentFolder?.arfsFolderId) {
+            parentFolderId = parentFolder.arfsFolderId;
           }
         }
         
@@ -1695,8 +2091,8 @@ export class SyncManager {
         
         // Check if folder already exists on Arweave
         const existingFolder = await this.databaseManager.getFolderByPath(upload.localPath);
-        if (existingFolder?.arweaveFolderId) {
-          console.log(`Folder already exists on Arweave with ID: ${existingFolder.arweaveFolderId}`);
+        if (existingFolder?.arfsFolderId) {
+          console.log(`Folder already exists on Arweave with ID: ${existingFolder.arfsFolderId}`);
           // Mark upload as completed
           upload.status = 'completed';
           await this.databaseManager.updateUpload(upload.id, { 
@@ -1714,12 +2110,12 @@ export class SyncManager {
         if (result.created && result.created.length > 0) {
           const createdFolder = result.created[0];
           if (createdFolder.type === 'folder' && createdFolder.entityId) {
-            const arweaveFolderId = createdFolder.entityId.toString();
-            console.log(`✓ Folder created on Arweave with ID: ${arweaveFolderId}`);
+            const arfsFolderId = createdFolder.entityId.toString();
+            console.log(`✓ Folder created on Arweave with ID: ${arfsFolderId}`);
             
             // Update the folder in database with the Arweave ID
             if (existingFolder) {
-              await this.databaseManager.updateFolderArweaveId(existingFolder.id, arweaveFolderId);
+              await this.databaseManager.updateFolderArweaveId(existingFolder.id, arfsFolderId);
             } else {
               // Add new folder record
               await this.databaseManager.addFolder({
@@ -1727,7 +2123,7 @@ export class SyncManager {
                 folderPath: upload.localPath,
                 relativePath: this.versionManager.getRelativePath(upload.localPath),
                 parentPath: parentPath !== this.syncFolderPath ? parentPath : undefined,
-                arweaveFolderId
+                arfsFolderId
               });
             }
             
@@ -1876,13 +2272,13 @@ export class SyncManager {
     console.log(`  - Database lookup result:`, folder ? {
       id: folder.id,
       folderPath: folder.folderPath,
-      arweaveFolderId: folder.arweaveFolderId,
+      arfsFolderId: folder.arfsFolderId,
       isDeleted: folder.isDeleted
     } : 'null');
     
-    if (folder?.arweaveFolderId) {
-      console.log(`  - ✓ Found Arweave folder ID: ${folder.arweaveFolderId}`);
-      return folder.arweaveFolderId;
+    if (folder?.arfsFolderId) {
+      console.log(`  - ✓ Found Arweave folder ID: ${folder.arfsFolderId}`);
+      return folder.arfsFolderId;
     }
     
     // If folder doesn't exist on Arweave, create it first
@@ -1905,13 +2301,13 @@ export class SyncManager {
         console.log(`  - After creation attempt ${retryCount + 1}, database lookup result:`, newFolder ? {
           id: newFolder.id,
           folderPath: newFolder.folderPath,
-          arweaveFolderId: newFolder.arweaveFolderId,
+          arfsFolderId: newFolder.arfsFolderId,
           isDeleted: newFolder.isDeleted
         } : 'null');
         
-        if (newFolder?.arweaveFolderId) {
-          console.log(`  - ✓ Created folder successfully on attempt ${retryCount + 1}, using ID: ${newFolder.arweaveFolderId}`);
-          return newFolder.arweaveFolderId;
+        if (newFolder?.arfsFolderId) {
+          console.log(`  - ✓ Created folder successfully on attempt ${retryCount + 1}, using ID: ${newFolder.arfsFolderId}`);
+          return newFolder.arfsFolderId;
         }
         
         // If we didn't get an Arweave ID, try again
@@ -1956,10 +2352,10 @@ export class SyncManager {
     
     while (currentPath !== this.syncFolderPath && currentPath !== path.dirname(currentPath)) {
       const folder = await this.databaseManager.getFolderByPath(currentPath);
-      if (!folder || !folder.arweaveFolderId) {
+      if (!folder || !folder.arfsFolderId) {
         dirsToCreate.unshift(currentPath); // Add to beginning to create parent dirs first
       } else {
-        console.log(`Folder already exists on Arweave: ${currentPath} (${folder.arweaveFolderId})`);
+        console.log(`Folder already exists on Arweave: ${currentPath} (${folder.arfsFolderId})`);
       }
       currentPath = path.dirname(currentPath);
     }
@@ -2000,8 +2396,8 @@ export class SyncManager {
     let parentFolderId = this.rootFolderId!;
     if (parentPath !== this.syncFolderPath) {
       const parentFolder = await this.databaseManager.getFolderByPath(parentPath);
-      if (parentFolder?.arweaveFolderId) {
-        parentFolderId = parentFolder.arweaveFolderId;
+      if (parentFolder?.arfsFolderId) {
+        parentFolderId = parentFolder.arfsFolderId;
       } else {
         console.warn(`Parent folder ${parentPath} doesn't have Arweave ID yet, using root folder`);
       }
@@ -2016,15 +2412,15 @@ export class SyncManager {
       if (result.created && result.created.length > 0) {
         const createdFolder = result.created[0];
         if (createdFolder.type === 'folder' && createdFolder.entityId) {
-          const arweaveFolderId = createdFolder.entityId.toString();
-          console.log(`✓ Folder created on Arweave with ID: ${arweaveFolderId}`);
+          const arfsFolderId = createdFolder.entityId.toString();
+          console.log(`✓ Folder created on Arweave with ID: ${arfsFolderId}`);
           
           // Check if folder already exists in database
           const existingFolder = await this.databaseManager.getFolderByPath(dirPath);
           if (existingFolder) {
             // Update existing folder with Arweave ID
             console.log(`Updating existing folder record with Arweave ID`);
-            await this.databaseManager.updateFolderArweaveId(existingFolder.id, arweaveFolderId);
+            await this.databaseManager.updateFolderArweaveId(existingFolder.id, arfsFolderId);
           } else {
             // Add new folder to database
             console.log(`Adding new folder record with Arweave ID`);
@@ -2033,7 +2429,7 @@ export class SyncManager {
               folderPath: dirPath,
               relativePath,
               parentPath: parentPath !== this.syncFolderPath ? parentPath : undefined,
-              arweaveFolderId
+              arfsFolderId
             });
           }
           
@@ -2060,20 +2456,20 @@ export class SyncManager {
           );
           
           if (existingFolder && existingFolder.entityType === 'folder' && 'folderId' in existingFolder) {
-            const arweaveFolderId = existingFolder.folderId.toString();
-            console.log(`✓ Found existing folder on Arweave with ID: ${arweaveFolderId}`);
+            const arfsFolderId = existingFolder.folderId.toString();
+            console.log(`✓ Found existing folder on Arweave with ID: ${arfsFolderId}`);
             
             // Update database with the existing folder ID
             const dbFolder = await this.databaseManager.getFolderByPath(dirPath);
             if (dbFolder) {
-              await this.databaseManager.updateFolderArweaveId(dbFolder.id, arweaveFolderId);
+              await this.databaseManager.updateFolderArweaveId(dbFolder.id, arfsFolderId);
             } else {
               await this.databaseManager.addFolder({
                 id: crypto.randomUUID(),
                 folderPath: dirPath,
                 relativePath,
                 parentPath: parentPath !== this.syncFolderPath ? parentPath : undefined,
-                arweaveFolderId
+                arfsFolderId
               });
             }
             
@@ -2138,13 +2534,42 @@ export class SyncManager {
     // Emit completion progress event
     this.emitUploadProgress(upload.id, 100, 'completed');
     
-    // Emit drive update event to refresh UI
-    const { BrowserWindow } = require('electron');
-    const mainWindow = BrowserWindow.getAllWindows()[0];
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('drive:update');
-      mainWindow.webContents.send('activity:update');
+    // Add the uploaded file to local cache immediately
+    try {
+      const driveMappings = await this.databaseManager.getDriveMappings();
+      const activeMapping = driveMappings.find((m: any) => m.driveId === upload.driveId && m.isActive);
+      
+      if (activeMapping) {
+        // Extract folder path from full file path
+        const dirPath = path.dirname(upload.localPath);
+        const relativePath = this.syncFolderPath ? 
+          path.relative(this.syncFolderPath, dirPath).replace(/\\/g, '/') : '';
+        const folderPath = relativePath ? '/' + relativePath : '/';
+        
+        await this.databaseManager.upsertDriveMetadata({
+          mappingId: activeMapping.id,
+          fileId: fileId || '',
+          parentFolderId: await this.getParentFolderIdFromPath(folderPath, activeMapping.id) || '',
+          name: path.basename(upload.localPath),
+          path: folderPath,
+          type: 'file',
+          size: upload.fileSize,
+          lastModifiedDate: Date.now(),
+          dataTxId: dataTxId,
+          metadataTxId: metadataTxId,
+          contentType: '', // We don't have contentType in FileUpload
+          localFileExists: true,
+          syncStatus: 'synced'
+        });
+        console.log(`Added uploaded file to local cache: ${upload.fileName}`);
+      }
+    } catch (error) {
+      console.error('Failed to add uploaded file to cache:', error);
     }
+    
+    // Emit drive update event to refresh UI
+    this.notifyRenderer('drive:update');
+    this.notifyRenderer('activity:update');
 
     // Update processed files database with the completed upload
     try {
@@ -2400,7 +2825,7 @@ export class SyncManager {
         
       } catch (error) {
         console.error(`Failed to download ${file.name}:`, error);
-        await this.databaseManager.updateDriveMetadataStatus(file.fileId, 'error', false);
+        await this.databaseManager.updateFileSyncStatus(file.fileId, 'failed', (error as Error).message || 'Download failed');
       }
     }
 
@@ -2491,7 +2916,7 @@ export class SyncManager {
         console.log(`Downloaded: ${file.name}`);
       } catch (error) {
         console.error(`Failed to download ${file.name}:`, error);
-        await this.databaseManager.updateDriveMetadataStatus(file.fileId, 'error', false);
+        await this.databaseManager.updateFileSyncStatus(file.fileId, 'failed', (error as Error).message || 'Download failed');
       }
     }
 
@@ -2543,5 +2968,268 @@ export class SyncManager {
     }
     
     console.log('✅ Sync verification passed');
+  }
+
+  // Helper method to calculate file hash
+  private async calculateFileHash(filePath: string): Promise<string> {
+    try {
+      const content = await fs.readFile(filePath);
+      return crypto.createHash('sha256').update(content).digest('hex');
+    } catch (error) {
+      console.error(`Failed to calculate hash for ${filePath}:`, error);
+      throw error;
+    }
+  }
+
+  // Execute metadata operations (move, rename, hide, etc.)
+  async executeMetadataOperation(pendingUpload: PendingUpload): Promise<any> {
+    if (!this.arDrive) {
+      throw new Error('ArDrive not initialized');
+    }
+    
+    console.log(`Executing ${pendingUpload.operationType} operation for ${pendingUpload.fileName}`);
+    
+    try {
+      let result;
+      
+      switch (pendingUpload.operationType) {
+        case 'move':
+          if (!pendingUpload.arfsFileId || !pendingUpload.metadata?.newParentFolderId) {
+            throw new Error('Missing required data for move operation');
+          }
+          
+          result = await this.arDrive.movePublicFile({
+            fileId: EID(pendingUpload.arfsFileId),
+            newParentFolderId: EID(pendingUpload.metadata.newParentFolderId)
+          });
+          
+          console.log(`Successfully moved file ${pendingUpload.fileName}`);
+          break;
+          
+        case 'rename':
+          if (!pendingUpload.arfsFileId) {
+            throw new Error('Missing file ID for rename operation');
+          }
+          
+          result = await this.arDrive.renamePublicFile({
+            fileId: EID(pendingUpload.arfsFileId),
+            newName: pendingUpload.fileName
+          });
+          
+          console.log(`Successfully renamed file to ${pendingUpload.fileName}`);
+          break;
+          
+        case 'hide':
+        case 'unhide':
+        case 'delete':
+          // These operations will be implemented in the future
+          throw new Error(`Operation ${pendingUpload.operationType} not yet implemented`);
+          
+        default:
+          throw new Error(`Unknown operation type: ${pendingUpload.operationType}`);
+      }
+      
+      // Update local database to reflect the change
+      if (pendingUpload.previousPath && pendingUpload.localPath !== pendingUpload.previousPath) {
+        await this.databaseManager.updateFilePath(
+          pendingUpload.arfsFileId || pendingUpload.id, 
+          pendingUpload.localPath
+        );
+      }
+      
+      return result;
+    } catch (error) {
+      console.error(`Failed to execute ${pendingUpload.operationType} operation:`, error);
+      throw error;
+    }
+  }
+
+  // Handle file move operation - create a move operation instead of upload
+  private async handleFileMove(
+    oldPath: string, 
+    newPath: string, 
+    fileHash: string, 
+    existingFileInfo?: any
+  ): Promise<void> {
+    console.log(`Creating file move operation: ${oldPath} -> ${newPath}`);
+    
+    try {
+      const fileName = path.basename(newPath);
+      const fileStats = await fs.stat(newPath);
+      
+      // Update version manager to track the move
+      await this.versionManager.handleFileMove(oldPath, newPath);
+      
+      // Get the parent folder info for the new location
+      const newParentPath = path.dirname(newPath);
+      let parentFolderInfo = await this.databaseManager.getFolderByPath(newParentPath);
+      
+      console.log(`Parent folder info for ${newParentPath}:`, parentFolderInfo ? {
+        folderPath: parentFolderInfo.folderPath,
+        arfsFolderId: parentFolderInfo.arfsFolderId
+      } : 'null');
+      
+      // If not found in folder_structure, check drive metadata and sync if needed
+      if (!parentFolderInfo && newParentPath !== this.syncFolderPath) {
+        const folderInDriveMetadata = await this.databaseManager.checkFolderInDriveMetadata(newParentPath);
+        console.log(`Drive metadata check for parent folder:`, folderInDriveMetadata ? {
+          fileId: folderInDriveMetadata.fileId,
+          name: folderInDriveMetadata.name,
+          type: folderInDriveMetadata.type
+        } : 'null');
+        
+        if (folderInDriveMetadata) {
+          // Sync folder from drive metadata to local folder structure
+          console.log(`Syncing parent folder from drive metadata to local folder structure`);
+          await this.databaseManager.addFolder({
+            id: crypto.randomUUID(),
+            folderPath: newParentPath,
+            relativePath: this.versionManager.getRelativePath(newParentPath),
+            parentPath: path.dirname(newParentPath),
+            arfsFolderId: folderInDriveMetadata.fileId
+          });
+          
+          // Re-fetch the folder info after syncing
+          parentFolderInfo = await this.databaseManager.getFolderByPath(newParentPath);
+        }
+      }
+      
+      // Get the parent folder ArFS ID
+      const parentArfsFolderId = parentFolderInfo?.arfsFolderId;
+      
+      // Determine if it's a rename or move
+      const oldParentPath = path.dirname(oldPath);
+      const oldFileName = path.basename(oldPath);
+      const isRename = oldParentPath === newParentPath && oldFileName !== fileName;
+      const operationType = isRename ? 'rename' : 'move';
+      
+      console.log(`Operation type: ${operationType} (oldParent: ${oldParentPath}, newParent: ${newParentPath}, oldName: ${oldFileName}, newName: ${fileName})`);
+      
+      // Only create a pending operation if the file has been uploaded to ArDrive
+      if (existingFileInfo?.arweaveId || existingFileInfo?.arfsFileId) {
+        // For move operations, ensure we have the parent folder ID
+        if (operationType === 'move' && !parentArfsFolderId) {
+          console.error(`Cannot create move operation: parent folder ${newParentPath} not found in ArDrive`);
+          // TODO: We should queue this operation for when the parent folder is uploaded
+          return;
+        }
+        
+        // Create a move/rename operation in pending uploads
+        const moveOperation: Omit<PendingUpload, 'createdAt'> = {
+          id: crypto.randomUUID(),
+          driveId: this.driveId || undefined,
+          localPath: newPath,
+          fileName: fileName,
+          fileSize: fileStats.size,
+          mimeType: existingFileInfo.mimeType || 'application/octet-stream',
+          estimatedCost: 0.000001, // Metadata-only operation
+          estimatedTurboCost: 0.000001,
+          recommendedMethod: 'turbo', // Metadata operations are tiny, perfect for Turbo
+          hasSufficientTurboBalance: true,
+          conflictType: 'none',
+          status: 'awaiting_approval',
+          operationType: operationType,
+          previousPath: oldPath,
+          arfsFileId: existingFileInfo.arfsFileId || existingFileInfo.arweaveId,
+          metadata: {
+            newParentFolderId: parentArfsFolderId
+          }
+        };
+        
+        await this.databaseManager.addPendingUpload(moveOperation);
+        
+        // Notify UI about the new pending operation
+        this.notifyRenderer('sync:pending-uploads-updated');
+        
+        console.log(`Move operation added to pending queue for: ${fileName}`);
+      } else {
+        // File hasn't been uploaded yet, just update local tracking
+        console.log(`File not yet uploaded to ArDrive, updating local path only: ${fileName}`);
+        
+        // Update the existing pending upload if there is one
+        const pendingUploads = await this.databaseManager.getPendingUploads();
+        const existingPending = pendingUploads.find(p => p.localPath === oldPath);
+        
+        if (existingPending) {
+          await this.databaseManager.updatePendingUpload(existingPending.id, {
+            localPath: newPath,
+            fileName: fileName
+          });
+          console.log(`Updated pending upload path: ${oldPath} -> ${newPath}`);
+        }
+      }
+      
+      // Update file path in database
+      await this.databaseManager.updateFilePath(existingFileInfo?.id || fileHash, newPath);
+      
+    } catch (error) {
+      console.error(`Error handling file move:`, error);
+      // Don't throw - allow the file to be processed as new if move handling fails
+    }
+  }
+
+  // Public methods to access download manager functionality
+  async queueDownload(fileData: any, priority: number = 0): Promise<void> {
+    return this.downloadManager.queueDownload(fileData, priority);
+  }
+
+  async cancelDownload(fileId: string): Promise<void> {
+    return this.downloadManager.cancelDownload(fileId);
+  }
+
+  async getQueueStatus(): Promise<{ queued: number; active: number; total: number }> {
+    return this.downloadManager.getQueueStatus();
+  }
+  
+  async getQueuedDownloads(limit: number = 30): Promise<any[]> {
+    return this.downloadManager.getQueuedDownloads(limit);
+  }
+  
+  private async cleanupTempFiles(): Promise<void> {
+    if (!this.syncFolderPath) return;
+    
+    try {
+      console.log('Cleaning up temporary .downloading files...');
+      const tempFiles = await this.findTempFiles(this.syncFolderPath);
+      
+      for (const tempFile of tempFiles) {
+        try {
+          await fs.unlink(tempFile);
+          console.log(`Removed orphaned temp file: ${tempFile}`);
+        } catch (error) {
+          console.error(`Failed to remove temp file ${tempFile}:`, error);
+        }
+      }
+      
+      if (tempFiles.length > 0) {
+        console.log(`Cleaned up ${tempFiles.length} orphaned .downloading files`);
+      }
+    } catch (error) {
+      console.error('Error during temp file cleanup:', error);
+    }
+  }
+  
+  private async findTempFiles(dir: string): Promise<string[]> {
+    const tempFiles: string[] = [];
+    
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        
+        if (entry.isDirectory()) {
+          // Recursively search subdirectories
+          const subFiles = await this.findTempFiles(fullPath);
+          tempFiles.push(...subFiles);
+        } else if (entry.isFile() && entry.name.endsWith('.downloading')) {
+          tempFiles.push(fullPath);
+        }
+      }
+    } catch (error) {
+      console.error(`Error scanning directory ${dir}:`, error);
+    }
+    
+    return tempFiles;
   }
 }

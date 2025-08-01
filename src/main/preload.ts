@@ -57,6 +57,8 @@ const api = {
     }) => ipcRenderer.invoke('drive:create-manifest', params),
     getFolderTree: (driveId: string) => 
       ipcRenderer.invoke('drive:get-folder-tree', driveId),
+    countFolderFiles: (driveId: string, folderId: string) =>
+      ipcRenderer.invoke('drive:count-folder-files', driveId, folderId),
   },
 
   // Sync operations
@@ -88,6 +90,17 @@ const api = {
       ipcRenderer.invoke('files:get-downloads'),
     redownloadAll: () =>
       ipcRenderer.invoke('files:redownload-all'),
+    // Sync preference operations
+    setFileSyncPreference: (fileId: string, preference: 'auto' | 'always_local' | 'cloud_only') =>
+      ipcRenderer.invoke('sync:set-file-preference', fileId, preference),
+    queueDownload: (fileId: string, priority?: number) =>
+      ipcRenderer.invoke('sync:queue-download', fileId, priority),
+    cancelDownload: (fileId: string) =>
+      ipcRenderer.invoke('sync:cancel-download', fileId),
+    getQueueStatus: () =>
+      ipcRenderer.invoke('sync:get-queue-status'),
+    getQueuedDownloads: (limit?: number) =>
+      ipcRenderer.invoke('sync:get-queued-downloads', limit),
   },
 
   // Upload approval queue operations
@@ -203,6 +216,22 @@ const api = {
     ipcRenderer.removeAllListeners('upload:complete');
   },
   
+  // Download progress events
+  onDownloadProgress: (callback: (data: {
+    downloadId: string;
+    fileName: string;
+    progress: number;
+    bytesDownloaded: number;
+    totalBytes: number;
+    speed: number;
+    remainingTime: number;
+  }) => void) => {
+    ipcRenderer.on('download:progress', (_, data) => callback(data));
+  },
+  removeDownloadProgressListener: () => {
+    ipcRenderer.removeAllListeners('download:progress');
+  },
+  
   // ArNS operations
   arns: {
     getProfile: (address: string) =>
@@ -286,8 +315,23 @@ const api = {
   onDriveUpdate: (callback: () => void) => {
     ipcRenderer.on('drive:update', () => callback());
   },
+  onDriveMetadataUpdated: (callback: (driveId: string) => void) => {
+    ipcRenderer.on('drive:metadata-updated', (_, driveId) => callback(driveId));
+  },
   onSyncComplete: (callback: () => void) => {
     ipcRenderer.on('sync:completed', () => callback());
+  },
+  onFileStateChanged: (callback: (data: { fileId: string; syncStatus?: string; syncPreference?: string }) => void) => {
+    ipcRenderer.on('sync:file-state-changed', (_, data) => callback(data));
+  },
+  removeFileStateChangedListener: () => {
+    ipcRenderer.removeAllListeners('sync:file-state-changed');
+  },
+  removeDriveUpdateListener: () => {
+    ipcRenderer.removeAllListeners('drive:update');
+  },
+  removeDriveMetadataUpdatedListener: () => {
+    ipcRenderer.removeAllListeners('drive:metadata-updated');
   },
   removeAllListeners: (channel: string) => {
     ipcRenderer.removeAllListeners(channel);
