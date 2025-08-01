@@ -5,509 +5,286 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 ArDrive Desktop MVP is an Electron-based desktop application for syncing files with Arweave's permanent storage network. It features secure multi-profile support, dual upload systems (AR tokens and Turbo Credits), and bidirectional file synchronization.
 
-### Recent Updates
-- Real upload process with ardrive-core-js integration
-- Real-time progress tracking with IPC events
-- Upload approval queue with progress bars
-- Cancel and retry functionality for uploads
-- Auto-remove success uploads with toast notifications
-- ArNS name integration for profile identification
+## Commands
 
-## Quick Start Commands
+### Development
 ```bash
-# Install dependencies
-npm install
-
-# Development
+npm install          # Install dependencies
 npm run dev          # Start in development mode (TypeScript watch + webpack dev server)
 npm run dev:main     # Watch TypeScript compilation for main process only
 npm run dev:renderer # Run webpack dev server for React app only
+```
 
-# Building
+### Building & Distribution
+```bash
 npm run build        # Full production build (main + renderer)
 npm run dist         # Create platform-specific installers
 npm run clean        # Clean build artifacts
+npm start            # Start Electron app (requires build first)
+```
 
-# Quality Assurance  
+### Quality Assurance
+```bash
+npm run lint         # ESLint code quality checks
+npm run typecheck    # TypeScript type checking
 npm run test         # Run Vitest tests
 npm run test:ui      # Run tests with UI
 npm run test:coverage # Generate test coverage reports
-npm run lint         # ESLint code quality checks
-npm run typecheck    # TypeScript type checking
+npm run test:watch   # Run tests in watch mode
+npm run test -- --watch    # Alternative watch mode syntax
+```
 
-# User Acceptance Testing
+### Testing Specific Files
+```bash
+npm run test -- tests/WalletManager.test.ts  # Run specific test file
+npm run test -- --grep "should create wallet" # Run tests matching pattern
+npm run test -- -t "test name"               # Run single test by name
+```
+
+### User Acceptance Testing
+```bash
 npm run uat              # Run in test mode
 npm run uat:new-user     # Test new user onboarding
 npm run uat:existing-user # Test existing user flow
 npm run uat:dashboard    # Test dashboard functionality
+npm run uat:clean        # Clean build + run UAT
 ```
 
-### Dev Mode - Fast Import Testing
-For rapid testing of the import user flow, you can use a `.env` file to auto-fill forms:
+## Architecture
 
-1. **Copy the example .env file:**
-   ```bash
-   cp .env.example .env
-   ```
+### High-Level Architecture
+The application follows Electron's multi-process architecture with secure IPC communication:
 
-2. **Edit `.env` with your test values:**
-   ```env
-   # Enable dev mode
-   ARDRIVE_DEV_MODE=true
-   
-   # Set your test wallet path
-   ARDRIVE_DEV_WALLET_PATH=C:\Source\arweave-keyfile-iKryOeZQMONi2965nKz528htMMN_sBcjlhc-VncoRjA.json
-   
-   # Set your test password
-   ARDRIVE_DEV_PASSWORD=testingPASSword
-   
-   # Set your test sync folder
-   ARDRIVE_DEV_SYNC_FOLDER=C:\ARDRIVE
-   ```
+1. **Main Process** (Node.js backend):
+   - Manages wallet operations, file sync, and database
+   - Handles all system-level operations
+   - Enforces security through input validation
+   - No direct renderer access to filesystem or sensitive operations
 
-3. **Run the app:**
-   ```bash
-   npm run dev
-   ```
+2. **Renderer Process** (React frontend):
+   - UI components and user interaction
+   - Communicates with main process via typed IPC channels
+   - No access to Node.js APIs or filesystem
 
-When dev mode is enabled:
-- Import User flow will auto-fill the wallet path and password
-- Drive setup will auto-fill the sync folder
-- You can just click "Next" through the setup process
-
-**Security Notes**: 
-- Only use test wallets and passwords in dev mode
-- The `.env` file is gitignored and won't be committed
-- Never share your `.env` file with real wallet information
-
-## Project Structure
-```
-ardrive-desktop-mvp/
-├── src/
-│   ├── main/           # Main process (Node.js)
-│   │   ├── main.ts     # Entry point & IPC handlers
-│   │   ├── wallet-manager-secure.ts  # Secure wallet operations
-│   │   ├── sync-manager.ts           # File sync engine
-│   │   ├── profile-manager.ts        # Multi-profile support
-│   │   ├── database-manager.ts       # SQLite database
-│   │   ├── turbo-manager.ts          # Turbo credits
-│   │   └── ...
-│   ├── renderer/       # Renderer process (React)
-│   │   ├── App.tsx     # Main React component
-│   │   ├── components/ # React components
-│   │   │   ├── WalletSetup.tsx       # Onboarding flow
-│   │   │   ├── Dashboard.tsx         # Main dashboard
-│   │   │   ├── DriveAndSyncSetup.tsx # Drive setup
-│   │   │   └── ...
-│   │   └── styles.css  # Global styles
-│   └── types/          # Shared TypeScript types
-├── public/             # Static assets
-├── test-scripts/       # Testing utilities
-└── package.json
-```
-
-## Key Concepts & Architecture
-
-### Technology Stack
-- **Electron** v27.1.3 - Cross-platform desktop framework
-- **React** 18 with TypeScript - Renderer process UI
-- **SQLite** - Local database for metadata and mappings
-- **ardrive-core-js** - Core ArDrive functionality
-- **@ardrive/turbo-sdk** - Turbo Credits integration
-- **Vitest** - Testing framework
-
-### Architecture Patterns
-1. **Multi-Process**: Main process (Node.js backend) + Renderer process (React frontend)
-2. **IPC Bridge**: Secure communication via Electron's contextBridge
-3. **Repository Pattern**: Database operations abstracted in managers
-4. **Observer Pattern**: File system monitoring with Chokidar
-5. **Command Pattern**: IPC handlers for all cross-process operations
+3. **Preload Script** (Bridge):
+   - Exposes safe, typed API to renderer via `window.electronAPI`
+   - All IPC channels are namespaced (wallet:*, drive:*, sync:*, etc.)
 
 ### Security Architecture
 - **Encryption**: AES-256-GCM with authenticated encryption
 - **Key Derivation**: Scrypt (N=16384, r=8, p=1) for passwords
-- **Profile Isolation**: Separate encrypted storage per profile
+- **Profile Isolation**: Each profile has separate encrypted storage
+- **Input Validation**: All inputs validated using InputValidator class
 - **No Plaintext Storage**: Passwords never stored, only derived keys
 
-## Important Technical Decisions
-
-### File Sync Strategy
-- Hash-based duplicate detection using SHA-256
-- 100MB file size limit (MVP restriction)
-- Upload approval queue for cost control
-- Support for both AR tokens and Turbo Credits
-- Bidirectional sync with conflict detection
-
-### Database Schema
+### Database Architecture
 - SQLite with profile-specific databases
-- Tables: drive_mappings, upload_history, pending_uploads
-- Drive mapping ID matches drive ID for simplicity
-- Upload tracking includes method (AR/Turbo) and status
+- Database isolation per profile for complete data separation
+- Location: 
+  - Windows: `%APPDATA%\ardrive-desktop-mvp\[profile-id]\ardrive.db`
+  - macOS/Linux: `~/.config/ardrive-desktop-mvp/[profile-id]/ardrive.db`
 
-### IPC Security
-- All IPC channels namespaced (e.g., 'wallet:', 'drive:', 'sync:')
-- Input validation on both main and renderer sides
-- Sensitive operations require password verification
-- No direct file system access from renderer
+### Sync Engine Architecture
+The sync system uses intelligent operation detection:
+- **FileOperationDetector**: Detects file moves, renames, copies, deletes
+- **FolderOperationDetector**: Detects folder operations using content similarity
+- **StreamingDownloader**: Handles efficient file downloads with streaming
+- **FileHashVerifier**: Verifies file integrity with SHA-256 hashes
+- **ErrorHandler**: Centralized error handling for sync operations
+- **Hash-based matching**: SHA-256 for duplicate detection
+- **3-second detection window**: Groups related operations
+- **Batch support**: Handles multiple simultaneous file operations
+- **SyncProgressTracker**: Real-time progress tracking for uploads/downloads
 
-## Common Tasks
-
-### Adding a New IPC Handler
-1. Add handler in `src/main/main.ts` (search for "ipcMain.handle")
-2. Add method to API in `src/main/preload.ts`
-3. Use in renderer via `window.electronAPI`
-
-Example:
+### IPC Communication Pattern
+All IPC handlers follow this structure:
 ```typescript
-// main.ts
-ipcMain.handle('shell:open-path', async (_, path: string) => {
-  const result = await shell.openPath(path);
-  return true;
+// main.ts - Handler definition
+ipcMain.handle('namespace:action', async (_, ...args) => {
+  // Input validation
+  const validated = InputValidator.validateXXX(args[0]);
+  // Operation
+  const result = await service.doOperation(validated);
+  return { success: true, data: result };
 });
 
-// preload.ts
-shell: {
-  openPath: (path: string) => ipcRenderer.invoke('shell:open-path', path),
+// preload.ts - API exposure
+namespace: {
+  action: (...args) => ipcRenderer.invoke('namespace:action', ...args)
 }
 
-// Component
-await window.electronAPI.shell.openPath(config.syncFolder);
+// Component - Usage
+const result = await window.electronAPI.namespace.action(data);
 ```
 
-### Creating an Arweave Manifest
-Manifests create a single URL to access all files in a folder:
-1. User selects a folder from the drive structure
-2. Provides a manifest name (default: DriveManifest.json)
-3. System creates manifest without re-uploading files
-4. Manifest URL is automatically copied to clipboard
-5. If manifest with same name exists, it's replaced
+### Key Services & Managers
+- **wallet-manager-secure.ts**: Encrypted wallet operations (NEVER use wallet-manager.ts)
+- **sync-manager.ts**: Main file synchronization engine
+- **profile-manager.ts**: Multi-profile support and switching
+- **database-manager.ts**: SQLite operations with profile isolation
+- **database-types.ts**: TypeScript types for database operations
+- **turbo-manager.ts**: Turbo Credits management
+- **arns-service.ts**: ArNS name resolution
+- **input-validator.ts**: Security-critical input validation
+- **sync/interfaces.ts**: Core sync engine interfaces and types
 
-### Running a Single Test
-```bash
-# Run a specific test file
-npm run test -- WalletManager.test.ts
+## Important Patterns
 
-# Run tests matching a pattern
-npm run test -- --grep "should create wallet"
+### Adding New IPC Handlers
+1. Add handler in `src/main/main.ts` (search for "ipcMain.handle")
+2. Add to preload API in `src/main/preload.ts`
+3. Use in renderer via `window.electronAPI`
 
-# Run tests in watch mode
-npm run test:watch
-```
-
-### Adding a New React Component
-1. Create component in `src/renderer/components/`
-2. Follow existing component patterns (functional components with hooks)
-3. Use existing UI patterns from Dashboard.tsx or WalletSetup.tsx
-
-### Working with Wallets
-- Wallet manager: `src/main/wallet-manager-secure.ts`
-- Always use secure encryption methods
-- Never store passwords in plain text
-- Support for seed phrases and JWK files
-
-### Working with Drives
-- Drive operations via `ardrive-core-js`
-- Drive mappings stored in SQLite database
-- Sync operations in `src/main/sync-manager.ts`
-- UI components handle drive creation and selection
-
-## Core Dependencies
-- **ardrive-core-js**: Drive operations, file uploads, metadata
-- **@ardrive/turbo-sdk**: Turbo Credits purchases and conversions
-- **@ar.io/sdk**: ArNS name resolution and integration
-- **arweave**: Direct blockchain interactions
-- **sqlite3/better-sqlite3**: Local database operations
-- **chokidar**: File system monitoring
-- **react-router-dom**: Navigation between screens
-- **axios**: HTTP requests for API calls
-- **lucide-react**: Modern icon library for UI components
-
-### Key Services
-- **arns-service.ts**: ArNS name resolution for profile identification
-- **turbo-manager.ts**: Turbo Credits management and conversions
-- **upload-manager.ts**: Upload queue and progress tracking
-- **input-validator.ts**: Input validation for security
-
-### Key UI Components
-- **CreateManifestModal.tsx**: Modal for creating Arweave manifests - creates a single URL to access all files in a folder
-- **Dashboard.tsx**: Main application dashboard with tabs
-- **WalletSetup.tsx**: Onboarding and wallet import flow
-- **DriveAndSyncSetup.tsx**: Drive creation and sync folder setup
-
-## Testing & Quality Assurance
-
-### Test Framework
-- **Vitest** with React Testing Library
-- Configuration in `vitest.config.ts`
-- Tests in `tests/` directory
-- JSDOM environment for component testing
-
-### Testing Commands
-```bash
-npm run test          # Run all tests
-npm run test:ui       # Run with Vitest UI
-npm run test:coverage # Generate coverage report
-npm run test:watch    # Run tests in watch mode
-```
-
-### UAT Tools
-- Development mode includes UAT panel (Ctrl+D to toggle)
-- Test scripts in `test-scripts/` for quick scenarios
-- Environment variables for testing:
-  - `SKIP_ONBOARDING=true` - Skip onboarding flow
-  - `AUTO_LOGIN=true` - Auto-login for testing
-
-### Testing Best Practices
-- Never use real wallets in development/testing
-- Test with 12-word seed phrases only
-- Verify sync functionality after file system changes
-- Test profile switching thoroughly
-- Check error handling for network failures
-- Test upload approval queue with multiple files
-- Verify progress tracking and cancellation
-- Test Turbo Free functionality for small files
-
-## Common Issues & Solutions
-
-### Build/TypeScript Errors
-```bash
-# Check TypeScript errors
-npm run typecheck
-
-# Common fixes:
-- Path aliases: Check tsconfig.json for '@/' mapping
-- Missing types: Install @types/ packages
-- Import extensions: Add .js for relative imports
-- IPC mismatch: Ensure handlers exist in both main.ts and preload.ts
-```
-
-### Wallet Issues
-```typescript
-// Debugging wallet problems
-const isLoaded = await walletManager.isWalletLoaded();
-const profile = profileManager.getActiveProfile();
-const address = await walletManager.getWalletAddress();
-```
-
-### Sync Issues
-- Check folder permissions: `fs.accessSync(path, fs.constants.W_OK)`
-- Verify drive mapping: `SELECT * FROM drive_mappings`
-- Monitor file watcher: Check logs for Chokidar errors
-- Test with small files first (< 1MB)
-
-### Database Issues
-```bash
-# View database directly
-sqlite3 ~/.config/ardrive-desktop-mvp/[profile-id]/ardrive.db
-.tables
-.schema drive_mappings
-SELECT * FROM drive_mappings;
-```
-
-## Configuration & Environment
-
-### Environment Variables
-Create a `.env` file from `.env.example` for local development:
-
-```bash
-# Core environment settings
-NODE_ENV=development     # or production
-DEBUG=ardrive:*         # Enable debug logging
-
-# Testing shortcuts
-SKIP_ONBOARDING=true    # Skip onboarding flow
-AUTO_LOGIN=true         # Auto-login for testing
-
-# Dev Mode Auto-fill (Import User Flow Testing)
-ARDRIVE_DEV_MODE=true    # Enable dev mode auto-fill
-ARDRIVE_DEV_WALLET_PATH=C:\path\to\wallet.json  # Auto-fill wallet path
-ARDRIVE_DEV_PASSWORD=testPassword               # Auto-fill password
-ARDRIVE_DEV_SYNC_FOLDER=C:\ARDRIVE             # Auto-fill sync folder
-```
-
-The `.env` file is automatically loaded in development mode and is gitignored for security.
-
-### Configuration Files
-- `tsconfig.json` - Base TypeScript config
-- `tsconfig.main.json` - Main process specific
-- `webpack.renderer.js` - Renderer bundling
-- `.eslintrc.js` - Linting rules
-- `vitest.config.ts` - Test configuration
-
-### Build Configuration
-- Electron Builder config in `package.json`
-- Multi-platform support (Windows, macOS, Linux)
-- Code signing ready
-- Auto-update capable
-
-## Code Style & Patterns
-
-### TypeScript Guidelines
-- Strict mode enabled - no `any` types
-- Use interfaces for data shapes
-- Prefer `const` assertions for literals
-- Explicit return types for public APIs
-
-### React Patterns
-- Functional components with hooks
-- Inline styles for component-specific styling
-- CSS variables for theme values (--space-*, --color-*)
-- Follow patterns in Dashboard.tsx and WalletSetup.tsx
-
-### Error Handling
+### Error Handling Pattern
 ```typescript
 try {
-  // Operation
+  const result = await operation();
+  return { success: true, data: result };
 } catch (error) {
-  console.error('[Component] Operation failed:', error);
-  // User-friendly error handling
+  console.error('[Service] Operation failed:', error);
+  throw new Error(error instanceof Error ? error.message : 'Operation failed');
 }
 ```
 
-### IPC Pattern
-```typescript
-// Always validate inputs
-if (!isValidInput(data)) {
-  throw new Error('Invalid input');
-}
-// Perform operation
-return { success: true, data: result };
-```
-
-## Security Guidelines
-
-### Critical Security Rules
-1. **NEVER** log sensitive data:
-   - Wallet contents or seed phrases
-   - Passwords or derived keys
-   - Decrypted private keys
-
-2. **ALWAYS** validate inputs:
-   ```typescript
-   // Use InputValidator for all user inputs
-   if (!InputValidator.isValidDriveName(name)) {
-     throw new Error('Invalid drive name');
-   }
-   ```
-
-3. **Wallet Security**:
-   - Use `wallet-manager-secure.ts` (NOT wallet-manager.ts)
-   - Passwords processed with Scrypt before use
-   - Wallets encrypted with AES-256-GCM
-   - Machine-specific salt for extra protection
-
-4. **IPC Security**:
-   - Validate all IPC inputs
-   - Use typed IPC channels
-   - No direct file system access from renderer
-   - Password required for sensitive operations
-
-## Debugging & Troubleshooting
-
-### Console Access
-- Main process: Check terminal running `npm run dev`
-- Renderer process: DevTools Console (Ctrl+Shift+I)
-
-### Common Debugging Commands
-```bash
-# Type checking with detailed errors
-npm run typecheck -- --verbose
-
-# Lint with auto-fix
-npm run lint -- --fix
-
-# Clean build (fixes many issues)
-npm run clean && npm run build
-
-# Test specific file
-npm run test -- WalletManager.test.ts
-
-# Database inspection
-sqlite3 ~/.config/ardrive-desktop-mvp/[profile-id]/ardrive.db
-.tables
-.schema
-SELECT * FROM drive_mappings;
-SELECT * FROM upload_history ORDER BY created_at DESC LIMIT 10;
-```
-
-### Electron Debugging
-```bash
-# Enable Electron logging
-ELECTRON_ENABLE_LOGGING=1 npm run dev
-
-# Debug main process
-npm run dev:main -- --inspect
-```
-
-### Working with Modified Files
-When you see modified files in git status:
-- `M` prefix means the file has uncommitted changes
-- `??` prefix means the file is untracked (new)
-- Always review changes before implementing new features
-- Check for work-in-progress (wip) commits that may indicate ongoing development
-
-### Windows-Specific Paths
-On Windows, the database is located at:
-```
-%APPDATA%\ardrive-desktop-mvp\[profile-id]\ardrive.db
-```
-
-## UI/UX Guidelines
-
-### Design System
-- **Primary**: ArDrive red (#dc2626)
-- **Success**: Green (#10b981)
-- **Background**: #f9fafb (light), #111827 (dark ready)
-- **Text**: #374151 (primary), #6b7280 (secondary)
-
-### Component Patterns
-- Empty states: Icon + Message + CTA button
-- Loading: Spinning animation with message (using Loader2 from lucide-react)
-- Errors: Red text with clear explanation
-- Success: Green checkmark with message
-- Toast notifications: Bottom-right, auto-dismiss
-- Progress bars: Visual indicators for upload/download progress
-- Modal dialogs: Centered overlays with backdrop
-
-### Spacing System
-```css
---space-xs: 0.25rem;
---space-sm: 0.5rem;
---space-md: 1rem;
---space-lg: 1.5rem;
---space-xl: 2rem;
-```
-
-### Icons
-- Use lucide-react icons for consistency
-- File type icons from `getFileIcon()` utility
-- Status icons: Check (success), AlertCircle (warning), X (error)
-- Common icons: Folder, File, ChevronRight/Down, Loader2 (spinning)
+### Component Creation
+1. Create in `src/renderer/components/`
+2. Use functional components with TypeScript
+3. Follow existing patterns from Dashboard.tsx or WalletSetup.tsx
+4. Use inline styles for component-specific styling
+5. Use lucide-react for icons
+6. Place utility functions in `src/renderer/utils/`
+7. Create dedicated CSS files in `src/renderer/styles/` for complex components
 
 ## Development Workflow
 
 ### Before Starting
-1. Review existing patterns in similar files
-2. Check CLAUDE.md for guidance
-3. Run `npm run dev` to start development
+1. Check git status for modified files
+2. Review recent commits for work-in-progress
+3. Set up dev environment with `.env` file (see .env.example)
 
 ### While Developing
-1. Use TypeScript - no `any` types
-2. Follow existing component patterns
-3. Test in development mode frequently
-4. Handle errors gracefully
-5. Add to UAT tools if creating new features
+1. Use TypeScript strictly - no `any` types
+2. Validate all user inputs with InputValidator
+3. Handle errors gracefully with user-friendly messages
+4. Test in development mode frequently
 
 ### Before Committing
 1. Run `npm run typecheck` - must pass
-2. Run `npm run lint` - fix any issues
+2. Run `npm run lint` - fix any issues  
 3. Run `npm run test` - ensure tests pass
 4. Test profile switching if touching auth
-5. Test sync if touching file operations
-6. Update CLAUDE.md if adding major features
+5. Test sync operations if touching file system
 
-### MVP Limitations to Remember
-- Public drives only (no private drives)
-- 100MB file size limit
-- Manual sync control (no auto-sync)
-- Basic conflict resolution only
+## Current Development Status
+Based on git status:
+- **Modified**: Core sync engine, database manager, upload queue components
+- **New**: FileOperationDetector, FolderOperationDetector, StreamingDownloader, FileHashVerifier, ErrorHandler, UploadApprovalQueueModern
+- **Deleted**: sync-engine.ts (functionality merged into sync-manager.ts), SYNC_MANAGER_CLEANUP_TODO.md, SYNC_MANAGER_REFACTOR_PLAN.md
+
+Recent commits show active development on:
+- Advanced file operation detection (moves, renames, copies)
+- Streaming download implementation
+- Modern upload approval queue UI
+- Enhanced error handling and progress tracking
+
+## Testing
+
+### Test Configuration
+- Framework: Vitest with React Testing Library
+- Environment: JSDOM for component testing
+- Mocks: Comprehensive mocks in `tests/__mocks__/`
+- Coverage: Reports in text, JSON, and HTML formats
+
+### Writing Tests
+- Tests go in `tests/` directory
+- Unit tests in `tests/unit/`
+- Test helpers in `tests/helpers/`
+- Follow existing patterns for mocking (see mock-ardrive.ts, mock-database.ts)
+- Use descriptive test names
+- Test both success and error cases
+- Component tests use React Testing Library
+
+## Environment Variables
+
+### Development Mode (.env file)
+```env
+# Enable dev mode features
+ARDRIVE_DEV_MODE=true
+
+# Auto-fill import flow (testing only)
+ARDRIVE_DEV_WALLET_PATH=C:\path\to\test-wallet.json
+ARDRIVE_DEV_PASSWORD=testPassword
+ARDRIVE_DEV_SYNC_FOLDER=C:\ARDRIVE
+
+# Testing shortcuts (from .env.example)
+NODE_ENV=development
+DEBUG=ardrive:*
+```
+
+## Key Technical Decisions
+
+### File Size Limits
+- 100MB maximum file size (MVP restriction)
+- Enforced in sync-manager.ts
+
+### Upload Methods
+- **AR Tokens**: Traditional Arweave upload
+- **Turbo Credits**: Instant upload with fiat payment option
+- Automatic recommendations based on file size
+
+### Profile System
+- Complete isolation between profiles
+- Each profile has separate:
+  - Encrypted wallet storage
+  - SQLite database
+  - Configuration
+  - Sync state
+
+### Sync Strategy
+- Hash-based duplicate detection
+- Upload approval queue for cost control
+- Bidirectional sync with conflict detection
+- Intelligent operation detection for moves/renames
+- Streaming downloads for efficient memory usage
+- Progress tracking with real-time updates
+
+## Debugging & Troubleshooting
+
+### Common Issues and Solutions
+
+1. **Build Failures**
+   - Run `npm run clean` before rebuilding
+   - Check Node.js version (must be 18+)
+   - Delete node_modules and run `npm install`
+
+2. **IPC Handler Errors**
+   - Ensure handler is registered in main.ts
+   - Check preload.ts exposes the method
+   - Verify namespace matches (e.g., wallet:*, sync:*)
+
+3. **Profile/Wallet Issues**
+   - Profile data location: `%APPDATA%\ardrive-desktop-mvp\[profile-id]\`
+   - Wallet encryption uses AES-256-GCM
+   - Password issues: Check InputValidator.validatePassword
+
+4. **Sync Engine Problems**
+   - Check sync-manager.ts for file size limits (100MB)
+   - Verify FileOperationDetector timing (3-second window)
+   - Database queries in database-manager.ts
+
+### Debug Mode
+Enable detailed logging with environment variables:
+```bash
+# Windows
+set DEBUG=ardrive:*
+npm run dev
+
+# macOS/Linux
+DEBUG=ardrive:* npm run dev
+```
+
+### Common Error Patterns
+- `ENOENT`: File/directory not found - check paths are absolute
+- `EPERM`: Permission denied - check file access rights
+- `Wallet decryption failed`: Wrong password or corrupted wallet
+- `IPC handler not found`: Missing handler registration in main.ts
