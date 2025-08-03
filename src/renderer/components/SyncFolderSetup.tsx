@@ -159,7 +159,15 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
             {drive.dateCreated && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
                 <Calendar size={14} />
-                Created {new Date(drive.dateCreated).toLocaleDateString()}
+                Created {(() => {
+                  try {
+                    if (!drive.dateCreated || drive.dateCreated <= 0) return 'Unknown date';
+                    const date = new Date(drive.dateCreated);
+                    return isNaN(date.getTime()) ? 'Invalid date' : date.toLocaleDateString();
+                  } catch {
+                    return 'Invalid date';
+                  }
+                })()}
               </div>
             )}
             {drive.size > 0 && (

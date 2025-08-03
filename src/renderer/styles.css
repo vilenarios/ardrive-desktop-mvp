@@ -3929,7 +3929,25 @@ label {
 }
 
 .file-item.selected {
+  background: var(--ardrive-primary-50);
+  border-left: 3px solid var(--ardrive-primary-600);
+  padding-left: calc(var(--space-5) - 3px);
+}
+
+.file-item.selected:hover {
   background: var(--ardrive-primary-100);
+}
+
+/* File name specific styles */
+.file-name {
+  transition: color 0.15s ease;
+  cursor: pointer;
+}
+
+.file-name:hover {
+  color: var(--ardrive-primary-600);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .file-explorer.grid .file-list {

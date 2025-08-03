@@ -104,6 +104,27 @@ export class ConfigManager {
 
   // Migration removed - legacy fields no longer supported
 
+  async setActiveDrive(driveId: string, mappingId?: string): Promise<void> {
+    if (!this.currentProfileId) {
+      throw new Error('No active profile');
+    }
+    await this.updateProfileConfig({
+      lastActiveDriveId: driveId,
+      lastActiveDriveMappingId: mappingId
+    });
+  }
+
+  async getActiveDrive(): Promise<{ driveId: string; mappingId?: string } | null> {
+    const config = await this.getConfig();
+    if (config.lastActiveDriveId) {
+      return {
+        driveId: config.lastActiveDriveId,
+        mappingId: config.lastActiveDriveMappingId
+      };
+    }
+    return null;
+  }
+
   async setActiveProfile(profileId: string) {
     this.currentProfileId = profileId;
   }

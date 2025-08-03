@@ -351,6 +351,20 @@ export class SyncManager {
     return true;
   }
 
+  async switchDrive(newDriveId: string, newRootFolderId: string): Promise<boolean> {
+    console.log(`Switching from drive ${this.driveId} to ${newDriveId}`);
+    
+    // Stop current sync gracefully
+    await this.stopSync();
+    
+    // Clear current drive state
+    this.driveId = null;
+    this.rootFolderId = null;
+    
+    // Start sync with new drive
+    return this.startSync(newDriveId, newRootFolderId);
+  }
+
   // DEBUG: Method to check current sync state
   getCurrentSyncState(): string {
     return this.syncState;
@@ -2521,15 +2535,36 @@ export class SyncManager {
 
     console.log(`ArDrive Core upload completed - Data TX: ${dataTxId}, Metadata TX: ${metadataTxId}, File-ID: ${fileId}`);
 
-    await this.databaseManager.updateUpload(upload.id, {
-      status: 'completed',
-      progress: 100,
-      dataTxId: upload.dataTxId,
-      metadataTxId: upload.metadataTxId,
-      transactionId: upload.transactionId,
-      fileId: fileId,
-      completedAt: upload.completedAt
-    });
+    // Add to upload history for activity tracking if not already there
+    try {
+      await this.databaseManager.addUpload({
+        id: upload.id,
+        driveId: upload.driveId,
+        localPath: upload.localPath,
+        fileName: upload.fileName,
+        fileSize: upload.fileSize,
+        status: 'completed',
+        progress: 100,
+        uploadMethod: upload.uploadMethod,
+        dataTxId: dataTxId,
+        metadataTxId: metadataTxId,
+        transactionId: dataTxId,
+        fileId: fileId,
+        completedAt: new Date()
+      });
+    } catch (error) {
+      // If upload already exists (duplicate ID), update it instead
+      console.log('Upload already exists, updating instead:', upload.id);
+      await this.databaseManager.updateUpload(upload.id, {
+        status: 'completed',
+        progress: 100,
+        dataTxId: upload.dataTxId,
+        metadataTxId: upload.metadataTxId,
+        transactionId: upload.transactionId,
+        fileId: fileId,
+        completedAt: upload.completedAt
+      });
+    }
     
     // Emit completion progress event
     this.emitUploadProgress(upload.id, 100, 'completed');
@@ -3059,10 +3094,16 @@ export class SyncManager {
               break;
             case 'move':
               if (pendingUpload.metadata?.newParentFolderId) {
+                // Calculate the relative path from sync folder for ArDrive
+                const dirPath = path.dirname(pendingUpload.localPath);
+                const relativePath = this.syncFolderPath ? 
+                  path.relative(this.syncFolderPath, dirPath).replace(/\\/g, '/') : '';
+                const ardrivePath = relativePath ? '/' + relativePath : '/';
+                
                 await this.databaseManager.updateDriveMetadataParent(
                   pendingUpload.arfsFileId,
                   pendingUpload.metadata.newParentFolderId,
-                  path.dirname(pendingUpload.localPath)
+                  ardrivePath
                 );
               }
               break;

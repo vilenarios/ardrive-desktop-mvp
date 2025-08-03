@@ -639,7 +639,7 @@ class ArDriveApp {
       newPassword?: string;
     }) => {
       try {
-        const { initializeWalletExportManager } = require('./wallet-export-manager');
+        const { initializeWalletExportManager } = await import('./wallet-export-manager');
         const exportManager = initializeWalletExportManager(this.walletManager);
         const activeProfile = await profileManager.getActiveProfile();
         
@@ -799,12 +799,13 @@ class ArDriveApp {
         throw new Error('Wallet not loaded');
       }
       // Import needed types
-      const { ArweaveAddress, stubEntityID } = require('ardrive-core-js');
+      const { ArweaveAddress, PrivateKeyData } = await import('ardrive-core-js');
       
       // For public drives, we need to create a stub for privateKeyData
+      const privateKeyData = new PrivateKeyData({});
       const drives = await arDrive.getAllDrivesForAddress({ 
         address: new ArweaveAddress(walletInfo.address),
-        privateKeyData: stubEntityID  // Use stub for public drives in MVP
+        privateKeyData: privateKeyData  // Use empty PrivateKeyData for public drives
       });
       const drive = drives.find((d: any) => d.driveId === validatedDriveId);
       
@@ -829,7 +830,7 @@ class ArDriveApp {
       
       // Rename the drive based on its privacy setting
       if (drive.drivePrivacy === 'public') {
-        const { EntityID } = require('ardrive-core-js');
+        const { EntityID } = await import('ardrive-core-js');
         const result = await arDrive.renamePublicDrive({
           driveId: new EntityID(validatedDriveId),
           newName: validatedName
@@ -956,7 +957,7 @@ class ArDriveApp {
             type: item.type,
             size: item.type === 'file' && item.size !== '[object Object]' ? item.size : undefined,
             modifiedAt: item.lastModifiedDate && item.lastModifiedDate !== '[object Object]'
-              ? new Date(item.lastModifiedDate) 
+              ? new Date(item.lastModifiedDate) // Already in milliseconds due to our patch
               : item.createdAt 
                 ? new Date(item.createdAt)
                 : item.uploadedDate
@@ -1010,7 +1011,7 @@ class ArDriveApp {
       
       try {
         // Import needed types
-        const { EntityID } = require('ardrive-core-js');
+        const { EntityID } = await import('ardrive-core-js');
         
         // MVP: Only support public drives for now
         if (drive.privacy !== 'public') {
@@ -1157,7 +1158,7 @@ class ArDriveApp {
       }
       
       // Import needed types
-      const { EntityID } = require('ardrive-core-js');
+      const { EntityID } = await import('ardrive-core-js');
       
       // List all files in the folder to check count
       const entities = await arDrive.listPublicFolder({
@@ -1337,7 +1338,7 @@ class ArDriveApp {
       }
       
       // Import needed types
-      const { EntityID } = require('ardrive-core-js');
+      const { EntityID } = await import('ardrive-core-js');
       
       // Get drive info
       const drives = await walletManager.listDrives();
@@ -1385,6 +1386,68 @@ class ArDriveApp {
       }
       
       return folderList;
+    }));
+
+    // New drive management handlers
+    ipcMain.handle('drive:getAll', safeIpcHandler(async () => {
+      return await this.walletManager.listDrives();
+    }));
+
+    ipcMain.handle('drive:getMapped', safeIpcHandler(async () => {
+      // Get all drives from wallet
+      const allDrives = await this.walletManager.listDrives();
+      
+      // Get drive mappings to filter only added drives
+      const mappings = await databaseManager.getDriveMappings();
+      const mappedDriveIds = mappings.map((m: any) => m.driveId);
+      
+      // Return only drives that have been added to this device
+      return allDrives.filter(drive => mappedDriveIds.includes(drive.id));
+    }));
+
+    ipcMain.handle('drive:setActive', safeIpcHandler(async (_, driveId: string, mappingId?: string) => {
+      // Validate inputs
+      const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+      
+      // Set active drive in config
+      await configManager.setActiveDrive(validatedDriveId, mappingId);
+      
+      return { success: true };
+    }));
+
+    ipcMain.handle('drive:getActive', safeIpcHandler(async () => {
+      return await configManager.getActiveDrive();
+    }));
+
+    ipcMain.handle('drive:switchTo', safeIpcHandler(async (_, driveId: string) => {
+      // Validate inputs
+      const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+      
+      // Get drive info
+      const drives = await this.walletManager.listDrives();
+      const targetDrive = drives.find(d => d.id === validatedDriveId);
+      
+      if (!targetDrive) {
+        throw new Error('Drive not found');
+      }
+      
+      // Check if drive has a mapping (has been added to the local system)
+      const mappings = await databaseManager.getDriveMappings();
+      const driveMapping = mappings.find((m: any) => m.driveId === validatedDriveId);
+      
+      if (!driveMapping) {
+        throw new Error(`Drive "${targetDrive.name}" has not been added to this device yet. Please use "Add Existing Drive" first.`);
+      }
+      
+      // Switch the drive in sync manager
+      const success = await this.syncManager.switchDrive(validatedDriveId, targetDrive.rootFolderId);
+      
+      if (success) {
+        // Update active drive in config
+        await configManager.setActiveDrive(validatedDriveId, driveMapping.id);
+      }
+      
+      return { success, driveInfo: targetDrive };
     }));
 
     // Sync operations
@@ -1557,13 +1620,58 @@ class ArDriveApp {
     });
 
     // Sync preference operations
-    ipcMain.handle('sync:set-file-preference', async (_, fileId: string, preference: 'auto' | 'always_local' | 'cloud_only') => {
+    ipcMain.handle('sync:set-file-preference', async (_, fileId: string, preference: 'auto' | 'cloud_only') => {
       try {
         await databaseManager.updateFileSyncPreference(fileId, preference);
         
+        // If setting to cloud_only, delete the local file and update sync status
+        if (preference === 'cloud_only') {
+          // Get file metadata to find local path
+          const mappings = await databaseManager.getDriveMappings();
+          const activeMapping = mappings.find((m: any) => m.isActive);
+          if (activeMapping) {
+            const allMetadata = await databaseManager.getDriveMetadata(activeMapping.id);
+            const fileData = allMetadata.find((item: any) => item.fileId === fileId);
+            
+            if (fileData) {
+              // Construct local path if not stored
+              let localPath = fileData.localPath;
+              if (!localPath) {
+                // Try to construct local path from sync folder
+                const config = await configManager.getConfig();
+                if (config.syncFolder) {
+                  const path = await import('path');
+                  const filePath = fileData.path || '';
+                  const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+                  localPath = path.join(config.syncFolder, cleanPath, fileData.name);
+                }
+              }
+              
+              if (localPath) {
+                // Delete the local file
+                try {
+                  const fs = (await import('fs')).promises;
+                  await fs.unlink(localPath);
+                  console.log(`Deleted local file: ${localPath}`);
+                } catch (err) {
+                  console.warn(`Could not delete local file: ${localPath}`, err);
+                }
+              }
+            }
+          }
+          
+          // Update sync status to cloud_only and mark as not existing locally
+          await databaseManager.updateFileSyncStatus(fileId, 'cloud_only');
+          await databaseManager.updateDriveMetadataStatus(fileId, 'cloud_only', false);
+        }
+        
         // Emit file state change event
         if (this.mainWindow) {
-          this.mainWindow.webContents.send('sync:file-state-changed', { fileId, syncPreference: preference });
+          this.mainWindow.webContents.send('sync:file-state-changed', { 
+            fileId, 
+            syncPreference: preference,
+            syncStatus: preference === 'cloud_only' ? 'cloud_only' : undefined
+          });
         }
         
         return { success: true };
@@ -2293,8 +2401,8 @@ class ArDriveApp {
         const validatedPath = InputValidator.validateFilePath(path);
         
         // Check if this is a file path, and if so, get its directory
-        const fs = require('fs').promises;
-        const pathModule = require('path');
+        const fs = (await import('fs')).promises;
+        const pathModule = await import('path');
         
         let targetPath = validatedPath;
         try {
@@ -2335,7 +2443,7 @@ class ArDriveApp {
         const validatedPath = InputValidator.validateFilePath(filePath);
         
         // Check if the file exists
-        const fs = require('fs').promises;
+        const fs = (await import('fs')).promises;
         try {
           const stats = await fs.stat(validatedPath);
           if (!stats.isFile()) {

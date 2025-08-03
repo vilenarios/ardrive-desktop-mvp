@@ -59,6 +59,16 @@ const api = {
       ipcRenderer.invoke('drive:get-folder-tree', driveId),
     countFolderFiles: (driveId: string, folderId: string) =>
       ipcRenderer.invoke('drive:count-folder-files', driveId, folderId),
+    getAll: () =>
+      ipcRenderer.invoke('drive:getAll'),
+    getMapped: () =>
+      ipcRenderer.invoke('drive:getMapped'),
+    setActive: (driveId: string, mappingId?: string) =>
+      ipcRenderer.invoke('drive:setActive', driveId, mappingId),
+    getActive: () =>
+      ipcRenderer.invoke('drive:getActive'),
+    switchTo: (driveId: string) =>
+      ipcRenderer.invoke('drive:switchTo', driveId),
   },
 
   // Sync operations
@@ -91,7 +101,7 @@ const api = {
     redownloadAll: () =>
       ipcRenderer.invoke('files:redownload-all'),
     // Sync preference operations
-    setFileSyncPreference: (fileId: string, preference: 'auto' | 'always_local' | 'cloud_only') =>
+    setFileSyncPreference: (fileId: string, preference: 'auto' | 'cloud_only') =>
       ipcRenderer.invoke('sync:set-file-preference', fileId, preference),
     queueDownload: (fileId: string, priority?: number) =>
       ipcRenderer.invoke('sync:queue-download', fileId, priority),

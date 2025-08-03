@@ -93,10 +93,10 @@ export class SecureWalletManager {
       }
       
       // Use ArDrive Core's proper seed phrase handling
-      const { WalletDAO, SeedPhrase } = require('ardrive-core-js');
+      const { WalletDAO, SeedPhrase } = await import('ardrive-core-js');
       
       // Initialize Arweave instance
-      const Arweave = require('arweave');
+      const Arweave = (await import('arweave')).default;
       const arweave = Arweave.init({
         host: 'arweave.net',
         port: 443,
@@ -241,8 +241,8 @@ export class SecureWalletManager {
         console.log('Wallet loaded with readJWKFile');
         
         // Get wallet address for profile creation
-        const Arweave = require('arweave');
-        const arweave = Arweave.init({});
+        const ArweaveLib = (await import('arweave')).default;
+        const arweave = ArweaveLib.init({});
         const address = await arweave.wallets.ownerToAddress(walletJson.n);
         
         // Check if profile exists for this address
@@ -286,7 +286,8 @@ export class SecureWalletManager {
         await this.storeSessionPassword(password);
         
         // Initialize ArDrive with custom gateway configuration
-        const arweaveInstance = require('arweave').init({
+        const Arweave = (await import('arweave')).default;
+        const arweaveInstance = Arweave.init({
           host: 'arweave.net',
           port: 443,
           protocol: 'https',
@@ -389,7 +390,8 @@ export class SecureWalletManager {
         await this.storeSessionPassword(password);
         
         // Initialize ArDrive with custom gateway configuration
-        const arweaveInstance = require('arweave').init({
+        const Arweave = (await import('arweave')).default;
+        const arweaveInstance = Arweave.init({
           host: 'arweave.net',
           port: 443,
           protocol: 'https',
@@ -437,7 +439,7 @@ export class SecureWalletManager {
 
     try {
       // Handle Arweave wallet
-      const Arweave = require('arweave');
+      const Arweave = (await import('arweave')).default;
       const arweave = Arweave.init({
         host: 'arweave.net',
         port: 443,
@@ -506,7 +508,7 @@ export class SecureWalletManager {
       let drives;
       try {
         // Import PrivateKeyData from ardrive-core-js
-        const { PrivateKeyData } = require('ardrive-core-js/lib/arfs/private_key_data');
+        const { PrivateKeyData } = await import('ardrive-core-js/lib/arfs/private_key_data');
         
         // Create empty PrivateKeyData for public drives only
         const privateKeyData = new PrivateKeyData({});
@@ -533,7 +535,7 @@ export class SecureWalletManager {
         name: drive.name,
         privacy: drive.drivePrivacy as 'public' | 'private',
         rootFolderId: drive.rootFolderId === 'ENCRYPTED' ? '' : drive.rootFolderId.toString(),
-        // Convert unixTime (seconds) to milliseconds timestamp, or use current time if not available
+        // Convert unixTime from seconds to milliseconds, or use current time if not available  
         dateCreated: drive.unixTime ? drive.unixTime * 1000 : Date.now(),
         size: 0, // Will need to calculate this from drive contents
         isPrivate: drive.drivePrivacy === 'private'
@@ -880,7 +882,7 @@ export class SecureWalletManager {
 
   // Get address from JWK
   async getAddressFromJWK(jwk: any): Promise<string> {
-    const Arweave = require('arweave');
+    const Arweave = (await import('arweave')).default;
     const arweave = Arweave.init({
       host: 'arweave.net',
       port: 443,

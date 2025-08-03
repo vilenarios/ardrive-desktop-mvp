@@ -251,7 +251,7 @@ const StoredFilesBrowser: React.FC<StoredFilesBrowserProps> = ({
                 <li>Make sure sync is enabled</li>
                 <li>Add files to your sync folder</li>
                 <li>Files will automatically upload to Arweave</li>
-                <li>Once confirmed, they'll appear in this view</li>
+                <li>Once confirmed, they&apos;ll appear in this view</li>
               </ol>
             </div>
           )}

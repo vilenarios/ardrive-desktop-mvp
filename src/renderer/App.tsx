@@ -241,6 +241,15 @@ const App: React.FC = () => {
       if (drives && drives.length > 0) {
         setDrive(drives[0]);
       }
+      
+      // Also refresh uploads when drive updates (includes after file uploads)
+      try {
+        const uploadData = await window.electronAPI.files.getUploads();
+        console.log('Refreshed uploads after drive update:', uploadData?.length || 0);
+        setUploads(uploadData || []);
+      } catch (error) {
+        console.error('Failed to refresh uploads after drive update:', error);
+      }
     });
   };
 

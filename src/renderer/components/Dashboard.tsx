@@ -13,6 +13,9 @@ import { StorageTab } from './dashboard/StorageTab';
 import { DownloadQueueTab } from './dashboard/DownloadQueueTab';
 import { SyncProgressDisplay } from './SyncProgressDisplay';
 import Settings from './Settings';
+import { DriveSelector } from './DriveSelector';
+import { CreateDriveModal } from './CreateDriveModal';
+import { AddExistingDriveModal } from './AddExistingDriveModal';
 import { 
   Pause, 
   RefreshCw, 
@@ -88,6 +91,13 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [showProfileSwitcher, setShowProfileSwitcher] = useState(false);
   const [showWalletExport, setShowWalletExport] = useState(false);
   const selectedDrive = drive;
+  
+  // Drive management state
+  const [drives, setDrives] = useState<DriveInfo[]>([]);
+  const [isDrivesLoading, setIsDrivesLoading] = useState(true);
+  const [isSwitchingDrive, setIsSwitchingDrive] = useState(false);
+  const [showCreateDriveModal, setShowCreateDriveModal] = useState(false);
+  const [showAddExistingDriveModal, setShowAddExistingDriveModal] = useState(false);
   
   // Removed permaweb cache - StorageTab will always load fresh data
 
@@ -352,6 +362,24 @@ const Dashboard: React.FC<DashboardProps> = ({
     loadProfileCount();
   }, [currentProfile]);
 
+  // Load drives on mount
+  useEffect(() => {
+    const loadDrives = async () => {
+      try {
+        setIsDrivesLoading(true);
+        const mappedDrives = await window.electronAPI.drive.getMapped();
+        setDrives(mappedDrives);
+      } catch (error) {
+        console.error('Failed to load drives:', error);
+        toast?.error('Failed to load drives');
+      } finally {
+        setIsDrivesLoading(false);
+      }
+    };
+
+    loadDrives();
+  }, []);
+
   // Profile management handlers
   const handleSwitchProfile = () => {
     setShowProfileSwitcher(true);
@@ -360,6 +388,92 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleAddProfile = () => {
     // Navigate to wallet setup for adding new profile
     window.location.reload(); // This will trigger the app's profile selection logic
+  };
+
+  // Drive switching handler
+  const handleDriveSwitch = async (driveId: string) => {
+    if (driveId === drive?.id || isSwitchingDrive) return;
+    
+    // Find the target drive for better confirmation message
+    const targetDrive = drives.find(d => d.id === driveId);
+    if (!targetDrive) {
+      toast?.error('Drive not found');
+      return;
+    }
+    
+    // Always show confirmation for drive switching
+    const confirmMessage = pendingUploads.length > 0 
+      ? `Switch to "${targetDrive.name}"?\n\nYou have ${pendingUploads.length} pending uploads that will be cancelled.`
+      : `Switch to "${targetDrive.name}"?\n\nThis will change your active drive and sync folder.`;
+    
+    const confirmed = window.confirm(confirmMessage);
+    if (!confirmed) return;
+    
+    try {
+      setIsSwitchingDrive(true);
+      toast?.info(`Switching to "${targetDrive.name}"...`);
+      
+      // Switch the drive
+      const result = await window.electronAPI.drive.switchTo(driveId);
+      
+      if (result.success) {
+        toast?.success(`Successfully switched to "${result.driveInfo.name}"`);
+        // Reload the app to reinitialize with the new drive
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000); // Brief delay to show success message
+      } else {
+        throw new Error('Failed to switch drive');
+      }
+    } catch (error) {
+      console.error('Failed to switch drive:', error);
+      toast?.error(`Failed to switch to "${targetDrive.name}". Please try again.`);
+      setIsSwitchingDrive(false);
+    }
+  };
+
+  // Create new drive handler
+  const handleCreateDrive = () => {
+    setShowCreateDriveModal(true);
+  };
+
+  // Add existing drive handler
+  const handleAddExistingDrive = () => {
+    setShowAddExistingDriveModal(true);
+  };
+
+  // Handle drive created
+  const handleDriveCreated = async (newDrive: DriveInfo) => {
+    try {
+      // Refresh drives list
+      const allDrives = await window.electronAPI.drive.getAll();
+      setDrives(allDrives);
+      
+      toast?.success(`Drive "${newDrive.name}" created successfully!`);
+      
+      // The drive switching will reload the app, so no need to update state here
+    } catch (error) {
+      console.error('Failed to refresh drives after creation:', error);
+    }
+  };
+
+  // Handle existing drive added
+  const handleExistingDriveAdded = async (addedDrive: DriveInfo) => {
+    try {
+      // Refresh drives list
+      const allDrives = await window.electronAPI.drive.getAll();
+      setDrives(allDrives);
+      
+      toast?.success(`Drive "${addedDrive.name}" added successfully!`);
+      
+      // Optionally switch to the newly added drive
+      const shouldSwitch = window.confirm(`Would you like to switch to "${addedDrive.name}" now?`);
+      if (shouldSwitch) {
+        await handleDriveSwitch(addedDrive.id);
+      }
+    } catch (error) {
+      console.error('Failed to refresh drives after adding:', error);
+    }
   };
 
   const handleSync = async () => {
@@ -513,28 +627,85 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
       )}
 
-      {/* Top Navigation Bar */}
-      <div className="top-navbar">
-        <div className="navbar-brand">
+      {/* Create Drive Modal */}
+      <CreateDriveModal
+        isOpen={showCreateDriveModal}
+        onClose={() => setShowCreateDriveModal(false)}
+        onDriveCreated={handleDriveCreated}
+        currentSyncFolder={config.syncFolder}
+      />
+
+      {/* Add Existing Drive Modal */}
+      <AddExistingDriveModal
+        isOpen={showAddExistingDriveModal}
+        onClose={() => setShowAddExistingDriveModal(false)}
+        onDriveAdded={handleExistingDriveAdded}
+        currentSyncFolder={config.syncFolder}
+        existingDriveIds={drives.map(d => d.id)}
+      />
+
+      {/* Unified Header */}
+      <div style={{
+        backgroundColor: 'white',
+        borderBottom: '1px solid var(--gray-200)',
+        padding: 'var(--space-4) var(--space-6)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 'var(--space-6)'
+      }}>
+        {/* Left: Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', minWidth: '200px' }}>
           <img 
             src="ArDrive-Logo-Wordmark-Dark.png" 
             alt="ArDrive" 
-            style={{ height: '28px' }} 
+            style={{ height: '32px' }} 
           />
-          <span style={{
-            marginLeft: 'var(--space-4)',
-            paddingLeft: 'var(--space-4)',
-            borderLeft: '1px solid var(--gray-300)',
-            fontSize: '14px',
-            color: 'var(--gray-600)',
-            fontStyle: 'italic'
-          }}>
-            Your files, permanent and secure
-          </span>
         </div>
         
-        <div className="navbar-actions">
-          {/* Unified User Menu */}
+        {/* Center: Drive Selector + Sync */}
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 'var(--space-3)',
+          flex: 1,
+          justifyContent: 'center'
+        }}>
+          <DriveSelector
+            currentDrive={selectedDrive}
+            drives={drives}
+            isLoading={isDrivesLoading || isSwitchingDrive}
+            onDriveSelect={handleDriveSwitch}
+            onCreateDrive={handleCreateDrive}
+            onAddExistingDrive={handleAddExistingDrive}
+          />
+          
+          {/* Sync Button */}
+          <button
+            onClick={handleSync}
+            disabled={isSyncing}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
+              padding: 'var(--space-2) var(--space-4)',
+              backgroundColor: isSyncing ? 'var(--gray-100)' : 'var(--ardrive-primary)',
+              color: isSyncing ? 'var(--gray-600)' : 'white',
+              border: 'none',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: isSyncing ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
+            {isSyncing ? 'Syncing...' : 'Sync'}
+          </button>
+        </div>
+        
+        {/* Right: User Menu */}
+        <div style={{ minWidth: '200px', display: 'flex', justifyContent: 'flex-end' }}>
           <UserMenu
             currentProfile={currentProfile}
             walletBalance={walletInfo.balance}
@@ -598,102 +769,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       {/* Main Content - Tabbed Dashboard */}
       {selectedDrive && (
         <div className="dashboard-content">
-          {/* Unified Drive Identity Bar */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: 'var(--space-5) var(--space-6)',
-            backgroundColor: 'white',
-            borderBottom: '2px solid var(--gray-100)',
-            marginBottom: 'var(--space-4)',
-            borderRadius: 'var(--radius-lg)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-              {/* Drive Icon */}
-              <FolderOpen size={24} style={{ color: 'var(--gray-600)' }} />
-              
-              {/* Drive Info */}
-              <div>
-                <div style={{ 
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-2)',
-                  marginBottom: '4px'
-                }}>
-                  <h2 style={{ 
-                    fontSize: '18px', 
-                    fontWeight: '600',
-                    margin: 0,
-                    color: 'var(--gray-900)'
-                  }}>
-                    {drive?.name || 'My Drive'}
-                  </h2>
-                  {drive?.privacy === 'public' && (
-                    <span style={{
-                      fontSize: '12px',
-                      padding: '2px 8px',
-                      backgroundColor: 'var(--warning-100)',
-                      color: 'var(--warning-700)',
-                      borderRadius: 'var(--radius-sm)',
-                      fontWeight: '500'
-                    }}>
-                      Public
-                    </span>
-                  )}
-                </div>
-                
-                {/* Dynamic Status - Only show when something is happening */}
-                {(syncStatus?.isActive || isSyncing) && (
-                  <div style={{ 
-                    fontSize: '13px',
-                    color: 'var(--gray-600)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-1)'
-                  }}>
-                    {isSyncing ? (
-                      <>
-                        <RefreshCw size={12} className="animate-spin" style={{ color: 'var(--ardrive-primary-600)' }} />
-                        <span>Syncing... Checking for updates</span>
-                      </>
-                    ) : syncStatus?.isActive ? (
-                      <>
-                        <Upload size={12} className="animate-pulse" style={{ color: 'var(--success-600)' }} />
-                        <span>
-                          Monitoring for uploads
-                          {syncStatus.currentFile && ` • Uploading ${syncStatus.currentFile}`}
-                        </span>
-                      </>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            {/* Drive Actions */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            {/* Sync Button */}
-            <button
-              className="button small"
-              onClick={handleSync}
-              disabled={isSyncing}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-1)',
-                backgroundColor: isSyncing ? 'var(--gray-100)' : 'var(--ardrive-primary-50)',
-                color: isSyncing ? 'var(--gray-600)' : 'var(--ardrive-primary-700)',
-                border: `1px solid ${isSyncing ? 'var(--gray-200)' : 'var(--ardrive-primary-200)'}`
-              }}
-            >
-              <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-              {isSyncing ? 'Syncing...' : 'Sync'}
-            </button>
-          </div>
-        </div>
-
-        {/* Dashboard Tab Navigation */}
+          {/* Dashboard Tab Navigation */}
         <TabNavigation
           tabs={[
             {

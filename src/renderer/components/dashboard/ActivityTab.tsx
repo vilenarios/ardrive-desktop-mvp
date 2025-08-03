@@ -648,6 +648,12 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                   onMouseEnter={() => setHoveredItem(activity.id)}
                   onMouseLeave={() => setHoveredItem(null)}
                   onClick={() => handleActivityClick(activity)}
+                  onDoubleClick={() => {
+                    if (activity.type === 'download' && activity.status === 'completed') {
+                      handleActivityClick(activity);
+                    }
+                  }}
+                  style={{ userSelect: 'none' }}
                 >
                   {/* Activity Type Badge */}
                   <div className={`activity-type-badge ${activity.type}`}>
@@ -661,7 +667,14 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
 
                   {/* Activity Details */}
                   <div className="activity-details">
-                    <div className="activity-description">
+                    <div 
+                      className="activity-description activity-filename"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleActivityClick(activity);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
                       {activity.fileName}
                       {/* Show folder location for uploads */}
                       {activity.type === 'upload' && activity.status === 'completed' && (

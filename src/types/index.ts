@@ -2,6 +2,9 @@ export interface AppConfig {
   walletPath?: string;
   syncFolder?: string;
   isFirstRun: boolean;
+  lastActiveDriveId?: string;
+  lastActiveDriveMappingId?: string;
+  driveMappings?: DriveSyncMapping[];
 }
 
 export interface DriveSyncMapping {
@@ -171,7 +174,7 @@ export interface FileDownload {
 }
 
 // File sync preferences and state
-export type FileSyncPreference = 'auto' | 'always_local' | 'cloud_only';
+export type FileSyncPreference = 'auto' | 'cloud_only';
 export type FileSyncStatus = 'synced' | 'downloading' | 'queued' | 'cloud_only' | 'pending' | 'error';
 
 export interface FileSyncState {

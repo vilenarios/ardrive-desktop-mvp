@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { app, dialog } from 'electron';
+import { app, dialog, clipboard } from 'electron';
 import { encryptData, decryptData, EncryptedData } from './crypto-utils';
 import { SecureWalletManager } from './wallet-manager-secure';
 import { profileManager } from './profile-manager';
@@ -358,7 +358,6 @@ export class WalletExportManager {
    */
   static clearClipboardAfterDelay(delayMs: number = 30000): void {
     setTimeout(() => {
-      const { clipboard } = require('electron');
       clipboard.clear();
       console.log('Clipboard cleared for security');
     }, delayMs);

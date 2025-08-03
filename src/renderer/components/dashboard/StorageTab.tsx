@@ -51,7 +51,7 @@ interface FileItem {
   downloadProgress?: number;
   uploadProgress?: number;
   status: 'synced' | 'downloading' | 'uploading' | 'pending' | 'queued' | 'cloud_only' | 'error';
-  syncPreference?: 'auto' | 'always_local' | 'cloud_only';
+  syncPreference?: 'auto' | 'cloud_only';
   children?: FileItem[];
   path: string;
   parentId?: string;
@@ -91,6 +91,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedItemDetails, setSelectedItemDetails] = useState<FileItem | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
   const selectedDrive = drive;
   const loadDriveMetadataRef = useRef<(isManualRefresh?: boolean) => Promise<void>>();
@@ -566,67 +567,86 @@ export const StorageTab: React.FC<StorageTabProps> = ({
     });
   };
 
-  const handleItemClick = async (item: FileItem) => {
+  // Function to open a file
+  const openFile = async (item: FileItem) => {
     if (item.type === 'folder') {
-      // Single click on folder navigates into it
+      // Navigate into folder
       setCurrentPath([...currentPath, item.name]);
       setExpandedFolders(prev => new Set([...prev, item.id]));
-    } else {
-      // Check if file is downloaded locally
-      if (item.isDownloaded && item.status === 'synced' && config.syncFolder) {
-        // Open local file - build path using proper platform separator
-        // Detect platform based on sync folder format
-        const isWindows = config.syncFolder.includes('\\') || config.syncFolder.match(/^[A-Z]:/);
-        const separator = isWindows ? '\\' : '/';
-        
-        const pathParts = [config.syncFolder];
-        
-        // Debug logging
-        console.log('Opening local file:', {
-          itemPath: item.path,
-          itemName: item.name,
-          syncFolder: config.syncFolder,
-          isWindows: isWindows
-        });
-        
-        if (item.path && item.path !== '/') {
-          // Remove leading slash and split path
-          const cleanPath = item.path.startsWith('/') ? item.path.slice(1) : item.path;
-          if (cleanPath) {
-            // Split by forward slash and filter out empty parts
-            const pathSegments = cleanPath.split('/').filter(segment => segment.length > 0);
-            pathParts.push(...pathSegments);
-          }
+      return;
+    }
+
+    // Check if file is downloaded locally
+    if (item.isDownloaded && item.status === 'synced' && config.syncFolder) {
+      // Open local file - build path using proper platform separator
+      // Detect platform based on sync folder format
+      const isWindows = config.syncFolder.includes('\\') || config.syncFolder.match(/^[A-Z]:/);
+      const separator = isWindows ? '\\' : '/';
+      
+      const pathParts = [config.syncFolder];
+      
+      // Debug logging
+      console.log('Opening local file:', {
+        itemPath: item.path,
+        itemName: item.name,
+        syncFolder: config.syncFolder,
+        isWindows: isWindows
+      });
+      
+      if (item.path && item.path !== '/') {
+        // Remove leading slash and split path
+        const cleanPath = item.path.startsWith('/') ? item.path.slice(1) : item.path;
+        if (cleanPath) {
+          // Split by forward slash and filter out empty parts
+          const pathSegments = cleanPath.split('/').filter(segment => segment.length > 0);
+          pathParts.push(...pathSegments);
         }
-        pathParts.push(item.name);
-        
-        // Join with proper separator
-        const localPath = pathParts.join(separator);
-        
-        console.log('Constructed local path:', localPath);
-        
-        try {
-          // Use openFile to open the file directly with its default application
-          await window.electronAPI.shell.openFile(localPath);
-        } catch (error) {
-          console.error('Failed to open local file:', error);
-          // Fallback to ArDrive URL if local file can't be opened
-          if (item.ardriveUrl) {
-            window.electronAPI.shell.openExternal(item.ardriveUrl);
-          }
-        }
-      } else {
-        // File not downloaded, open in ArDrive viewer
+      }
+      pathParts.push(item.name);
+      
+      // Join with proper separator
+      const localPath = pathParts.join(separator);
+      
+      console.log('Constructed local path:', localPath);
+      
+      try {
+        // Use openFile to open the file directly with its default application
+        await window.electronAPI.shell.openFile(localPath);
+      } catch (error) {
+        console.error('Failed to open local file:', error);
+        // Fallback to ArDrive URL if local file can't be opened
         if (item.ardriveUrl) {
           window.electronAPI.shell.openExternal(item.ardriveUrl);
         }
       }
+    } else {
+      // File not downloaded, open in ArDrive viewer
+      if (item.ardriveUrl) {
+        window.electronAPI.shell.openExternal(item.ardriveUrl);
+      }
     }
   };
 
-  const handleItemDoubleClick = (item: FileItem) => {
-    // Keep double-click as fallback for same behavior
-    handleItemClick(item);
+  // Handle row click (selection or double-click)
+  const handleRowClick = (item: FileItem, e: React.MouseEvent) => {
+    // Don't handle if clicking on interactive elements
+    if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('.file-name')) {
+      return;
+    }
+    
+    // Check for double-click
+    if (e.detail === 2) {
+      openFile(item);
+    } else {
+      // Single click - select the item
+      setSelectedItemId(item.id);
+    }
+  };
+
+  // Handle filename click (direct open)
+  const handleFileNameClick = (item: FileItem, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row click
+    openFile(item);
   };
 
   const handleBreadcrumbClick = (index: number) => {
@@ -754,10 +774,13 @@ export const StorageTab: React.FC<StorageTabProps> = ({
             {currentFiles.map((item) => (
               <div 
                 key={item.id}
-                className={`file-item ${selectedItems.includes(item.id) ? 'selected' : ''} ${item.type}`}
-                onClick={() => handleItemClick(item)}
-                onDoubleClick={() => handleItemDoubleClick(item)}
-                style={{ cursor: 'pointer' }}
+                className={`file-item ${selectedItemId === item.id ? 'selected' : ''} ${item.type}`}
+                onClick={(e) => handleRowClick(item, e)}
+                onDoubleClick={(e) => {
+                  e.preventDefault(); // Prevent text selection
+                  openFile(item);
+                }}
+                style={{ cursor: 'pointer', userSelect: 'none' }}
               >
                 <div className="item-main">
                   <div className="item-icon" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -765,7 +788,16 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                     {item.type === 'file' && getStatusIcon(item)}
                   </div>
                   <div className="item-info">
-                    <div className="item-name">{item.name}</div>
+                    <div 
+                      className="item-name file-name"
+                      onClick={(e) => handleFileNameClick(item, e)}
+                      style={{ 
+                        cursor: 'pointer',
+                        display: 'inline-block'
+                      }}
+                    >
+                      {item.name}
+                    </div>
                     {viewMode === 'grid' && (
                       <div className="item-details">
                         {item.size && <span>{formatFileSize(item.size)}</span>}
@@ -864,7 +896,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 // Navigate into folder
-                                handleItemDoubleClick(item);
+                                openFile(item);
                                 // Hide menu
                                 setOpenMenuId(null);
                               }}
@@ -900,19 +932,6 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                                 >
                                   <Cloud size={14} />
                                   Free up space
-                                </button>
-                              )}
-                              {item.syncPreference !== 'always_local' && (
-                                <button 
-                                  className="action-menu-item"
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    await window.electronAPI.files.setFileSyncPreference(item.id, 'always_local');
-                                    setOpenMenuId(null);
-                                  }}
-                                >
-                                  <CheckCircle size={14} />
-                                  Always keep on device
                                 </button>
                               )}
                             </>

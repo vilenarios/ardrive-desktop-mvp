@@ -436,7 +436,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
           }}>
             <h2 style={{ marginBottom: 'var(--space-2)' }}>Save Your Recovery Phrase</h2>
             <p style={{ fontSize: '15px', color: 'var(--gray-600)', marginBottom: 'var(--space-4)' }}>
-              Write down these 12 words in order. You'll need them to recover your account.
+              Write down these 12 words in order. You&apos;ll need them to recover your account.
             </p>
 
             {/* Address Display - moved up */}
@@ -543,7 +543,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
           <div className="step-content">
             <h2 style={{ marginBottom: 'var(--space-2)' }}>Import Your Account</h2>
             <p style={{ fontSize: '15px', color: 'var(--gray-600)', marginBottom: 'var(--space-4)' }}>
-              Choose how you'd like to import your existing Arweave wallet
+              Choose how you&apos;d like to import your existing Arweave wallet
             </p>
 
             {/* Import Method Toggle */}

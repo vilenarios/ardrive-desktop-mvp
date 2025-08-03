@@ -78,12 +78,23 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
   };
 
   const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    });
+    try {
+      if (!timestamp || timestamp <= 0) {
+        return 'Unknown date';
+      }
+      const date = new Date(timestamp);
+      if (isNaN(date.getTime())) {
+        return 'Invalid date';
+      }
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+    } catch (error) {
+      console.error('Date formatting error:', error, 'timestamp:', timestamp);
+      return 'Invalid date';
+    }
   };
 
   const formatFileSize = (bytes: number) => {

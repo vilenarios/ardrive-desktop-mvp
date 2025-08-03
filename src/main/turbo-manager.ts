@@ -266,7 +266,7 @@ export class TurboManager {
       // These parameters may or may not be supported by the SDK
       try {
         // Get app version from package.json
-        const packageJson = require('../../package.json');
+        const packageJson = await import('../../package.json');
         
         checkoutParams.referrer = 'ardrive-desktop';
         checkoutParams.source = 'ardrive-desktop-app';

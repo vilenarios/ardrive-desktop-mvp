@@ -1,4 +1,5 @@
 import { ISyncProgressTracker } from './interfaces';
+import { BrowserWindow } from 'electron';
 
 export class SyncProgressTracker implements ISyncProgressTracker {
   private lastEmitTime: Map<string, number> = new Map();
@@ -57,7 +58,6 @@ export class SyncProgressTracker implements ISyncProgressTracker {
   
   private doEmitSyncProgress(progress: any): void {
     try {
-      const { BrowserWindow } = require('electron');
       const mainWindow = BrowserWindow.getAllWindows()[0];
       if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
         console.log('🟣 [PROGRESS-TRACKER] Sending sync:progress to renderer:', {
@@ -77,7 +77,6 @@ export class SyncProgressTracker implements ISyncProgressTracker {
 
   emitUploadProgress(uploadId: string, progress: number, status: string, error?: string): void {
     try {
-      const { BrowserWindow } = require('electron');
       const mainWindow = BrowserWindow.getAllWindows()[0];
       if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
         mainWindow.webContents.send('upload:progress', {
@@ -117,7 +116,6 @@ export class SyncProgressTracker implements ISyncProgressTracker {
   
   private doEmitDownloadProgress(progress: any): void {
     try {
-      const { BrowserWindow } = require('electron');
       const mainWindow = BrowserWindow.getAllWindows()[0];
       if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
         mainWindow.webContents.send('download:progress', progress);

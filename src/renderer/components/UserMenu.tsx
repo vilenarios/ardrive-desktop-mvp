@@ -29,6 +29,7 @@ interface UserMenuProps {
   onSwitchProfile?: () => void;
   onAddProfile?: () => void;
   profileCount?: number;
+  onCreateDrive?: () => void;
 }
 
 const UserMenu: React.FC<UserMenuProps> = ({
@@ -41,7 +42,8 @@ const UserMenu: React.FC<UserMenuProps> = ({
   onLogout,
   onSwitchProfile,
   onAddProfile,
-  profileCount = 1
+  profileCount = 1,
+  onCreateDrive
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState(false);
@@ -312,7 +314,7 @@ const UserMenu: React.FC<UserMenuProps> = ({
             <div className="logout-modal-body">
               <p>Are you sure you want to logout?</p>
               <p className="logout-warning">
-                You'll need to enter your password again to access your profile.
+                You&apos;ll need to enter your password again to access your profile.
               </p>
             </div>
             

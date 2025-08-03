@@ -154,6 +154,17 @@
   white-space: nowrap;
 }
 
+.activity-filename {
+  transition: color 0.15s ease;
+  display: inline-block;
+}
+
+.activity-filename:hover {
+  color: var(--ardrive-primary-600);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .activity-meta {
   display: flex;
   align-items: center;

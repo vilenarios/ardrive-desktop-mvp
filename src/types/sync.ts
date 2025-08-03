@@ -5,7 +5,7 @@
 import { EntityID, FolderID, DriveID } from 'ardrive-core-js';
 
 // Sync preferences and status
-export type FileSyncPreference = 'auto' | 'always_local' | 'cloud_only';
+export type FileSyncPreference = 'auto' | 'cloud_only';
 export type FileSyncStatus = 'synced' | 'downloading' | 'queued' | 'cloud_only' | 'pending' | 'error';
 
 // File metadata from ArDrive

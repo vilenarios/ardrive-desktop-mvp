@@ -116,7 +116,7 @@ export class DatabaseManager {
             localPath TEXT,
             localFileExists BOOLEAN DEFAULT 0,
             syncStatus TEXT DEFAULT 'pending' CHECK (syncStatus IN ('synced', 'pending', 'downloading', 'queued', 'cloud_only', 'error')),
-            syncPreference TEXT DEFAULT 'auto' CHECK (syncPreference IN ('auto', 'always_local', 'cloud_only')),
+            syncPreference TEXT DEFAULT 'auto' CHECK (syncPreference IN ('auto', 'cloud_only')),
             downloadPriority INTEGER DEFAULT 0,
             lastError TEXT,
             FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
@@ -1884,11 +1884,11 @@ export class DatabaseManager {
   }
 
   // Sync preference management
-  async updateFileSyncPreference(fileId: string, syncPreference: 'auto' | 'always_local' | 'cloud_only'): Promise<void> {
+  async updateFileSyncPreference(fileId: string, syncPreference: 'auto' | 'cloud_only'): Promise<void> {
     return new Promise((resolve, reject) => {
       const sql = `
         UPDATE drive_metadata_cache 
-        SET syncPreference = ?, updatedAt = CURRENT_TIMESTAMP
+        SET syncPreference = ?, lastSyncedAt = CURRENT_TIMESTAMP
         WHERE fileId = ?
       `;
       
@@ -1922,13 +1922,15 @@ export class DatabaseManager {
   
   async updateDriveMetadataName(fileId: string, newName: string): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Update lastModifiedDate to current time (in milliseconds, matching our patched ArDrive Core)
+      const currentTimeInMillis = Date.now();
       const sql = `
         UPDATE drive_metadata_cache 
-        SET name = ?, lastSyncedAt = CURRENT_TIMESTAMP
+        SET name = ?, lastModifiedDate = ?, lastSyncedAt = CURRENT_TIMESTAMP
         WHERE fileId = ?
       `;
       
-      this.db!.run(sql, [newName, fileId], (err) => {
+      this.db!.run(sql, [newName, currentTimeInMillis, fileId], (err) => {
         if (err) {
           reject(err);
         } else {
@@ -1940,13 +1942,15 @@ export class DatabaseManager {
   
   async updateDriveMetadataParent(fileId: string, newParentFolderId: string, newPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Update lastModifiedDate to current time (in milliseconds, matching our patched ArDrive Core)
+      const currentTimeInMillis = Date.now();
       const sql = `
         UPDATE drive_metadata_cache 
-        SET parentFolderId = ?, path = ?, lastSyncedAt = CURRENT_TIMESTAMP
+        SET parentFolderId = ?, path = ?, lastModifiedDate = ?, lastSyncedAt = CURRENT_TIMESTAMP
         WHERE fileId = ?
       `;
       
-      this.db!.run(sql, [newParentFolderId, newPath, fileId], (err) => {
+      this.db!.run(sql, [newParentFolderId, newPath, currentTimeInMillis, fileId], (err) => {
         if (err) {
           reject(err);
         } else {

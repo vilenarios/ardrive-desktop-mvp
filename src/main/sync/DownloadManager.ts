@@ -6,12 +6,13 @@ import { DatabaseManager } from '../database-manager';
 import { IFileStateManager, ISyncProgressTracker } from './interfaces';
 // FileHashVerifier no longer needed - we get hash from streaming download
 import { StreamingDownloader } from './StreamingDownloader';
+import { BrowserWindow } from 'electron';
 
 export class DownloadManager {
   private isDownloading = false;
   private downloadQueue: Map<string, any> = new Map();
   private activeDownloads: Set<string> = new Set();
-  private maxConcurrentDownloads = 2; // Reduced for better stability
+  private maxConcurrentDownloads = 3; // Allow 3 concurrent downloads for better throughput
   private streamingDownloader: StreamingDownloader;
   
   // Progress batching
@@ -195,7 +196,6 @@ export class DownloadManager {
   private emitFileStateChange(fileId: string, syncStatus: string): void {
     try {
       // Emit file state change event to UI
-      const { BrowserWindow } = require('electron');
       const mainWindow = BrowserWindow.getAllWindows()[0];
       if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
         mainWindow.webContents.send('sync:file-state-changed', { fileId, syncStatus });
@@ -1124,8 +1124,7 @@ export class DownloadManager {
           
           // Notify UI to update activity tab
           try {
-            const { BrowserWindow } = require('electron');
-            const mainWindow = BrowserWindow.getAllWindows()[0];
+                  const mainWindow = BrowserWindow.getAllWindows()[0];
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('activity:update');
               // Don't send drive:update here - let file state change handle it
