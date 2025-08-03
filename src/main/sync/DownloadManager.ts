@@ -250,12 +250,11 @@ export class DownloadManager {
       const existingMetadata = await this.databaseManager.getDriveMetadata(mappingId);
       const syncStatusMap = new Map<string, { syncStatus: string; localFileExists: boolean }>();
       existingMetadata.forEach((item: any) => {
-        if (item.syncStatus && item.syncStatus !== 'pending') {
-          syncStatusMap.set(item.fileId, {
-            syncStatus: item.syncStatus,
-            localFileExists: item.localFileExists || false
-          });
-        }
+        // Preserve ALL sync statuses - don't reset existing states
+        syncStatusMap.set(item.fileId, {
+          syncStatus: item.syncStatus || 'pending', // Default to pending for new items
+          localFileExists: item.localFileExists || false
+        });
       });
       console.log(`Preserving sync status for ${syncStatusMap.size} files`);
       
@@ -279,6 +278,29 @@ export class DownloadManager {
         if (item.type === 'file' && (!item.size || item.size === 0)) {
           console.warn(`⚠️ File missing size in metadata: ${item.name}`);
         }
+        // Check if file exists locally RIGHT NOW before inserting
+        let localFileExists = false;
+        let syncStatus = syncStatusMap.get(item.arweaveId)?.syncStatus || 'pending';
+        
+        if (item.type === 'file' && this.syncFolderPath) {
+          const localPath = path.join(this.syncFolderPath, item.path, item.name);
+          try {
+            await fs.access(localPath);
+            localFileExists = true;
+            // If file exists and wasn't marked as synced, update status
+            if (syncStatus !== 'synced' && syncStatus !== 'cloud_only') {
+              syncStatus = 'synced';
+            }
+          } catch (error) {
+            // File doesn't exist
+            localFileExists = false;
+            // If it was marked as synced but doesn't exist, change to cloud_only
+            if (syncStatus === 'synced') {
+              syncStatus = 'cloud_only';
+            }
+          }
+        }
+        
         await this.databaseManager.upsertDriveMetadata({
           mappingId,
           fileId: item.arweaveId,
@@ -291,8 +313,8 @@ export class DownloadManager {
           dataTxId: item.dataTxId,
           metadataTxId: item.metadataTxId, // Add metadataTxId storage
           contentType: item.mimeType,
-          localFileExists: syncStatusMap.get(item.arweaveId)?.localFileExists || false,
-          syncStatus: syncStatusMap.get(item.arweaveId)?.syncStatus || 'pending'
+          localFileExists: localFileExists,
+          syncStatus: syncStatus
         });
       }
       
@@ -306,29 +328,7 @@ export class DownloadManager {
         });
       }
       
-      // Check local files exist for metadata entries and update sync status
-      for (const item of sortedItems) {
-        if (item.type === 'file' && this.syncFolderPath) {
-          const localPath = path.join(this.syncFolderPath, item.path, item.name);
-          try {
-            await fs.access(localPath);
-            // File exists locally - update status if it wasn't already synced
-            const existingStatus = syncStatusMap.get(item.arweaveId);
-            if (!existingStatus || existingStatus.syncStatus !== 'synced') {
-              await this.databaseManager.updateDriveMetadataStatus(item.arweaveId, 'synced', true);
-              this.emitFileStateChange(item.arweaveId, 'synced');
-            }
-          } catch (error) {
-            // File doesn't exist locally - check if we should queue it
-            const existingStatus = syncStatusMap.get(item.arweaveId);
-            if (existingStatus?.syncStatus === 'synced') {
-              // File was marked as synced but is missing - mark as cloud_only
-              await this.databaseManager.updateDriveMetadataStatus(item.arweaveId, 'cloud_only', false);
-              this.emitFileStateChange(item.arweaveId, 'cloud_only');
-            }
-          }
-        }
-      }
+      // File existence is now checked during upsert above, so we don't need this separate loop
       console.log('Metadata sync completed');
       
     } catch (error) {
@@ -1128,6 +1128,8 @@ export class DownloadManager {
             const mainWindow = BrowserWindow.getAllWindows()[0];
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('activity:update');
+              // Don't send drive:update here - let file state change handle it
+              console.log(`Notified UI about file ${fileId} sync completion`);
             }
           } catch (error) {
             console.error('Failed to notify activity update:', error);

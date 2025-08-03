@@ -38,10 +38,6 @@ interface StorageTabProps {
   syncStatus: SyncStatus | null;
   onDriveDeleted: () => void;
   onViewDriveDetails?: (drive: DriveInfo) => void;
-  cachedData?: FileItem[];
-  lastRefreshTime?: Date | null;
-  cacheValid?: boolean;
-  onCacheUpdate?: (data: FileItem[], time: Date | null, valid: boolean) => void;
 }
 
 interface FileItem {
@@ -80,11 +76,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   config,
   syncStatus,
   onDriveDeleted,
-  onViewDriveDetails,
-  cachedData,
-  lastRefreshTime,
-  cacheValid,
-  onCacheUpdate
+  onViewDriveDetails
 }) => {
   const [currentPath, setCurrentPath] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -93,13 +85,12 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
-  const [fileData, setFileData] = useState<FileItem[]>(cachedData || []);
+  const [fileData, setFileData] = useState<FileItem[]>([]);
   const [syncState, setSyncState] = useState<SyncState | null>(null);
   const [isNewDrive, setIsNewDrive] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedItemDetails, setSelectedItemDetails] = useState<FileItem | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 
   const selectedDrive = drive;
   const loadDriveMetadataRef = useRef<(isManualRefresh?: boolean) => Promise<void>>();
@@ -138,9 +129,9 @@ export const StorageTab: React.FC<StorageTabProps> = ({
           type: item.type,
           size: item.size,
           modifiedAt: new Date(item.modifiedAt),
-          isDownloaded: item.localFileExists || false,
+          isDownloaded: item.isDownloaded || false,
           isUploaded: true,
-          status: item.syncStatus || 'pending',
+          status: item.status || 'pending',
           syncPreference: item.syncPreference || 'auto',
           path: item.path || '/',
           parentId: item.parentId,
@@ -170,13 +161,6 @@ export const StorageTab: React.FC<StorageTabProps> = ({
       });
       
       setFileData(rootItems);
-      
-      // Update cache in parent component
-      if (onCacheUpdate) {
-        const now = new Date();
-        onCacheUpdate(rootItems, now, true);
-        console.log('Permaweb cache updated at:', now.toLocaleTimeString());
-      }
     } catch (error: any) {
       console.error('Failed to load drive metadata:', error);
       setFileData([]);
@@ -197,50 +181,24 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   const handleRefresh = async () => {
     if (!drive) return;
     
-    console.log('Manual refresh requested, invalidating cache');
-    
-    // Invalidate cache in parent component
-    if (onCacheUpdate && lastRefreshTime) {
-      onCacheUpdate(fileData, lastRefreshTime, false);
-    }
-    
+    console.log('Manual refresh requested');
     // Reload the data from permaweb with manual refresh flag
     await loadDriveMetadata(true);
   };
 
-  // Check if cache is still valid
-  const isCacheValid = (): boolean => {
-    if (!lastRefreshTime || !cacheValid) return false;
-    const now = new Date();
-    const elapsed = now.getTime() - lastRefreshTime.getTime();
-    return elapsed < CACHE_DURATION;
-  };
 
   // Update ref to always have latest loadDriveMetadata
   useEffect(() => {
     loadDriveMetadataRef.current = loadDriveMetadata;
   });
 
-  // Load real file data from API or sync status
+  // Load real file data from API when component mounts or drive changes
   useEffect(() => {
     if (!selectedDrive) return;
 
-    // Initialize with cached data from parent if available
-    if (cachedData && cachedData.length > 0) {
-      console.log('Setting file data from cached data');
-      setFileData(cachedData);
-    }
-
-    // Only load if we don't have any data at all (first load)
-    // Don't auto-load just because cache expired - wait for manual refresh
-    if (fileData.length === 0 && (!cachedData || cachedData.length === 0)) {
-      console.log('No data available, loading drive metadata for first time');
-      loadDriveMetadata(false);
-    } else if (isCacheValid()) {
-      console.log('Using cached permaweb data');
-    } else {
-      console.log('Cache expired but not auto-refreshing. User can click refresh.');
-    }
+    // Always load fresh data when the tab is opened
+    console.log('Loading fresh drive metadata');
+    loadDriveMetadata(false);
 
     // Set real sync state based on syncStatus prop
     if (syncStatus?.isActive) {
@@ -264,22 +222,14 @@ export const StorageTab: React.FC<StorageTabProps> = ({
         syncedFiles: syncStatus?.uploadedFiles || 0
       });
     }
-  }, [selectedDrive, syncStatus, cachedData]);
+  }, [selectedDrive, syncStatus]);
 
-  // Set up auto-refresh timer
-  useEffect(() => {
-    if (!cacheValid || !lastRefreshTime) return;
-    
-    // No longer auto-refresh when cache expires
-    // User must click refresh button
-    console.log('Cache auto-refresh disabled. User must manually refresh.');
-  }, [cacheValid, lastRefreshTime]);
 
   // Listen for sync completion events
   useEffect(() => {
     const handleSyncComplete = () => {
-      console.log('Sync completed, refreshing permaweb view from cache');
-      // Load from cache (not force refresh) since sync just updated it
+      console.log('Sync completed, refreshing permaweb view');
+      // Reload data after sync completes
       loadDriveMetadata(false);
     };
     
@@ -292,12 +242,12 @@ export const StorageTab: React.FC<StorageTabProps> = ({
     };
   }, [drive?.id]); // Re-setup if drive changes
 
-  // Listen for file upload completion events to update cache
+  // Listen for file upload completion events
   useEffect(() => {
     const handleUploadComplete = (uploadData: any) => {
-      console.log('File upload completed, updating permaweb cache:', uploadData);
+      console.log('File upload completed:', uploadData);
       
-      // Add the new file to our cached data optimistically
+      // Add the new file to our data optimistically
       if (uploadData && uploadData.fileId) {
         const newFileItem: FileItem = {
           id: uploadData.fileId,
@@ -420,31 +370,6 @@ export const StorageTab: React.FC<StorageTabProps> = ({
         return updateItemRecursively(prevData);
       });
       
-      // Also update the cached data in parent component if callback provided
-      if (onCacheUpdate && cachedData) {
-        const updatedCache = (function updateCacheRecursively(items: FileItem[]): FileItem[] {
-          return items.map(item => {
-            if (item.id === data.fileId) {
-              return {
-                ...item,
-                status: (data.syncStatus as any) || item.status,
-                syncPreference: (data.syncPreference as any) || item.syncPreference,
-                isDownloaded: data.syncStatus === 'synced' ? true : 
-                             data.syncStatus === 'cloud_only' ? false : 
-                             item.isDownloaded
-              };
-            }
-            if (item.children) {
-              return {
-                ...item,
-                children: updateCacheRecursively(item.children)
-              };
-            }
-            return item;
-          });
-        })(cachedData);
-        onCacheUpdate(updatedCache, lastRefreshTime || null, cacheValid || false);
-      }
     };
 
     window.electronAPI.onFileStateChanged(handleFileStateChange);
@@ -455,7 +380,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
         currentDrive: drive?.id,
         currentFileCount: fileData.length 
       });
-      // Auto-refresh to get the newly uploaded file from cache
+      // Auto-refresh to get the newly uploaded file
       if (loadDriveMetadataRef.current) {
         loadDriveMetadataRef.current(false); // Auto-refresh, not manual
       }
@@ -546,21 +471,21 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   const getStatusIcon = (item: FileItem) => {
     switch (item.status) {
       case 'synced':
-        return <div title="Synced locally"><CheckCircle size={14} className="status-icon synced" style={{ color: 'var(--success-600)' }} /></div>;
+        return <div title="Downloaded and available locally - Click to open"><CheckCircle size={14} className="status-icon synced" style={{ color: 'var(--success-600)' }} /></div>;
       case 'downloading':
-        return <div title="Downloading"><Loader size={14} className="status-icon downloading animate-spin" style={{ color: 'var(--ardrive-primary-600)' }} /></div>;
+        return <div title="Currently downloading from Arweave"><Loader size={14} className="status-icon downloading animate-spin" style={{ color: 'var(--ardrive-primary-600)' }} /></div>;
       case 'uploading':
-        return <div title="Uploading"><Cloud size={14} className="status-icon uploading animate-pulse" style={{ color: 'var(--ardrive-primary-600)' }} /></div>;
+        return <div title="Currently uploading to Arweave"><Cloud size={14} className="status-icon uploading animate-pulse" style={{ color: 'var(--ardrive-primary-600)' }} /></div>;
       case 'queued':
-        return <div title="Queued for download"><Clock size={14} className="status-icon queued" style={{ color: 'var(--warning-600)' }} /></div>;
+        return <div title="Queued for download - Will download automatically"><Clock size={14} className="status-icon queued" style={{ color: 'var(--warning-600)' }} /></div>;
       case 'cloud_only':
-        return <div title="Cloud-only (not stored locally)"><Cloud size={14} className="status-icon cloud-only" style={{ color: 'var(--gray-500)' }} /></div>;
+        return <div title="Stored on Arweave only - Click to view online"><Cloud size={14} className="status-icon cloud-only" style={{ color: 'var(--gray-500)' }} /></div>;
       case 'pending':
-        return <div title="Pending sync"><Clock size={14} className="status-icon pending" style={{ color: 'var(--gray-500)' }} /></div>;
+        return <div title="Not yet synced - Checking status"><Clock size={14} className="status-icon pending" style={{ color: 'var(--gray-500)' }} /></div>;
       case 'error':
-        return <div title="Sync error"><AlertCircle size={14} className="status-icon error" style={{ color: 'var(--error-600)' }} /></div>;
+        return <div title="Sync failed - Check error details"><AlertCircle size={14} className="status-icon error" style={{ color: 'var(--error-600)' }} /></div>;
       default:
-        return null;
+        return <div title="Unknown sync status"><WifiOff size={14} className="status-icon unknown" style={{ color: 'var(--gray-400)' }} /></div>;
     }
   };
 
@@ -641,15 +566,59 @@ export const StorageTab: React.FC<StorageTabProps> = ({
     });
   };
 
-  const handleItemClick = (item: FileItem) => {
+  const handleItemClick = async (item: FileItem) => {
     if (item.type === 'folder') {
       // Single click on folder navigates into it
       setCurrentPath([...currentPath, item.name]);
       setExpandedFolders(prev => new Set([...prev, item.id]));
     } else {
-      // Single click on file opens in ArDrive viewer
-      if (item.ardriveUrl) {
-        window.electronAPI.shell.openExternal(item.ardriveUrl);
+      // Check if file is downloaded locally
+      if (item.isDownloaded && item.status === 'synced' && config.syncFolder) {
+        // Open local file - build path using proper platform separator
+        // Detect platform based on sync folder format
+        const isWindows = config.syncFolder.includes('\\') || config.syncFolder.match(/^[A-Z]:/);
+        const separator = isWindows ? '\\' : '/';
+        
+        const pathParts = [config.syncFolder];
+        
+        // Debug logging
+        console.log('Opening local file:', {
+          itemPath: item.path,
+          itemName: item.name,
+          syncFolder: config.syncFolder,
+          isWindows: isWindows
+        });
+        
+        if (item.path && item.path !== '/') {
+          // Remove leading slash and split path
+          const cleanPath = item.path.startsWith('/') ? item.path.slice(1) : item.path;
+          if (cleanPath) {
+            // Split by forward slash and filter out empty parts
+            const pathSegments = cleanPath.split('/').filter(segment => segment.length > 0);
+            pathParts.push(...pathSegments);
+          }
+        }
+        pathParts.push(item.name);
+        
+        // Join with proper separator
+        const localPath = pathParts.join(separator);
+        
+        console.log('Constructed local path:', localPath);
+        
+        try {
+          await window.electronAPI.shell.openPath(localPath);
+        } catch (error) {
+          console.error('Failed to open local file:', error);
+          // Fallback to ArDrive URL if local file can't be opened
+          if (item.ardriveUrl) {
+            window.electronAPI.shell.openExternal(item.ardriveUrl);
+          }
+        }
+      } else {
+        // File not downloaded, open in ArDrive viewer
+        if (item.ardriveUrl) {
+          window.electronAPI.shell.openExternal(item.ardriveUrl);
+        }
       }
     }
   };
@@ -753,9 +722,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
               className="button small outline"
               onClick={handleRefresh}
               disabled={isLoading}
-              title={lastRefreshTime 
-                ? `Last updated: ${lastRefreshTime.toLocaleTimeString()}${!isCacheValid() ? ' (stale)' : ''}` 
-                : 'Refresh file list'}
+              title="Refresh file list"
               style={{
                 display: 'flex',
                 alignItems: 'center',

@@ -89,10 +89,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [showWalletExport, setShowWalletExport] = useState(false);
   const selectedDrive = drive;
   
-  // Permaweb cache state - lifted to Dashboard to persist across tab switches
-  const [permawebCache, setPermawebCache] = useState<any[]>([]);
-  const [permawebCacheTime, setPermawebCacheTime] = useState<Date | null>(null);
-  const [permawebCacheValid, setPermawebCacheValid] = useState(false);
+  // Removed permaweb cache - StorageTab will always load fresh data
 
   // Filter uploads based on search and status
   const filteredUploads = uploads.filter(upload => {
@@ -316,45 +313,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
   }, []);
 
-  // Listen for file state changes and update permaweb cache
-  useEffect(() => {
-    const handleFileStateChange = (data: { fileId: string; syncStatus?: string; syncPreference?: string }) => {
-      console.log('Dashboard: File state changed:', data);
-      
-      // Update the permaweb cache with new state
-      setPermawebCache(prevCache => {
-        if (!prevCache) return prevCache;
-        
-        const updateItemRecursively = (items: any[]): any[] => {
-          return items.map(item => {
-            if (item.id === data.fileId) {
-              return {
-                ...item,
-                status: data.syncStatus || item.status,
-                syncPreference: data.syncPreference || item.syncPreference,
-                isDownloaded: data.syncStatus === 'synced'
-              };
-            }
-            if (item.children) {
-              return {
-                ...item,
-                children: updateItemRecursively(item.children)
-              };
-            }
-            return item;
-          });
-        };
-        
-        return updateItemRecursively(prevCache);
-      });
-    };
-
-    window.electronAPI.onFileStateChanged(handleFileStateChange);
-    
-    return () => {
-      window.electronAPI.removeFileStateChangedListener();
-    };
-  }, []);
+  // Removed file state change handler - StorageTab handles its own updates
 
   
   // Load downloads when switching to download queue tab or activity tab
@@ -885,14 +844,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                   onDriveDeleted={onDriveDeleted}
                   onViewDriveDetails={(drive) => {
                     console.log('View drive details:', drive);
-                  }}
-                  cachedData={permawebCache}
-                  lastRefreshTime={permawebCacheTime}
-                  cacheValid={permawebCacheValid}
-                  onCacheUpdate={(data, time, valid) => {
-                    setPermawebCache(data);
-                    setPermawebCacheTime(time);
-                    setPermawebCacheValid(valid);
                   }}
                 />
               </div>

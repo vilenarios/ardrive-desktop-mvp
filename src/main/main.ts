@@ -938,6 +938,17 @@ class ArDriveApp {
           if (cachedMetadata && cachedMetadata.length > 0) {
             console.log(`Using ${cachedMetadata.length} items from ${isMetadataFresh ? 'fresh' : 'existing'} cache`);
           
+          // Log a sample of the raw data to debug sync status
+          if (cachedMetadata.length > 0) {
+            console.log('Sample cached metadata item:', {
+              fileId: cachedMetadata[0].fileId,
+              name: cachedMetadata[0].name,
+              syncStatus: cachedMetadata[0].syncStatus,
+              localFileExists: cachedMetadata[0].localFileExists,
+              type: cachedMetadata[0].type
+            });
+          }
+          
           // Transform cached data to match expected format
           const fileItems = cachedMetadata.map((item: any) => ({
             id: item.fileId,
@@ -962,6 +973,18 @@ class ArDriveApp {
             contentType: item.contentType
           }));
           
+          // Log a sample of the transformed data
+          if (fileItems.length > 0) {
+            console.log('Sample transformed file item:', {
+              id: fileItems[0].id,
+              name: fileItems[0].name,
+              status: fileItems[0].status,
+              isDownloaded: fileItems[0].isDownloaded,
+              type: fileItems[0].type
+            });
+          }
+          
+          console.log(`Returning ${fileItems.length} files from cache`);
           return fileItems;
           }
           console.log('No cached data found, will query ArDrive API');

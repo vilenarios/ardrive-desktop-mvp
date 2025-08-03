@@ -1773,7 +1773,11 @@ export class DatabaseManager {
           fileHash = excluded.fileHash,
           localPath = excluded.localPath,
           localFileExists = excluded.localFileExists,
-          syncStatus = excluded.syncStatus,
+          syncStatus = CASE 
+            WHEN excluded.syncStatus IS NULL OR excluded.syncStatus = 'pending' 
+            THEN COALESCE(drive_metadata_cache.syncStatus, excluded.syncStatus, 'pending')
+            ELSE excluded.syncStatus 
+          END,
           syncPreference = COALESCE(excluded.syncPreference, syncPreference),
           downloadPriority = COALESCE(excluded.downloadPriority, downloadPriority),
           lastError = excluded.lastError,

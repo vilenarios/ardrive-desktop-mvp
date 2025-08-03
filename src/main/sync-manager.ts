@@ -2562,6 +2562,15 @@ export class SyncManager {
           syncStatus: 'synced'
         });
         console.log(`Added uploaded file to local cache: ${upload.fileName}`);
+        
+        // Emit file state change event to update UI
+        if (fileId) {
+          this.notifyRenderer('file:state-changed', {
+            fileId: fileId,
+            syncStatus: 'synced',
+            syncPreference: 'auto'
+          });
+        }
       }
     } catch (error) {
       console.error('Failed to add uploaded file to cache:', error);
