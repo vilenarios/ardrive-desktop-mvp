@@ -606,7 +606,8 @@ export const StorageTab: React.FC<StorageTabProps> = ({
         console.log('Constructed local path:', localPath);
         
         try {
-          await window.electronAPI.shell.openPath(localPath);
+          // Use openFile to open the file directly with its default application
+          await window.electronAPI.shell.openFile(localPath);
         } catch (error) {
           console.error('Failed to open local file:', error);
           // Fallback to ArDrive URL if local file can't be opened

@@ -558,12 +558,18 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
         return;
       }
       
-      // Open file location for successful downloads
+      // Open file directly for successful downloads
       if (download.localPath && download.status === 'completed') {
         try {
-          await window.electronAPI.shell.openPath(download.localPath);
+          await window.electronAPI.shell.openFile(download.localPath);
         } catch (error) {
           console.error('Failed to open file:', error);
+          // Fallback to opening the containing folder
+          try {
+            await window.electronAPI.shell.openPath(download.localPath);
+          } catch (fallbackError) {
+            console.error('Failed to open containing folder:', fallbackError);
+          }
         }
       }
     }
@@ -657,6 +663,75 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                   <div className="activity-details">
                     <div className="activity-description">
                       {activity.fileName}
+                      {/* Show folder location for uploads */}
+                      {activity.type === 'upload' && activity.status === 'completed' && (
+                        <div className="activity-location" style={{
+                          fontSize: '12px',
+                          color: 'var(--gray-600)',
+                          marginTop: '2px'
+                        }}>
+                          uploaded to{' '}
+                          <button
+                            className="folder-link"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const upload = activity.originalItem as FileUpload;
+                              if (upload.localPath && config.syncFolder) {
+                                // Get the folder path from the file path
+                                const separator = upload.localPath.includes('\\') ? '\\' : '/';
+                                const lastSeparatorIndex = upload.localPath.lastIndexOf(separator);
+                                const folderPath = lastSeparatorIndex > -1 ? upload.localPath.substring(0, lastSeparatorIndex) : upload.localPath;
+                                try {
+                                  await window.electronAPI.shell.openPath(folderPath);
+                                } catch (error) {
+                                  console.error('Failed to open folder:', error);
+                                }
+                              }
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              color: 'var(--ardrive-primary-600)',
+                              textDecoration: 'underline',
+                              cursor: 'pointer',
+                              fontSize: 'inherit',
+                              fontFamily: 'inherit'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.color = 'var(--ardrive-primary-700)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.color = 'var(--ardrive-primary-600)';
+                            }}
+                          >
+                            {(() => {
+                              const upload = activity.originalItem as FileUpload;
+                              if (upload.localPath && config.syncFolder) {
+                                // Extract relative folder path
+                                const fullPath = upload.localPath;
+                                const separator = fullPath.includes('\\') ? '\\' : '/';
+                                const lastSeparatorIndex = fullPath.lastIndexOf(separator);
+                                const folderPath = lastSeparatorIndex > -1 ? fullPath.substring(0, lastSeparatorIndex) : fullPath;
+                                
+                                // Get relative path from sync folder
+                                let relativePath = folderPath.replace(config.syncFolder, '');
+                                // Remove leading separator
+                                if (relativePath.startsWith(separator)) {
+                                  relativePath = relativePath.substring(1);
+                                }
+                                
+                                // Convert to forward slashes for display and get just the folder name
+                                const displayPath = relativePath.replace(/\\/g, '/');
+                                const folderName = displayPath ? displayPath.split('/').pop() || displayPath : 'root';
+                                
+                                return folderName;
+                              }
+                              return 'folder';
+                            })()}
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div className="activity-meta">
                       <span>{formatFileSize(activity.fileSize)}</span>
