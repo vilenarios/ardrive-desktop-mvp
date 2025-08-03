@@ -3046,6 +3046,39 @@ export class SyncManager {
         );
       }
       
+      // Update the metadata cache to reflect the change immediately
+      if (pendingUpload.arfsFileId) {
+        try {
+          // Update cache based on operation type
+          switch (pendingUpload.operationType) {
+            case 'rename':
+              await this.databaseManager.updateDriveMetadataName(
+                pendingUpload.arfsFileId,
+                pendingUpload.fileName
+              );
+              break;
+            case 'move':
+              if (pendingUpload.metadata?.newParentFolderId) {
+                await this.databaseManager.updateDriveMetadataParent(
+                  pendingUpload.arfsFileId,
+                  pendingUpload.metadata.newParentFolderId,
+                  path.dirname(pendingUpload.localPath)
+                );
+              }
+              break;
+          }
+          
+          // Emit events to update UI
+          this.notifyRenderer('drive:update');
+          this.notifyRenderer('file:state-changed', {
+            fileId: pendingUpload.arfsFileId,
+            syncStatus: 'synced'
+          });
+        } catch (error) {
+          console.error('Failed to update metadata cache after operation:', error);
+        }
+      }
+      
       return result;
     } catch (error) {
       console.error(`Failed to execute ${pendingUpload.operationType} operation:`, error);

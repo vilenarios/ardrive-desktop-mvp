@@ -1919,6 +1919,42 @@ export class DatabaseManager {
       });
     });
   }
+  
+  async updateDriveMetadataName(fileId: string, newName: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        UPDATE drive_metadata_cache 
+        SET name = ?, lastSyncedAt = CURRENT_TIMESTAMP
+        WHERE fileId = ?
+      `;
+      
+      this.db!.run(sql, [newName, fileId], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+  
+  async updateDriveMetadataParent(fileId: string, newParentFolderId: string, newPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        UPDATE drive_metadata_cache 
+        SET parentFolderId = ?, path = ?, lastSyncedAt = CURRENT_TIMESTAMP
+        WHERE fileId = ?
+      `;
+      
+      this.db!.run(sql, [newParentFolderId, newPath, fileId], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
 
   async getFilesByStatus(mappingId: string, syncStatus: string): Promise<any[]> {
     return new Promise((resolve, reject) => {

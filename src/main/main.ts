@@ -1878,6 +1878,13 @@ class ArDriveApp {
               // Remove from pending uploads
               await databaseManager.removePendingUpload(pendingUpload.id);
               
+              // Notify UI to refresh - metadata operations complete immediately
+              const mainWindow = BrowserWindow.getAllWindows()[0];
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('drive:update');
+                mainWindow.webContents.send('activity:update');
+              }
+              
               approvedCount++;
               continue; // Skip to next upload
             } catch (error) {

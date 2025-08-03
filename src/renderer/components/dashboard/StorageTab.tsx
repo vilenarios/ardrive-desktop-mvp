@@ -257,7 +257,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
           modifiedAt: new Date(),
           isDownloaded: true,
           isUploaded: true,
-          status: 'pending' as const, // Show as pending until confirmed on Arweave
+          status: 'synced' as const, // File is synced after successful upload
           path: uploadData.path || '/',
           parentId: uploadData.parentFolderId || '',
           ardriveUrl: `https://app.ardrive.io/#/file/${uploadData.fileId}/view`,
@@ -402,7 +402,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
       window.electronAPI.removeDriveUpdateListener();
       window.electronAPI.removeDriveMetadataUpdatedListener();
     };
-  }, []);
+  }, [drive?.id]);
 
   // Close menu when clicking outside
   useEffect(() => {
