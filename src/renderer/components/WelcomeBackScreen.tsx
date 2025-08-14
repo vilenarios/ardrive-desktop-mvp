@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { HardDrive, Plus, FolderOpen, Calendar, Database, ArrowRight, ChevronRight, SkipForward, ArrowLeft, User } from 'lucide-react';
-import { DriveInfo, Profile } from '../../types';
+import { HardDrive, Plus, FolderOpen, Calendar, Database, ArrowRight, ChevronRight, SkipForward, ArrowLeft, User, Lock, Globe } from 'lucide-react';
+import { DriveInfo, DriveInfoWithStatus, Profile } from '../../types';
 import { ProfileSkeleton } from './common/ProfileSkeleton';
 import { DriveListSkeleton } from './common/DriveSkeleton';
 
@@ -23,7 +23,7 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
   onBack,
   onProfileLoaded 
 }) => {
-  const [drives, setDrives] = useState<DriveInfo[]>(initialDrives || []);
+  const [drives, setDrives] = useState<DriveInfoWithStatus[]>([]);
   const [selectedDriveId, setSelectedDriveId] = useState<string | null>(null);
   const [drivesLoading, setDrivesLoading] = useState(!initialDrives);
   const [profileLoading, setProfileLoading] = useState(!currentProfile);
@@ -31,22 +31,16 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
 
   useEffect(() => {
     if (!initialDrives) {
+      // If no initial drives provided, try to load them
       loadDrives();
     } else {
-      // Filter and set public drives from initial drives
-      const publicDrives = initialDrives.filter((drive: DriveInfo) => 
-        drive.privacy === 'public' && !drive.isPrivate
-      );
-      console.log('Initial drives:', initialDrives);
-      console.log('Filtered public drives:', publicDrives);
-      
-      // Update the drives state with filtered public drives
-      setDrives(publicDrives);
+      // Use the initial drives (show ALL drives, not just public)
+      setDrives(initialDrives as DriveInfoWithStatus[]);
       setDrivesLoading(false);
       
-      // Pre-select the most recent drive if there's only one
-      if (publicDrives.length === 1) {
-        setSelectedDriveId(publicDrives[0].id);
+      // Pre-select if there's only one drive
+      if (initialDrives.length === 1) {
+        setSelectedDriveId(initialDrives[0].id);
       }
     }
   }, [initialDrives]);
@@ -54,20 +48,42 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
   const loadDrives = async () => {
     try {
       setDrivesLoading(true);
-      const driveList = await window.electronAPI.drive.list();
-      console.log('Loaded drives in WelcomeBackScreen:', driveList);
       
-      // Filter out private drives since they're not supported yet
-      const publicDrives = (driveList || []).filter((drive: DriveInfo) => 
-        drive.privacy === 'public' && !drive.isPrivate
-      );
-      console.log('Filtered to public drives only:', publicDrives);
+      let driveList: DriveInfoWithStatus[] = [];
       
-      setDrives(publicDrives);
+      // Try to use listWithStatus for emoji fingerprints
+      try {
+        const result = await window.electronAPI.drive.listWithStatus();
+        console.log('Loaded drives with status in WelcomeBackScreen:', result);
+        
+        // Handle wrapped response from IPC handler
+        if (result && result.success && result.data) {
+          driveList = result.data;
+        } else if (Array.isArray(result)) {
+          // Direct array response
+          driveList = result;
+        }
+      } catch (statusErr) {
+        // Fallback to regular list if listWithStatus is not available
+        console.log('listWithStatus not available, falling back to regular list');
+        try {
+          const regularResult = await window.electronAPI.drive.list();
+          if (regularResult && regularResult.success && regularResult.data) {
+            driveList = regularResult.data as DriveInfoWithStatus[];
+          } else if (Array.isArray(regularResult)) {
+            driveList = regularResult as DriveInfoWithStatus[];
+          }
+        } catch (fallbackErr) {
+          console.error('Fallback also failed:', fallbackErr);
+        }
+      }
+      
+      // Show ALL drives (both public and private)
+      setDrives(driveList || []);
       
       // Pre-select the most recent drive if there's only one
-      if (publicDrives.length === 1) {
-        setSelectedDriveId(publicDrives[0].id);
+      if (driveList.length === 1) {
+        setSelectedDriveId(driveList[0].id);
       }
     } catch (err) {
       console.error('Failed to load drives:', err);
@@ -195,8 +211,8 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
               {drivesLoading 
                 ? 'Loading your drives...'
                 : drives.length > 0 
-                  ? `Great news! You already have ${drives.length} public Drive${drives.length !== 1 ? 's' : ''} ready to sync.`
-                  : 'You have existing Drives, but they are private. Private drives are not supported yet.'
+                  ? `Great news! You already have ${drives.length} Drive${drives.length !== 1 ? 's' : ''} ready to sync.`
+                  : 'No drives found. Create a new drive to get started.'
               }
             </p>
           </div>
@@ -259,10 +275,17 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
                 />
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                  <HardDrive size={24} style={{ 
-                    color: selectedDriveId === drive.id ? 'var(--ardrive-primary)' : 'var(--gray-500)',
-                    flexShrink: 0
-                  }} />
+                  {drive.privacy === 'private' ? (
+                    <Lock size={24} style={{ 
+                      color: selectedDriveId === drive.id ? 'var(--ardrive-primary)' : 'var(--gray-500)',
+                      flexShrink: 0
+                    }} />
+                  ) : (
+                    <Globe size={24} style={{ 
+                      color: selectedDriveId === drive.id ? 'var(--ardrive-primary)' : 'var(--gray-500)',
+                      flexShrink: 0
+                    }} />
+                  )}
                   
                   <div style={{ flex: 1 }}>
                     <div style={{ 
@@ -274,21 +297,30 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
                       <h4 style={{ 
                         fontSize: '16px', 
                         fontWeight: '600',
-                        color: 'var(--gray-900)'
+                        color: 'var(--gray-900)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 'var(--space-2)'
                       }}>
                         {drive.name}
+                        {drive.privacy === 'private' && drive.emojiFingerprint && (
+                          <span style={{
+                            fontSize: '14px',
+                            opacity: 0.8
+                          }}>
+                            {drive.emojiFingerprint}
+                          </span>
+                        )}
                       </h4>
-                      {(drive.isPrivate || drive.privacy === 'private') && (
-                        <span style={{
-                          fontSize: '12px',
-                          padding: '2px 8px',
-                          backgroundColor: 'var(--gray-100)',
-                          borderRadius: 'var(--radius-sm)',
-                          color: 'var(--gray-600)'
-                        }}>
-                          Private
-                        </span>
-                      )}
+                      <span style={{
+                        fontSize: '12px',
+                        padding: '2px 8px',
+                        backgroundColor: drive.privacy === 'private' ? 'var(--warning-50)' : 'var(--info-50)',
+                        borderRadius: 'var(--radius-sm)',
+                        color: drive.privacy === 'private' ? 'var(--warning-700)' : 'var(--info-700)'
+                      }}>
+                        {drive.privacy === 'private' ? 'Private' : 'Public'}
+                      </span>
                     </div>
                     
                     <div style={{ 
@@ -361,7 +393,72 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
             </button>
           </div>
         </div>
-        ) : null}
+        ) : (
+          // Show "No drives" state with Create New Drive option
+          <div style={{ marginBottom: 'var(--space-6)' }}>
+            <div style={{ 
+              textAlign: 'center', 
+              padding: 'var(--space-6)',
+              backgroundColor: 'var(--gray-50)',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: 'var(--space-4)'
+            }}>
+              <HardDrive size={48} style={{ color: 'var(--gray-400)', marginBottom: 'var(--space-3)' }} />
+              <h3 style={{ 
+                fontSize: '18px', 
+                fontWeight: '600', 
+                marginBottom: 'var(--space-2)',
+                color: 'var(--gray-700)'
+              }}>
+                No drives found
+              </h3>
+              <p style={{ fontSize: '14px', color: 'var(--gray-600)' }}>
+                Create your first drive to start syncing files
+              </p>
+            </div>
+
+            {/* Create New Drive Option */}
+            <button
+              onClick={onCreateNewDrive}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-3)',
+                padding: 'var(--space-4)',
+                border: '2px dashed var(--gray-300)',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: 'white',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                width: '100%',
+                textAlign: 'left'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'var(--ardrive-primary)';
+                e.currentTarget.style.backgroundColor = 'var(--ardrive-primary-50)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'var(--gray-300)';
+                e.currentTarget.style.backgroundColor = 'white';
+              }}
+            >
+              <Plus size={24} style={{ color: 'var(--ardrive-primary)' }} />
+              <div>
+                <h4 style={{ 
+                  fontSize: '16px', 
+                  fontWeight: '600',
+                  color: 'var(--gray-900)',
+                  marginBottom: '4px'
+                }}>
+                  Create New Drive
+                </h4>
+                <p style={{ fontSize: '14px', color: 'var(--gray-600)' }}>
+                  Start fresh with a new Drive
+                </p>
+              </div>
+            </button>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div style={{ 

@@ -256,6 +256,7 @@ const FileMetadataModal: React.FC<FileMetadataModalProps> = ({
             fileId={file.fileId}
             fileName={file.fileName}
             driveId={driveId}
+            fileKey={file.fileKey}
             onCopySuccess={onCopySuccess}
           />
         </div>

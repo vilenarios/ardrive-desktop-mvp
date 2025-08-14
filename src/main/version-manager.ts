@@ -34,11 +34,18 @@ export interface FileOperation {
 
 export class VersionManager {
   private syncFolderPath: string | null = null;
+  private hashCache = new Map<string, { hash: string; timestamp: number }>();
+  private readonly CACHE_DURATION_MS = 5000; // 5 seconds
 
   constructor(private databaseManager: DatabaseManager) {}
 
   setSyncFolder(folderPath: string) {
     this.syncFolderPath = folderPath;
+  }
+
+  clearCache(): void {
+    this.hashCache.clear();
+    console.log('VersionManager: Cleared hash cache');
   }
 
   async calculateFileHash(filePath: string): Promise<string> {

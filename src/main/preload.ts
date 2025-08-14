@@ -69,6 +69,17 @@ const api = {
       ipcRenderer.invoke('drive:getActive'),
     switchTo: (driveId: string) =>
       ipcRenderer.invoke('drive:switchTo', driveId),
+    // Private drive operations
+    createPrivate: (name: string, password: string) =>
+      ipcRenderer.invoke('drive:create-private', name, password),
+    unlock: (driveId: string, password: string) =>
+      ipcRenderer.invoke('drive:unlock', driveId, password),
+    lock: (driveId: string) =>
+      ipcRenderer.invoke('drive:lock', driveId),
+    isUnlocked: (driveId: string) =>
+      ipcRenderer.invoke('drive:isUnlocked', driveId),
+    listWithStatus: () =>
+      ipcRenderer.invoke('drive:listWithStatus'),
   },
 
   // Sync operations

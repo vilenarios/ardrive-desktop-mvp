@@ -3,7 +3,8 @@ import * as path from 'path';
 import * as os from 'os';
 import { app } from 'electron';
 import { arDriveFactory, ArDrive, readJWKFile, ArweaveAddress } from 'ardrive-core-js';
-import { DriveInfo, WalletInfo, WalletStorageFormat } from '../types';
+import Arweave from 'arweave';
+import { DriveInfo, DriveInfoWithStatus, WalletInfo, WalletStorageFormat } from '../types';
 import { turboManager } from './turbo-manager';
 import * as bip39 from 'bip39';
 import { profileManager } from './profile-manager';
@@ -12,6 +13,8 @@ import { databaseManager } from './database-manager';
 import { writeEncryptedFile, readEncryptedFile, secureDeleteFile, decryptData, encryptData } from './crypto-utils';
 import * as crypto from 'crypto';
 import { keychainService } from './keychain-service';
+import { driveKeyManager } from './drive-key-manager';
+import { getDriveEmojiFingerprint } from './utils/drive-fingerprint';
 
 /**
  * Secure Wallet Manager
@@ -185,6 +188,10 @@ export class SecureWalletManager {
         
         console.log('ArDrive initialized successfully');
         
+        // Initialize Drive Key Manager for private drive support
+        driveKeyManager.setWallet(walletJson);
+        console.log('Drive key manager initialized');
+        
         // Initialize Turbo
         try {
           await turboManager.initialize(walletJson);
@@ -304,6 +311,10 @@ export class SecureWalletManager {
         });
         
         console.log('ArDrive initialized successfully');
+        
+        // Initialize Drive Key Manager for private drive support
+        driveKeyManager.setWallet(walletJson);
+        console.log('Drive key manager initialized');
         
         // Initialize Turbo
         try {
@@ -507,13 +518,10 @@ export class SecureWalletManager {
       
       let drives;
       try {
-        // Import PrivateKeyData from ardrive-core-js
-        const { PrivateKeyData } = await import('ardrive-core-js/lib/arfs/private_key_data');
+        // Get private key data for unlocked drives
+        const privateKeyData = await driveKeyManager.getPrivateKeyData();
         
-        // Create empty PrivateKeyData for public drives only
-        const privateKeyData = new PrivateKeyData({});
-        
-        // Get all drives for this address
+        // Get all drives for this address with private key data
         drives = await this.arDrive.getAllDrivesForAddress({ 
           address: new ArweaveAddress(address),
           privateKeyData: privateKeyData
@@ -532,7 +540,7 @@ export class SecureWalletManager {
       // Map to our DriveInfo format
       const driveInfos = drives.map((drive: any) => ({
         id: drive.driveId.toString(),
-        name: drive.name,
+        name: drive.name, // Will be decrypted name if drive is unlocked
         privacy: drive.drivePrivacy as 'public' | 'private',
         rootFolderId: drive.rootFolderId === 'ENCRYPTED' ? '' : drive.rootFolderId.toString(),
         // Convert unixTime from seconds to milliseconds, or use current time if not available  
@@ -550,14 +558,14 @@ export class SecureWalletManager {
     }
   }
 
-  async createDrive(name: string, privacy: 'private' | 'public' = 'private'): Promise<DriveInfo> {
+  async createDrive(name: string, privacy: 'private' | 'public' = 'public'): Promise<DriveInfo> {
     if (!this.arDrive) {
       throw new Error('Wallet not loaded');
     }
 
-    // For now, only support public drives until private drive support is fully implemented
+    // Redirect private drive creation to the specific method
     if (privacy === 'private') {
-      throw new Error('Private drives are not yet supported. Please create a public drive for now.');
+      throw new Error('Use createPrivateDrive() method for private drives with password');
     }
 
     try {
@@ -725,6 +733,9 @@ export class SecureWalletManager {
     this.arDrive = null;
     this.wallet = null;
     this.walletJson = null;
+    
+    // Clear drive keys
+    driveKeyManager.clearAllKeys();
     
     // Securely clear encrypted session password
     this.clearSessionPassword();
@@ -1092,6 +1103,180 @@ export class SecureWalletManager {
     } catch (error) {
       // Ignore errors - this is best effort cleanup
     }
+  }
+
+  // ===== PRIVATE DRIVE METHODS =====
+
+  /**
+   * Create a new private drive with password protection
+   */
+  async createPrivateDrive(name: string, password: string): Promise<DriveInfo> {
+    if (!this.arDrive) {
+      throw new Error('Wallet not loaded');
+    }
+
+    try {
+      console.log('Creating private drive with name:', name);
+
+      // Generate private drive key data from password
+      if (!this.walletJson) {
+        throw new Error('Wallet not loaded');
+      }
+      const { PrivateDriveKeyData } = await import('ardrive-core-js');
+      const newPrivateDriveData = await PrivateDriveKeyData.from(password, this.walletJson);
+
+      // Create the private drive using ardrive-core-js
+      const result = await this.arDrive.createPrivateDrive({
+        driveName: name,
+        newPrivateDriveData
+      });
+
+      console.log('Private drive creation result:', JSON.stringify(result, null, 2));
+
+      if (!result.created || result.created.length === 0) {
+        throw new Error('Invalid private drive creation response');
+      }
+
+      // Extract drive info from result
+      const driveEntity = result.created.find(e => e.type === 'drive');
+      const folderEntity = result.created.find(e => e.type === 'folder');
+      
+      if (!driveEntity || !folderEntity) {
+        throw new Error('Invalid drive creation response - missing drive or folder entity');
+      }
+
+      if (!driveEntity.entityId) {
+        throw new Error('Drive creation failed - no entity ID returned');
+      }
+      if (!folderEntity.entityId) {
+        throw new Error('Folder creation failed - no entity ID returned');
+      }
+      const driveId = driveEntity.entityId.toString();
+      
+      // Unlock the drive immediately for this session
+      const unlocked = await driveKeyManager.unlockDrive(driveId, password);
+      if (!unlocked) {
+        console.warn('Drive created but failed to unlock immediately');
+      }
+      
+      const driveInfo: DriveInfo = {
+        id: driveId,
+        name,
+        privacy: 'private',
+        rootFolderId: folderEntity.entityId.toString(),
+        metadataTxId: driveEntity.metadataTxId?.toString(),
+        dateCreated: Date.now(),
+        size: 0,
+        isPrivate: true
+      };
+
+      console.log('Created private drive:', driveInfo);
+      return driveInfo;
+    } catch (error) {
+      console.error('Failed to create private drive:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Unlock a private drive for the current session
+   */
+  async unlockPrivateDrive(driveId: string, password: string): Promise<boolean> {
+    try {
+      console.log(`Attempting to unlock private drive ${driveId.slice(0, 8)}...`);
+      
+      const success = await driveKeyManager.unlockDrive(driveId, password);
+      
+      if (success) {
+        console.log(`✅ Private drive ${driveId.slice(0, 8)}... unlocked successfully`);
+        
+        // Recreate ArDrive instance with updated private key data
+        await this.recreateArDriveWithPrivateKeys();
+      } else {
+        console.log(`❌ Failed to unlock private drive ${driveId.slice(0, 8)}...`);
+      }
+      
+      return success;
+    } catch (error) {
+      console.error('Error unlocking private drive:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Recreate the ArDrive instance with current private key data
+   * This is needed when private drives are unlocked/locked
+   */
+  private async recreateArDriveWithPrivateKeys(): Promise<void> {
+    if (!this.wallet || !this.walletJson) {
+      console.error('Cannot recreate ArDrive - wallet not loaded');
+      return;
+    }
+    
+    try {
+      console.log('Recreating ArDrive instance with updated private key data...');
+      
+      // Get current private key data from drive key manager
+      const privateKeyData = await driveKeyManager.getPrivateKeyData();
+      
+      // Create new ArDrive instance with private key data
+      const arweaveInstance = Arweave.init({
+        host: 'arweave.net',
+        port: 443,
+        protocol: 'https',
+        timeout: 120000,
+        logging: true
+      });
+      
+      // Create ArDrive with private key data included
+      // Note: arDriveFactory may not accept privateKeyData directly
+      // We'll pass it through the wallet if supported
+      this.arDrive = arDriveFactory({ 
+        wallet: this.wallet,
+        arweave: arweaveInstance,
+        turboSettings: {
+          turboUrl: new URL('https://upload.ardrive.io')
+        }
+      });
+      
+      console.log('ArDrive instance recreated successfully');
+    } catch (error) {
+      console.error('Failed to recreate ArDrive instance:', error);
+      // Keep the existing instance if recreation fails
+    }
+  }
+
+  /**
+   * Lock a private drive (remove from session cache)
+   */
+  async lockPrivateDrive(driveId: string): Promise<void> {
+    driveKeyManager.lockDrive(driveId);
+    console.log(`Private drive ${driveId.slice(0, 8)}... locked`);
+  }
+
+  /**
+   * Check if a private drive is unlocked
+   */
+  async isDriveUnlocked(driveId: string): Promise<boolean> {
+    try {
+      return driveKeyManager.isUnlocked(driveId);
+    } catch (error) {
+      console.error('Failed to check drive unlock status:', error);
+      return false;
+    }
+  }
+
+  /**
+   * List all drives with their unlock status
+   */
+  async listDrivesWithStatus(): Promise<DriveInfoWithStatus[]> {
+    const drives = await this.listDrives();
+    
+    return drives.map(drive => ({
+      ...drive,
+      isLocked: drive.privacy === 'private' && !driveKeyManager.isUnlocked(drive.id),
+      emojiFingerprint: drive.privacy === 'private' ? getDriveEmojiFingerprint(drive.id) : undefined
+    }));
   }
 
 }

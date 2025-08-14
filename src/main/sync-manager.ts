@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
 import { BrowserWindow } from 'electron';
-import { ArDrive, wrapFileOrFolder, EID } from 'ardrive-core-js';
+import { ArDrive, wrapFileOrFolder, EID, PrivateKeyData } from 'ardrive-core-js';
 import { DatabaseManager } from './database-manager';
 import { VersionManager, ChangeType } from './version-manager';
 import { FileUpload, SyncStatus, PendingUpload } from '../types';
@@ -14,6 +14,7 @@ import { UploadQueueManager } from './sync/UploadQueueManager';
 import { DownloadManager } from './sync/DownloadManager';
 import { FolderOperationDetector, OperationDetection } from './sync/FolderOperationDetector';
 import { FileOperationDetector } from './sync/FileOperationDetector';
+import { driveKeyManager } from './drive-key-manager';
 
 interface SyncProgress {
   phase?: string;
@@ -65,6 +66,7 @@ export class SyncManager {
   private downloadManager: DownloadManager;
   private folderOperationDetector: FolderOperationDetector;
   private fileOperationDetector: FileOperationDetector;
+  private privateKeyData: PrivateKeyData | undefined;
   // REMOVED: File state tracking properties - now managed by FileStateManager
   
   // New sync state management
@@ -155,9 +157,10 @@ export class SyncManager {
     }
   }
 
-  setArDrive(arDrive: ArDrive) {
+  setArDrive(arDrive: ArDrive, privateKeyData?: PrivateKeyData) {
     console.log('SyncManager.setArDrive - ArDrive instance set');
     this.arDrive = arDrive;
+    this.privateKeyData = privateKeyData;
     this.downloadManager.setArDrive(arDrive);
   }
 
@@ -357,12 +360,62 @@ export class SyncManager {
     // Stop current sync gracefully
     await this.stopSync();
     
-    // Clear current drive state
-    this.driveId = null;
-    this.rootFolderId = null;
+    // Clear all state from previous drive
+    await this.clearAllDriveState();
     
     // Start sync with new drive
     return this.startSync(newDriveId, newRootFolderId);
+  }
+  
+  private async clearAllDriveState(): Promise<void> {
+    console.log('Clearing all drive state...');
+    
+    // Clear drive identifiers
+    const previousDriveId = this.driveId;
+    this.driveId = null;
+    this.rootFolderId = null;
+    
+    // Clear upload queue
+    this.uploadQueueManager.clearQueue();
+    
+    // Clear download queue
+    this.downloadManager.clearQueue();
+    
+    // Clear file operation detectors
+    this.fileOperationDetector.clearAllOperations();
+    this.folderOperationDetector.clearAllOperations();
+    
+    // Clear file state tracking
+    this.fileStateManager.clearAllProcessing();
+    
+    // Clear version manager cache
+    this.versionManager.clearCache();
+    
+    // Clear progress tracking
+    this.progressTracker.reset();
+    
+    // Clear database caches for the previous drive
+    if (previousDriveId) {
+      try {
+        const mappings = await this.databaseManager.getDriveMappings();
+        const previousMapping = mappings.find(m => m.driveId === previousDriveId);
+        if (previousMapping) {
+          console.log(`Clearing database cache for drive mapping: ${previousMapping.id}`);
+          await this.databaseManager.clearDriveMetadataCache(previousMapping.id);
+        }
+      } catch (error) {
+        console.error('Failed to clear database cache:', error);
+      }
+    }
+    
+    // Reset sync state
+    this.syncState = 'idle';
+    this.syncPromise = null;
+    this.totalItemsToSync = 0;
+    this.foldersToCreate = 0;
+    this.filesToDownload = 0;
+    
+    console.log('Drive state cleared successfully');
   }
 
   // DEBUG: Method to check current sync state
@@ -2116,10 +2169,28 @@ export class SyncManager {
           return;
         }
         
-        const result = await this.arDrive!.createPublicFolder({
-          parentFolderId: EID(parentFolderId!),
-          folderName: itemName
-        });
+        // Get drive mapping to check privacy
+        const mappings = await this.databaseManager.getDriveMappings();
+        const mapping = mappings.find(m => m.driveId === this.driveId);
+        const isPrivateDrive = mapping?.drivePrivacy === 'private';
+        
+        let result;
+        if (isPrivateDrive) {
+          const driveKey = driveKeyManager.getDriveKey(this.driveId!);
+          if (!driveKey) {
+            throw new Error('Private drive is locked - cannot create folder');
+          }
+          result = await this.arDrive!.createPrivateFolder({
+            parentFolderId: EID(parentFolderId!),
+            folderName: itemName,
+            driveKey: driveKey
+          });
+        } else {
+          result = await this.arDrive!.createPublicFolder({
+            parentFolderId: EID(parentFolderId!),
+            folderName: itemName
+          });
+        }
         
         if (result.created && result.created.length > 0) {
           const createdFolder = result.created[0];
@@ -2166,7 +2237,12 @@ export class SyncManager {
       // Wrap file for upload using ArDrive Core
       const wrappedFile = wrapFileOrFolder(upload.localPath);
       
-      // Check if using Turbo and configure appropriately
+      // Get drive mapping to check if private
+      const mappings = await this.databaseManager.getDriveMappings();
+      const mapping = mappings.find(m => m.driveId === this.driveId);
+      const isPrivateDrive = mapping?.drivePrivacy === 'private';
+      
+      // Build upload options
       const uploadOptions: any = {
         entitiesToUpload: [
           {
@@ -2175,6 +2251,16 @@ export class SyncManager {
           }
         ]
       };
+      
+      // For private drives, add the drive key to each entity
+      if (isPrivateDrive) {
+        const driveKey = driveKeyManager.getDriveKey(this.driveId!);
+        if (!driveKey) {
+          throw new Error('Private drive is locked - cannot upload files');
+        }
+        console.log('Adding drive key for private file upload');
+        uploadOptions.entitiesToUpload[0].driveKey = driveKey;
+      }
       
       // If using Turbo, ensure ArDrive is configured for Turbo uploads
       if (upload.uploadMethod === 'turbo') {
@@ -2224,15 +2310,30 @@ export class SyncManager {
             const retryWrappedFile = wrapFileOrFolder(upload.localPath);
             const retryTargetFolderId = await this.getTargetFolderId(upload.localPath);
             
-            // Retry the upload
-            const retryResult = await this.arDrive!.uploadAllEntities({
+            // Build retry options
+            const retryOptions: any = {
               entitiesToUpload: [
                 {
                   wrappedEntity: retryWrappedFile,
                   destFolderId: EID(retryTargetFolderId)
                 }
               ]
-            });
+            };
+            
+            // Add drive key for private drives (check again in retry)
+            const retryMappings = await this.databaseManager.getDriveMappings();
+            const retryMapping = retryMappings.find(m => m.driveId === this.driveId);
+            const retryIsPrivateDrive = retryMapping?.drivePrivacy === 'private';
+            
+            if (retryIsPrivateDrive) {
+              const driveKey = driveKeyManager.getDriveKey(this.driveId!);
+              if (driveKey) {
+                retryOptions.entitiesToUpload[0].driveKey = driveKey;
+              }
+            }
+            
+            // Retry the upload
+            const retryResult = await this.arDrive!.uploadAllEntities(retryOptions);
             
             // If retry succeeded, process the result
             console.log('Retry successful:', retryResult);
@@ -2418,10 +2519,28 @@ export class SyncManager {
     }
     
     try {
-      const result = await this.arDrive!.createPublicFolder({
-        parentFolderId: EID(parentFolderId),
-        folderName: folderName
-      });
+      // Get drive mapping to check privacy
+      const mappings = await this.databaseManager.getDriveMappings();
+      const mapping = mappings.find(m => m.driveId === this.driveId);
+      const isPrivateDrive = mapping?.drivePrivacy === 'private';
+      
+      let result;
+      if (isPrivateDrive) {
+        const driveKey = driveKeyManager.getDriveKey(this.driveId!);
+        if (!driveKey) {
+          throw new Error('Private drive is locked - cannot create folder');
+        }
+        result = await this.arDrive!.createPrivateFolder({
+          parentFolderId: EID(parentFolderId),
+          folderName: folderName,
+          driveKey: driveKey
+        });
+      } else {
+        result = await this.arDrive!.createPublicFolder({
+          parentFolderId: EID(parentFolderId),
+          folderName: folderName
+        });
+      }
       
       if (result.created && result.created.length > 0) {
         const createdFolder = result.created[0];
@@ -2459,10 +2578,13 @@ export class SyncManager {
         console.log(`Folder "${folderName}" already exists on Arweave, fetching its ID...`);
         
         try {
+          // Get drive mapping to check privacy
+          const mappings = await this.databaseManager.getDriveMappings();
+          const mapping = mappings.find(m => m.driveId === this.driveId);
+          const isPrivateDrive = mapping?.drivePrivacy === 'private';
+          
           // List the parent folder contents to find the existing folder
-          const parentContents = await this.arDrive!.listPublicFolder({
-            folderId: EID(parentFolderId)
-          });
+          const parentContents = await this.listFolderContents(parentFolderId, isPrivateDrive);
           
           // Find the folder by name
           const existingFolder = parentContents.find(
@@ -2676,14 +2798,49 @@ export class SyncManager {
     }
 
     try {
-      // Use the simple ArDrive Core approach like ardrive-cli
-      console.log('Fetching drive contents via ArDrive Core listPublicFolder...');
+      // Check if drive is private from mapping
+      const isPrivateDrive = mapping.drivePrivacy === 'private';
+      console.log(`Fetching drive contents via ArDrive Core ${isPrivateDrive ? 'listPrivateFolder' : 'listPublicFolder'}...`);
       
-      const allItems = await this.arDrive!.listPublicFolder({
-        folderId: EID(this.rootFolderId!),
-        maxDepth: 10, // Get full hierarchy
-        includeRoot: false // Don't include root folder itself
-      });
+      let allItems: any[] = [];
+      if (isPrivateDrive) {
+        const driveKey = driveKeyManager.getDriveKey(this.driveId!);
+        if (!driveKey) {
+          console.warn('Private drive is locked - cannot list contents');
+          return; // Skip sync for locked private drives
+        }
+        
+        console.log('Listing private folder with:', {
+          folderId: this.rootFolderId,
+          hasDriveKey: !!driveKey,
+          driveKeyId: (driveKey as any).driveId || this.driveId,
+          driveId: this.driveId
+        });
+        
+        try {
+          allItems = await this.arDrive!.listPrivateFolder({
+            folderId: EID(this.rootFolderId!),
+            maxDepth: 10, // Get full hierarchy
+            includeRoot: false, // Don't include root folder itself
+            driveKey: driveKey
+          });
+        } catch (error) {
+          console.error('Failed to list private folder contents:', error);
+          console.error('Error details:', {
+            message: error instanceof Error ? error.message : 'Unknown error',
+            rootFolderId: this.rootFolderId,
+            driveId: this.driveId
+          });
+          // Return empty array to continue sync without metadata
+          allItems = [];
+        }
+      } else {
+        allItems = await this.arDrive!.listPublicFolder({
+          folderId: EID(this.rootFolderId!),
+          maxDepth: 10, // Get full hierarchy
+          includeRoot: false // Don't include root folder itself
+        });
+      }
       
       // Sort by path like ardrive-cli does
       const sortedItems = allItems.sort((a: any, b: any) => {
@@ -2779,14 +2936,31 @@ export class SyncManager {
     }
   }
 
+  // Helper method to list folder contents (handles both public and private)
+  private async listFolderContents(folderId: string, isPrivate: boolean): Promise<any[]> {
+    if (isPrivate) {
+      const driveKey = driveKeyManager.getDriveKey(this.driveId!);
+      if (!driveKey) {
+        console.warn('Private drive is locked - cannot list folder contents');
+        return [];
+      }
+      return await this.arDrive!.listPrivateFolder({
+        folderId: EID(folderId),
+        driveKey: driveKey
+      });
+    } else {
+      return await this.arDrive!.listPublicFolder({
+        folderId: EID(folderId)
+      });
+    }
+  }
+
   // Recursively list all drive contents
-  private async recursivelyListDriveContents(folderId: string, parentPath: string): Promise<any[]> {
+  private async recursivelyListDriveContents(folderId: string, parentPath: string, isPrivate: boolean = false): Promise<any[]> {
     const items: any[] = [];
     
     try {
-      const folderContents = await this.arDrive!.listPublicFolder({
-        folderId: EID(folderId)
-      });
+      const folderContents = await this.listFolderContents(folderId, isPrivate);
 
       for (const item of folderContents) {
         const itemPath = parentPath ? `${parentPath}/${item.name}` : item.name;
@@ -2801,7 +2975,7 @@ export class SyncManager {
           });
           
           // Recursively list folder contents
-          const subItems = await this.recursivelyListDriveContents(item.folderId.toString(), itemPath);
+          const subItems = await this.recursivelyListDriveContents(item.folderId.toString(), itemPath, isPrivate);
           items.push(...subItems);
           
         } else if (item.entityType === 'file') {
@@ -3197,10 +3371,15 @@ export class SyncManager {
           return;
         }
         
+        // Get the active drive mapping to ensure we have the correct driveId
+        const mappings = await this.databaseManager.getDriveMappings();
+        const activeMapping = mappings.find((m: any) => m.isActive);
+        const driveId = activeMapping?.driveId || this.driveId || undefined;
+        
         // Create a move/rename operation in pending uploads
         const moveOperation: Omit<PendingUpload, 'createdAt'> = {
           id: crypto.randomUUID(),
-          driveId: this.driveId || undefined,
+          driveId: driveId,
           localPath: newPath,
           fileName: fileName,
           fileSize: fileStats.size,

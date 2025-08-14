@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { AppConfig, DriveInfo, WalletInfo, SyncStatus, FileUpload, PendingUpload, ConflictResolution, Profile, SyncProgress } from '../../types';
+import { AppConfig, DriveInfo, DriveInfoWithStatus, WalletInfo, SyncStatus, FileUpload, PendingUpload, ConflictResolution, Profile, SyncProgress } from '../../types';
 import UploadApprovalQueueModern from './UploadApprovalQueueModern';
 import TurboCreditsManager from './TurboCreditsManager';
 import FileMetadataModal from './FileMetadataModal';
@@ -93,7 +93,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const selectedDrive = drive;
   
   // Drive management state
-  const [drives, setDrives] = useState<DriveInfo[]>([]);
+  const [drives, setDrives] = useState<DriveInfoWithStatus[]>([]);
   const [isDrivesLoading, setIsDrivesLoading] = useState(true);
   const [isSwitchingDrive, setIsSwitchingDrive] = useState(false);
   const [showCreateDriveModal, setShowCreateDriveModal] = useState(false);
@@ -368,7 +368,20 @@ const Dashboard: React.FC<DashboardProps> = ({
       try {
         setIsDrivesLoading(true);
         const mappedDrives = await window.electronAPI.drive.getMapped();
-        setDrives(mappedDrives);
+        // Get drives with status info for private drive support
+        const drivesWithStatus = await window.electronAPI.drive.listWithStatus();
+        
+        // Merge mapped drives with status info
+        const mergedDrives = mappedDrives.map((mappedDrive: any) => {
+          const driveWithStatus = drivesWithStatus.find((d: DriveInfoWithStatus) => d.id === mappedDrive.id);
+          return {
+            ...mappedDrive,
+            isLocked: driveWithStatus?.isLocked ?? false,
+            emojiFingerprint: driveWithStatus?.emojiFingerprint
+          };
+        });
+        
+        setDrives(mergedDrives);
       } catch (error) {
         console.error('Failed to load drives:', error);
         toast?.error('Failed to load drives');
@@ -445,9 +458,21 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Handle drive created
   const handleDriveCreated = async (newDrive: DriveInfo) => {
     try {
-      // Refresh drives list
-      const allDrives = await window.electronAPI.drive.getAll();
-      setDrives(allDrives);
+      // Refresh drives list with status info
+      const mappedDrives = await window.electronAPI.drive.getMapped();
+      const drivesWithStatus = await window.electronAPI.drive.listWithStatus();
+      
+      // Merge mapped drives with status info
+      const mergedDrives = mappedDrives.map((mappedDrive: any) => {
+        const driveWithStatus = drivesWithStatus.find((d: DriveInfoWithStatus) => d.id === mappedDrive.id);
+        return {
+          ...mappedDrive,
+          isLocked: driveWithStatus?.isLocked ?? false,
+          emojiFingerprint: driveWithStatus?.emojiFingerprint
+        };
+      });
+      
+      setDrives(mergedDrives);
       
       toast?.success(`Drive "${newDrive.name}" created successfully!`);
       
@@ -460,9 +485,21 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Handle existing drive added
   const handleExistingDriveAdded = async (addedDrive: DriveInfo) => {
     try {
-      // Refresh drives list
-      const allDrives = await window.electronAPI.drive.getAll();
-      setDrives(allDrives);
+      // Refresh drives list with status info
+      const mappedDrives = await window.electronAPI.drive.getMapped();
+      const drivesWithStatus = await window.electronAPI.drive.listWithStatus();
+      
+      // Merge mapped drives with status info
+      const mergedDrives = mappedDrives.map((mappedDrive: any) => {
+        const driveWithStatus = drivesWithStatus.find((d: DriveInfoWithStatus) => d.id === mappedDrive.id);
+        return {
+          ...mappedDrive,
+          isLocked: driveWithStatus?.isLocked ?? false,
+          emojiFingerprint: driveWithStatus?.emojiFingerprint
+        };
+      });
+      
+      setDrives(mergedDrives);
       
       toast?.success(`Drive "${addedDrive.name}" added successfully!`);
       
@@ -632,7 +669,27 @@ const Dashboard: React.FC<DashboardProps> = ({
         isOpen={showCreateDriveModal}
         onClose={() => setShowCreateDriveModal(false)}
         onDriveCreated={handleDriveCreated}
-        currentSyncFolder={config.syncFolder}
+        currentSyncFolder={(() => {
+          // Extract base sync folder from current drive's folder
+          // If current folder is C:\ARDRIVE\My Public Drive, we want C:\ARDRIVE
+          if (config.syncFolder && selectedDrive?.name) {
+            const driveName = selectedDrive.name;
+            const currentPath = config.syncFolder;
+            
+            // Check if current path ends with the drive name
+            if (currentPath.endsWith(driveName)) {
+              // Remove the drive name part to get base folder
+              const separator = currentPath.includes('\\') ? '\\' : '/';
+              const parts = currentPath.split(separator);
+              if (parts[parts.length - 1] === driveName) {
+                parts.pop(); // Remove drive name
+                return parts.join(separator);
+              }
+            }
+          }
+          // Fallback to current sync folder if we can't determine base
+          return config.syncFolder;
+        })()}
       />
 
       {/* Add Existing Drive Modal */}
@@ -640,7 +697,27 @@ const Dashboard: React.FC<DashboardProps> = ({
         isOpen={showAddExistingDriveModal}
         onClose={() => setShowAddExistingDriveModal(false)}
         onDriveAdded={handleExistingDriveAdded}
-        currentSyncFolder={config.syncFolder}
+        currentSyncFolder={(() => {
+          // Extract base sync folder from current drive's folder
+          // If current folder is C:\ARDRIVE\My Public Drive, we want C:\ARDRIVE
+          if (config.syncFolder && selectedDrive?.name) {
+            const driveName = selectedDrive.name;
+            const currentPath = config.syncFolder;
+            
+            // Check if current path ends with the drive name
+            if (currentPath.endsWith(driveName)) {
+              // Remove the drive name part to get base folder
+              const separator = currentPath.includes('\\') ? '\\' : '/';
+              const parts = currentPath.split(separator);
+              if (parts[parts.length - 1] === driveName) {
+                parts.pop(); // Remove drive name
+                return parts.join(separator);
+              }
+            }
+          }
+          // Fallback to current sync folder if we can't determine base
+          return config.syncFolder;
+        })()}
         existingDriveIds={drives.map(d => d.id)}
       />
 

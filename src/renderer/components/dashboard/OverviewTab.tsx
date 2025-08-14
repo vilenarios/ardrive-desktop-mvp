@@ -316,7 +316,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           Dashboard Overview
         </h2>
         <p style={{ color: 'var(--gray-600)', fontSize: '16px', margin: 0 }}>
-          Welcome to your ArDrive. Here&apos;s what&apos;s happening with your permanent storage.
+          Welcome to your drive! Here&apos;s what&apos;s happening with your permanent storage.
         </p>
       </div>
 

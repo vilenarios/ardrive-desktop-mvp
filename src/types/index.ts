@@ -50,6 +50,11 @@ export interface DriveInfo {
   isPrivate?: boolean;  // Alternative to privacy field
 }
 
+export interface DriveInfoWithStatus extends DriveInfo {
+  isLocked: boolean;           // For private drives: whether they need unlocking
+  emojiFingerprint?: string;   // For private drives: emoji representation
+}
+
 export interface FileUpload {
   id: string;
   driveId?: string;             // ArDrive ID
@@ -63,6 +68,7 @@ export interface FileUpload {
   metadataTxId?: string;  // ArFS Metadata Transaction ID (file info)
   transactionId?: string; // Legacy field for backward compatibility
   fileId?: string;        // ArDrive File ID for sharing links
+  fileKey?: string;       // File key for private files
   error?: string;
   createdAt: Date;
   completedAt?: Date;

@@ -43,7 +43,7 @@ export class ArNSService {
       }
       // Create a timeout promise
       const timeoutPromise = new Promise<null>((resolve) => {
-        setTimeout(() => resolve(null), 5000); // 5 second timeout
+        setTimeout(() => resolve(null), 10000); // 10 second timeout for better reliability
       });
 
       // Race between the API call and timeout
@@ -92,7 +92,7 @@ export class ArNSService {
     try {
       // Create timeout promise
       const timeoutPromise = new Promise<{ processId: string | null; logo: string | null }>((resolve) => {
-        setTimeout(() => resolve({ processId: null, logo: null }), 3000); // 3 second timeout
+        setTimeout(() => resolve({ processId: null, logo: null }), 8000); // 8 second timeout for better reliability
       });
 
       // Wrap the entire operation in a promise

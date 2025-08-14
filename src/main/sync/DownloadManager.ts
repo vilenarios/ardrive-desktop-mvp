@@ -7,6 +7,7 @@ import { IFileStateManager, ISyncProgressTracker } from './interfaces';
 // FileHashVerifier no longer needed - we get hash from streaming download
 import { StreamingDownloader } from './StreamingDownloader';
 import { BrowserWindow } from 'electron';
+import { driveKeyManager } from '../drive-key-manager';
 
 export class DownloadManager {
   private isDownloading = false;
@@ -154,6 +155,34 @@ export class DownloadManager {
     }
   }
   
+  clearQueue(): void {
+    const queueSize = this.downloadQueue.size;
+    const activeSize = this.activeDownloads.size;
+    
+    // Cancel any active downloads
+    this.streamingDownloader.cancelAllDownloads();
+    
+    // Clear download tracking
+    this.downloadQueue.clear();
+    this.activeDownloads.clear();
+    this.failedDownloads.clear();
+    
+    // Clear progress tracking
+    this.progressBatch.clear();
+    this.lastProgressUpdate.clear();
+    
+    // Stop queue processing
+    if (this.queueProcessingTimeout) {
+      clearTimeout(this.queueProcessingTimeout);
+      this.queueProcessingTimeout = null;
+    }
+    
+    this.isProcessingQueue = false;
+    this.isDownloading = false;
+    
+    console.log(`Cleared download queue (removed ${queueSize} queued, ${activeSize} active downloads)`);
+  }
+
   destroy(): void {
     // Stop all timers
     if (this.progressFlushInterval) {
@@ -166,29 +195,13 @@ export class DownloadManager {
       this.memoryCleanupInterval = null;
     }
     
-    if (this.queueProcessingTimeout) {
-      clearTimeout(this.queueProcessingTimeout);
-      this.queueProcessingTimeout = null;
-    }
-    
-    // Clear all data structures to free memory
-    this.downloadQueue.clear();
-    this.activeDownloads.clear();
-    this.progressBatch.clear();
-    this.lastProgressUpdate.clear();
-    this.failedDownloads.clear();
-    
-    // Cancel any active downloads
-    this.streamingDownloader.cancelAllDownloads();
+    // Clear queue and active downloads
+    this.clearQueue();
     
     // Clean up progress tracker
     if (this.progressTracker && typeof this.progressTracker.destroy === 'function') {
       this.progressTracker.destroy();
     }
-    
-    // Mark as not processing
-    this.isProcessingQueue = false;
-    this.isDownloading = false;
     
     console.log('DownloadManager destroyed and memory cleaned up');
   }
@@ -718,13 +731,43 @@ export class DownloadManager {
     const items: any[] = [];
     
     try {
-      const folderContents = await this.arDrive!.listPublicFolder({
-        folderId: EID(folderId)
-      });
+      // Check if drive is private to use the correct listing method
+      let isPrivateDrive = false;
+      let driveKey: any = null;
+      
+      if (this.driveId) {
+        const mappings = await this.databaseManager.getDriveMappings();
+        const mapping = mappings.find(m => m.driveId === this.driveId);
+        isPrivateDrive = mapping?.drivePrivacy === 'private';
+        
+        if (isPrivateDrive) {
+          // Get the drive key from the manager
+          driveKey = driveKeyManager.getDriveKey(this.driveId);
+          
+          if (!driveKey) {
+            console.error('Private drive is locked - cannot list contents');
+            throw new Error('Private drive is locked');
+          }
+        }
+      }
+      
+      // List folder contents using the appropriate method
+      let folderContents: any[];
+      if (isPrivateDrive && driveKey) {
+        console.log(`Listing private folder ${folderId} with decryption key...`);
+        folderContents = await this.arDrive!.listPrivateFolder({
+          folderId: EID(folderId),
+          driveKey
+        });
+      } else {
+        folderContents = await this.arDrive!.listPublicFolder({
+          folderId: EID(folderId)
+        });
+      }
       
       // Only log folder listing for root folder to reduce noise
       if (parentPath === '') {
-        console.log(`Listing root folder contents...`);
+        console.log(`Listing root folder contents (${isPrivateDrive ? 'private' : 'public'} drive)...`);
       }
       
       // Process folders (filter to get only folders)
@@ -1063,6 +1106,76 @@ export class DownloadManager {
     }
   }
 
+  private async startConcurrentDownload(fileId: string, fileToDownload: any): Promise<void> {
+    try {
+      // Update status to downloading
+      await this.databaseManager.updateDriveMetadataStatus(fileId, 'downloading', false);
+      this.emitFileStateChange(fileId, 'downloading');
+      
+      // Start the download
+      await this.downloadFile(fileToDownload);
+      
+      // Mark as synced and update local file exists flag
+      await this.databaseManager.updateDriveMetadataStatus(fileId, 'synced', true);
+      this.emitFileStateChange(fileId, 'synced');
+      
+      // Notify UI to update activity tab
+      try {
+        const mainWindow = BrowserWindow.getAllWindows()[0];
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('activity:update');
+          // Don't send drive:update here - let file state change handle it
+          console.log(`Notified UI about file ${fileId} sync completion`);
+        }
+      } catch (error) {
+        console.error('Failed to notify activity update:', error);
+      }
+      
+      // Clean up all tracking for this successfully downloaded file
+      this.cleanupCompletedDownload(fileId);
+      
+    } catch (error) {
+      console.error(`Download failed for ${fileToDownload.name}:`, error);
+      
+      // Check if this is a permanent error that shouldn't be retried
+      const errorMessage = error instanceof Error ? error.message : 'Download failed';
+      const isPermanentError = this.isPermanentError(errorMessage);
+      
+      if (isPermanentError) {
+        console.log(`Permanent error for ${fileToDownload.name} (${fileId}), not retrying: ${errorMessage}`);
+        console.log(`Failed file details: size=${fileToDownload.size || 0} bytes, path=${fileToDownload.path}`);
+        await this.databaseManager.updateFileSyncStatus(fileId, 'failed', errorMessage);
+        this.emitFileStateChange(fileId, 'failed');
+        // Clean up all tracking for this permanently failed file
+        this.cleanupCompletedDownload(fileId);
+        this.failedDownloads.delete(fileId);
+      } else {
+        // Increment retry count for retryable errors
+        const retryCount = this.failedDownloads.get(fileId) || 0;
+        const newRetryCount = retryCount + 1;
+        this.failedDownloads.set(fileId, newRetryCount);
+        
+        // Re-queue if under retry limit
+        if (newRetryCount < this.maxRetries) {
+          console.log(`Re-queueing ${fileToDownload.name} for retry ${newRetryCount}/${this.maxRetries}`);
+          this.downloadQueue.set(fileId, fileToDownload);
+          // Trigger queue processing again after a short delay
+          setTimeout(() => this.processDownloadQueue(), 2000);
+        } else {
+          await this.databaseManager.updateFileSyncStatus(fileId, 'failed', errorMessage);
+          this.emitFileStateChange(fileId, 'failed');
+          // Clean up tracking for max-retry failures
+          this.cleanupCompletedDownload(fileId);
+        }
+      }
+    } finally {
+      // Remove from active downloads
+      this.activeDownloads.delete(fileId);
+      // Process queue again to pick up any waiting downloads
+      this.processDownloadQueue();
+    }
+  }
+
   private async processDownloadQueue(): Promise<void> {
     // Prevent multiple concurrent queue processors
     if (this.isProcessingQueue) {
@@ -1110,68 +1223,11 @@ export class DownloadManager {
         this.downloadQueue.delete(fileId);
         this.activeDownloads.add(fileId);
 
-        try {
-          // Update status to downloading
-          await this.databaseManager.updateDriveMetadataStatus(fileId, 'downloading', false);
-          this.emitFileStateChange(fileId, 'downloading');
-          
-          // Start the download
-          await this.downloadFile(fileToDownload);
-          
-          // Mark as synced and update local file exists flag
-          await this.databaseManager.updateDriveMetadataStatus(fileId, 'synced', true);
-          this.emitFileStateChange(fileId, 'synced');
-          
-          // Notify UI to update activity tab
-          try {
-                  const mainWindow = BrowserWindow.getAllWindows()[0];
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('activity:update');
-              // Don't send drive:update here - let file state change handle it
-              console.log(`Notified UI about file ${fileId} sync completion`);
-            }
-          } catch (error) {
-            console.error('Failed to notify activity update:', error);
-          }
-          
-          // Clean up all tracking for this successfully downloaded file
-          this.cleanupCompletedDownload(fileId);
-          
-        } catch (error) {
-          console.error(`Download failed for ${fileToDownload.name}:`, error);
-          
-          // Check if this is a permanent error that shouldn't be retried
-          const errorMessage = error instanceof Error ? error.message : 'Download failed';
-          const isPermanentError = this.isPermanentError(errorMessage);
-          
-          if (isPermanentError) {
-            console.log(`Permanent error for ${fileToDownload.name} (${fileId}), not retrying: ${errorMessage}`);
-            console.log(`Failed file details: size=${fileToDownload.size || 0} bytes, path=${fileToDownload.path}`);
-            await this.databaseManager.updateFileSyncStatus(fileId, 'failed', errorMessage);
-            this.emitFileStateChange(fileId, 'failed');
-            // Clean up all tracking for this permanently failed file
-            this.cleanupCompletedDownload(fileId);
-            this.failedDownloads.delete(fileId);
-          } else {
-            // Increment retry count for retryable errors
-            const newRetryCount = retryCount + 1;
-            this.failedDownloads.set(fileId, newRetryCount);
-            
-            // Re-queue if under retry limit
-            if (newRetryCount < this.maxRetries) {
-              console.log(`Re-queueing ${fileToDownload.name} for retry ${newRetryCount}/${this.maxRetries}`);
-              this.downloadQueue.set(fileId, fileToDownload);
-            } else {
-              await this.databaseManager.updateFileSyncStatus(fileId, 'failed', errorMessage);
-              this.emitFileStateChange(fileId, 'failed');
-              // Clean up tracking for max-retry failures
-              this.cleanupCompletedDownload(fileId);
-            }
-          }
-        } finally {
-          // Remove from active downloads
-          this.activeDownloads.delete(fileId);
-        }
+        // Start the download asynchronously (don't await here to allow concurrent downloads)
+        console.log(`Starting concurrent download ${this.activeDownloads.size}/${this.maxConcurrentDownloads}: ${fileToDownload.name}`);
+        this.startConcurrentDownload(fileId, fileToDownload).catch(error => {
+          console.error(`Concurrent download handler error for ${fileToDownload.name}:`, error);
+        });
       }
     } finally {
       this.isProcessingQueue = false;

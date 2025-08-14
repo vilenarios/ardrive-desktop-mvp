@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, HardDrive, Globe, Lock, AlertCircle } from 'lucide-react';
+import { X, HardDrive, Globe, Lock, AlertCircle, Eye, EyeOff, ShieldAlert } from 'lucide-react';
 
 interface CreateDriveModalProps {
   isOpen: boolean;
@@ -16,9 +16,14 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
 }) => {
   const [driveName, setDriveName] = useState('');
   const [drivePrivacy, setDrivePrivacy] = useState<'public' | 'private'>('private');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [driveNameError, setDriveNameError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -50,6 +55,25 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
     }
   };
 
+  const validatePassword = (): boolean => {
+    if (drivePrivacy === 'private') {
+      if (!password) {
+        setPasswordError('Password is required for private drives');
+        return false;
+      }
+      if (password.length < 8) {
+        setPasswordError('Password must be at least 8 characters');
+        return false;
+      }
+      if (password !== confirmPassword) {
+        setPasswordError('Passwords do not match');
+        return false;
+      }
+    }
+    setPasswordError(null);
+    return true;
+  };
+
   const handleCreateDrive = async () => {
     if (!driveName.trim()) {
       setDriveNameError('Please enter a drive name');
@@ -57,6 +81,10 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
     }
 
     if (!validateDriveNameRealtime(driveName)) {
+      return;
+    }
+
+    if (!validatePassword()) {
       return;
     }
 
@@ -70,7 +98,9 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
       setError(null);
 
       // Create the drive
-      const drive = await window.electronAPI.drive.create(driveName.trim(), drivePrivacy);
+      const drive = drivePrivacy === 'private' 
+        ? await window.electronAPI.drive.createPrivate(driveName.trim(), password)
+        : await window.electronAPI.drive.create(driveName.trim(), drivePrivacy);
       
       if (!drive || !drive.id) {
         throw new Error('Failed to create drive. Please try again.');
@@ -255,7 +285,10 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
           
           <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
             <button
-              onClick={() => setDrivePrivacy('private')}
+              onClick={() => {
+                setDrivePrivacy('private');
+                setPasswordError(null);
+              }}
               disabled={isCreating}
               style={{
                 flex: 1,
@@ -275,7 +308,12 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
             </button>
 
             <button
-              onClick={() => setDrivePrivacy('public')}
+              onClick={() => {
+                setDrivePrivacy('public');
+                setPassword('');
+                setConfirmPassword('');
+                setPasswordError(null);
+              }}
               disabled={isCreating}
               style={{
                 flex: 1,
@@ -296,45 +334,206 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
           </div>
         </div>
 
+        {/* Password Fields for Private Drives */}
+        {drivePrivacy === 'private' && (
+          <div style={{ marginBottom: 'var(--space-6)' }}>
+            {/* Important Security Notice */}
+            <div style={{
+              padding: 'var(--space-4)',
+              backgroundColor: 'var(--warning-50)',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: 'var(--space-4)',
+              border: '1px solid var(--warning-200)'
+            }}>
+              <div style={{
+                display: 'flex',
+                gap: 'var(--space-3)',
+                alignItems: 'flex-start'
+              }}>
+                <ShieldAlert size={20} style={{ color: 'var(--warning-600)', flexShrink: 0, marginTop: '2px' }} />
+                <div>
+                  <div style={{
+                    fontWeight: '600',
+                    fontSize: '14px',
+                    color: 'var(--warning-800)',
+                    marginBottom: 'var(--space-1)'
+                  }}>
+                    Important: This password is permanent
+                  </div>
+                  <div style={{
+                    fontSize: '13px',
+                    color: 'var(--warning-700)',
+                    lineHeight: '1.4'
+                  }}>
+                    Your drive password cannot be changed or recovered. If you forget this password, 
+                    you will permanently lose access to all files in this drive. Please store it safely.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Password Input */}
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <label style={{
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                marginBottom: 'var(--space-2)',
+                color: 'var(--gray-700)'
+              }}>
+                Drive Password
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setPasswordError(null);
+                  }}
+                  placeholder="Enter a strong password"
+                  disabled={isCreating}
+                  style={{
+                    width: '100%',
+                    padding: 'var(--space-3)',
+                    paddingRight: '48px',
+                    border: `1px solid ${passwordError ? 'var(--error-300)' : 'var(--gray-300)'}`,
+                    borderRadius: 'var(--radius-md)',
+                    fontSize: '14px',
+                    outline: 'none',
+                    transition: 'border-color 0.2s ease'
+                  }}
+                  onFocus={(e) => {
+                    if (!passwordError) {
+                      e.target.style.borderColor = 'var(--ardrive-primary)';
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!passwordError) {
+                      e.target.style.borderColor = 'var(--gray-300)';
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  disabled={isCreating}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: isCreating ? 'not-allowed' : 'pointer',
+                    color: 'var(--gray-500)',
+                    padding: '4px',
+                    borderRadius: '4px'
+                  }}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            {/* Confirm Password Input */}
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                marginBottom: 'var(--space-2)',
+                color: 'var(--gray-700)'
+              }}>
+                Confirm Password
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    setPasswordError(null);
+                  }}
+                  placeholder="Re-enter your password"
+                  disabled={isCreating}
+                  style={{
+                    width: '100%',
+                    padding: 'var(--space-3)',
+                    paddingRight: '48px',
+                    border: `1px solid ${passwordError ? 'var(--error-300)' : 'var(--gray-300)'}`,
+                    borderRadius: 'var(--radius-md)',
+                    fontSize: '14px',
+                    outline: 'none',
+                    transition: 'border-color 0.2s ease'
+                  }}
+                  onFocus={(e) => {
+                    if (!passwordError) {
+                      e.target.style.borderColor = 'var(--ardrive-primary)';
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (!passwordError) {
+                      e.target.style.borderColor = 'var(--gray-300)';
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  disabled={isCreating}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: isCreating ? 'not-allowed' : 'pointer',
+                    color: 'var(--gray-500)',
+                    padding: '4px',
+                    borderRadius: '4px'
+                  }}
+                >
+                  {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              {passwordError && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  marginTop: 'var(--space-2)',
+                  fontSize: '13px',
+                  color: 'var(--error-600)'
+                }}>
+                  <AlertCircle size={14} />
+                  {passwordError}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div style={{
           display: 'flex',
           gap: 'var(--space-3)',
-          justifyContent: 'flex-end'
+          marginTop: 'var(--space-4)'
         }}>
           <button
+            className="button outline"
             onClick={onClose}
             disabled={isCreating}
-            style={{
-              padding: 'var(--space-2) var(--space-4)',
-              border: '1px solid var(--gray-300)',
-              borderRadius: 'var(--radius-md)',
-              backgroundColor: 'white',
-              cursor: isCreating ? 'not-allowed' : 'pointer',
-              fontSize: '14px',
-              fontWeight: '500',
-              color: 'var(--gray-700)',
-              transition: 'all 0.2s ease'
-            }}
+            style={{ flex: 1 }}
           >
             Cancel
           </button>
           <button
+            className={`button ${isCreating ? 'loading' : ''}`}
             onClick={handleCreateDrive}
-            disabled={isCreating || !driveName.trim() || !!driveNameError}
-            style={{
-              padding: 'var(--space-2) var(--space-4)',
-              border: 'none',
-              borderRadius: 'var(--radius-md)',
-              backgroundColor: isCreating || !driveName.trim() || !!driveNameError 
-                ? 'var(--gray-300)' 
-                : 'var(--ardrive-primary)',
-              color: 'white',
-              cursor: isCreating || !driveName.trim() || !!driveNameError ? 'not-allowed' : 'pointer',
-              fontSize: '14px',
-              fontWeight: '500',
-              transition: 'all 0.2s ease'
-            }}
+            disabled={isCreating || !driveName.trim() || !!driveNameError || (drivePrivacy === 'private' && (!password || !confirmPassword))}
+            style={{ flex: 2 }}
           >
             {isCreating ? 'Creating...' : 'Create Drive'}
           </button>

@@ -8,6 +8,7 @@ interface FileLinkActionsProps {
   fileId?: string;
   fileName: string;
   driveId?: string;
+  fileKey?: string;
   onCopySuccess?: (message: string) => void;
 }
 
@@ -17,11 +18,12 @@ const FileLinkActions: React.FC<FileLinkActionsProps> = ({
   fileId,
   fileName,
   driveId,
+  fileKey,
   onCopySuccess
 }) => {
   const [expanded, setExpanded] = useState(false);
   
-  const links = generateFileLinks(dataTxId, metadataTxId, fileId, driveId);
+  const links = generateFileLinks(dataTxId, metadataTxId, fileId, driveId, fileKey);
   const explorerLinks = dataTxId ? generateExplorerLinks(dataTxId) : null;
 
   const copyToClipboard = async (text: string, message: string) => {
@@ -85,7 +87,7 @@ const FileLinkActions: React.FC<FileLinkActionsProps> = ({
                   <button
                     className="button secondary small"
                     onClick={() => copyToClipboard(
-                      generateShareableFileLink(fileId, fileName),
+                      generateShareableFileLink(fileId, fileName, fileKey),
                       'File sharing link copied!'
                     )}
                     style={{ fontSize: '10px', padding: '2px 6px' }}

@@ -454,6 +454,33 @@ export class FileOperationDetector {
   }
 
   /**
+   * Clear all tracked operations (used when switching drives)
+   */
+  clearAllOperations(): void {
+    // Clear all pending deletes
+    for (const [path, pending] of this.pendingDeletes) {
+      clearTimeout(pending.timeout);
+    }
+    this.pendingDeletes.clear();
+    
+    // Clear recent operations
+    this.recentOperations.clear();
+    
+    // Clear caches
+    this.fileMetadataCache.clear();
+    this.hashCache.clear();
+    
+    // Clear batch tracking
+    for (const timer of this.batchTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.batchOperations.clear();
+    this.batchTimers.clear();
+    
+    console.log('FileOperationDetector: Cleared all tracked operations');
+  }
+
+  /**
    * Confirm a file was actually deleted
    */
   private async confirmDelete(filePath: string): Promise<void> {

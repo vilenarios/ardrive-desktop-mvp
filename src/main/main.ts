@@ -11,6 +11,7 @@ import { FileUpload } from '../types';
 import { arnsService } from './arns-service';
 import { profileManager } from './profile-manager';
 import InputValidator, { ValidationError } from './input-validator';
+import { driveKeyManager } from './drive-key-manager';
 
 // Load .env file in development
 if (process.env.NODE_ENV !== 'production') {
@@ -127,8 +128,10 @@ class ArDriveApp {
           
           const arDrive = this.walletManager.getArDrive();
           if (arDrive) {
+            // Get private key data for private drive operations
+            const privateKeyData = await driveKeyManager.getPrivateKeyData();
             // Set ArDrive for sync manager
-            this.syncManager.setArDrive(arDrive);
+            this.syncManager.setArDrive(arDrive, privateKeyData);
           }
           
           // Legacy migration removed - no longer needed
@@ -782,6 +785,104 @@ class ArDriveApp {
       return await this.walletManager.createDrive(validatedName, validatedPrivacy);
     }));
 
+    // Private drive operations
+    ipcMain.handle('drive:create-private', safeIpcHandler(async (_, name: string, password: string) => {
+      try {
+        const validatedName = InputValidator.validateDriveName(name, 'name');
+        const validatedPassword = InputValidator.validatePassword(password, 'password');
+        
+        // Ensure active profile is set
+        const activeProfile = await profileManager.getActiveProfile();
+        if (activeProfile) {
+          await configManager.setActiveProfile(activeProfile.id);
+        }
+        
+        const drive = await this.walletManager.createPrivateDrive(validatedName, validatedPassword);
+        return { success: true, data: drive };
+      } catch (error) {
+        console.error('Failed to create private drive:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to create private drive' };
+      }
+    }));
+
+    ipcMain.handle('drive:unlock', safeIpcHandler(async (_, driveId: string, password: string) => {
+      try {
+        const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+        const validatedPassword = InputValidator.validatePassword(password, 'password');
+        
+        const success = await this.walletManager.unlockPrivateDrive(validatedDriveId, validatedPassword);
+        
+        if (success) {
+          // Update the ArDrive instance in sync manager with the new private key data
+          const arDrive = this.walletManager.getArDrive();
+          if (arDrive) {
+            const privateKeyData = await driveKeyManager.getPrivateKeyData();
+            this.syncManager.setArDrive(arDrive, privateKeyData);
+            console.log('Updated sync manager with refreshed ArDrive instance after unlock');
+          }
+          
+          // Small delay to ensure drive key is fully propagated
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // After successful unlock, get the updated drive info with decrypted name
+          const drives = await this.walletManager.listDrivesWithStatus();
+          const unlockedDrive = drives.find(d => d.id === validatedDriveId);
+          
+          return { 
+            success: true, 
+            drive: unlockedDrive // Return the decrypted drive info
+          };
+        } else {
+          // Invalid password
+          return { 
+            success: false, 
+            error: 'Invalid password. Please check your password and try again.' 
+          };
+        }
+      } catch (error) {
+        console.error('Failed to unlock drive:', error);
+        return { 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Failed to unlock drive' 
+        };
+      }
+    }));
+
+    ipcMain.handle('drive:lock', safeIpcHandler(async (_, driveId: string) => {
+      try {
+        const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+        
+        await this.walletManager.lockPrivateDrive(validatedDriveId);
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to lock drive:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to lock drive' };
+      }
+    }));
+
+    ipcMain.handle('drive:isUnlocked', safeIpcHandler(async (_, driveId: string) => {
+      try {
+        const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+        
+        // Check if the drive key manager has the key for this drive
+        const isUnlocked = await this.walletManager.isDriveUnlocked(validatedDriveId);
+        return isUnlocked;
+      } catch (error) {
+        console.error('Failed to check drive unlock status:', error);
+        return false;
+      }
+    }));
+
+    ipcMain.handle('drive:listWithStatus', safeIpcHandler(async () => {
+      try {
+        const drives = await this.walletManager.listDrivesWithStatus();
+        return { success: true, data: drives };
+      } catch (error) {
+        console.error('Failed to list drives with status:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to list drives' };
+      }
+    }));
+
     ipcMain.handle('drive:rename', safeIpcHandler(async (_, driveId: string, newName: string) => {
       // Validate inputs
       const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
@@ -1013,25 +1114,72 @@ class ArDriveApp {
         // Import needed types
         const { EntityID } = await import('ardrive-core-js');
         
-        // MVP: Only support public drives for now
-        if (drive.privacy !== 'public') {
-          throw new Error('Private drives are not supported in this version');
+        // Check if private drive is unlocked
+        if (drive.privacy === 'private') {
+          const isUnlocked = await driveKeyManager.isUnlocked(drive.id);
+          if (!isUnlocked) {
+            console.log('Private drive is locked, cannot fetch permaweb files');
+            return { files: [], folders: [] };
+          }
         }
         
         // For newly created drives, the root folder might not be immediately available
         // Add a retry mechanism with delay
-        let entities;
+        let entities: any[] = [];
         let retryCount = 0;
         const maxRetries = 3;
         
         while (retryCount < maxRetries) {
           try {
-            // List public folder contents
-            entities = await arDrive.listPublicFolder({
-              folderId: new EntityID(drive.rootFolderId),
-              maxDepth: 10, // Get full hierarchy
-              includeRoot: false // Don't include root folder itself
-            });
+            // List folder contents based on drive privacy
+            if (drive.privacy === 'private') {
+              // Get the drive key for private folder listing
+              const driveKey = driveKeyManager.getDriveKey(drive.id);
+              if (!driveKey) {
+                console.log('Drive key not found for private drive');
+                return { files: [], folders: [] };
+              }
+              
+              console.log('Attempting to list private folder with drive key');
+              
+              // For private drives with potential metadata issues, try a different approach
+              // Instead of listPrivateFolder which can fail on invalid file states,
+              // we'll try to get the folder structure first
+              try {
+                // First try the standard approach
+                entities = await arDrive.listPrivateFolder({
+                  folderId: new EntityID(drive.rootFolderId),
+                  driveKey: driveKey,
+                  maxDepth: 10,
+                  includeRoot: false,
+                  withKeys: true
+                });
+                console.log(`Successfully listed ${entities?.length || 0} entities from private folder`);
+              } catch (privateError: any) {
+                console.error('Error listing private folder:', privateError.message);
+                
+                // If we get "Invalid file state", some files have incomplete metadata
+                // This can happen with older ArDrive versions or corrupted data
+                // For now, return empty to allow the app to function
+                if (privateError.message?.includes('Invalid file state')) {
+                  console.warn('Private drive has files with invalid metadata. This may be from an older ArDrive version.');
+                  console.warn('Returning empty file list to prevent crash. Files may still sync in background.');
+                  
+                  // Return empty arrays but don't block the user from using the app
+                  entities = [];
+                } else {
+                  // Re-throw other errors
+                  throw privateError;
+                }
+              }
+            } else {
+              // List public folder contents
+              entities = await arDrive.listPublicFolder({
+                folderId: new EntityID(drive.rootFolderId),
+                maxDepth: 10, // Get full hierarchy
+                includeRoot: false // Don't include root folder itself
+              });
+            }
             break; // Success, exit retry loop
           } catch (error: any) {
             if (error.message?.includes('not found') && retryCount < maxRetries - 1) {
@@ -1075,6 +1223,18 @@ class ArDriveApp {
             metadataTxId: entity.metadataTxId
           });
           
+          // Generate proper ArDrive URL with file key for private files
+          let ardriveUrl: string | undefined;
+          if (isFile) {
+            const baseUrl = `https://app.ardrive.io/#/file/${entityId}/view`;
+            // For private files, include the file key in the URL
+            if (drive.privacy === 'private' && entity.fileKey) {
+              ardriveUrl = `${baseUrl}?fileKey=${entity.fileKey}`;
+            } else {
+              ardriveUrl = baseUrl;
+            }
+          }
+          
           return {
             id: entityId?.toString() || '',
             name: entity.name || 'Unnamed',
@@ -1094,17 +1254,17 @@ class ArDriveApp {
             status: 'synced' as const,
             path: entity.path || '/',
             parentId: entity.parentFolderId?.toString() || '',
-            // ArDrive sharing links (only for files, not folders)
-            ardriveUrl: isFile 
-              ? `https://app.ardrive.io/#/file/${entityId}/view`
-              : undefined,
+            // ArDrive sharing links with file keys for private files
+            ardriveUrl,
             // Also include transaction IDs for direct Arweave access if needed
             dataTxId: entity.dataTxId?.toString() || '',
             metadataTxId: (entity.metadataTxId || entity.metaDataTxId)?.toString() || '',
             // Additional metadata that might be useful
             contentType: isFile ? entity.dataContentType : undefined,
             driveId: drive.id,
-            privacy: drive.privacy
+            privacy: drive.privacy,
+            // Include file key for private files
+            fileKey: drive.privacy === 'private' && isFile ? entity.fileKey : undefined
           };
         });
         
@@ -1160,12 +1320,31 @@ class ArDriveApp {
       // Import needed types
       const { EntityID } = await import('ardrive-core-js');
       
+      // Check if this is a private drive
+      const drives = await this.walletManager.listDrives();
+      const drive = drives.find(d => d.rootFolderId === validatedFolderId || d.id === validatedFolderId);
+      
       // List all files in the folder to check count
-      const entities = await arDrive.listPublicFolder({
-        folderId: new EntityID(validatedFolderId),
-        maxDepth: Number.MAX_SAFE_INTEGER,
-        includeRoot: false
-      });
+      let entities;
+      if (drive && drive.privacy === 'private') {
+        const driveKey = driveKeyManager.getDriveKey(drive.id);
+        if (!driveKey) {
+          throw new Error('Private drive is locked');
+        }
+        
+        entities = await arDrive.listPrivateFolder({
+          folderId: new EntityID(validatedFolderId),
+          driveKey: driveKey,
+          maxDepth: Number.MAX_SAFE_INTEGER,
+          includeRoot: false
+        });
+      } else {
+        entities = await arDrive.listPublicFolder({
+          folderId: new EntityID(validatedFolderId),
+          maxDepth: Number.MAX_SAFE_INTEGER,
+          includeRoot: false
+        });
+      }
       
       // Filter to only files (not folders)
       const files = entities.filter(e => e.entityType === 'file');
@@ -1353,12 +1532,28 @@ class ArDriveApp {
       }
       
       console.log('Fetching folder structure from ArDrive...');
-      // Get folder structure
-      const entities = await arDrive.listPublicFolder({
-        folderId: new EntityID(drive.rootFolderId),
-        maxDepth: 10,
-        includeRoot: true
-      });
+      // Get folder structure based on drive privacy
+      let entities: any[];
+      if (drive.privacy === 'private') {
+        const driveKey = driveKeyManager.getDriveKey(drive.id);
+        if (!driveKey) {
+          console.log('Drive key not found for private drive');
+          return [];
+        }
+        
+        entities = await arDrive.listPrivateFolder({
+          folderId: new EntityID(drive.rootFolderId),
+          driveKey: driveKey,
+          maxDepth: 10,
+          includeRoot: true
+        });
+      } else {
+        entities = await arDrive.listPublicFolder({
+          folderId: new EntityID(drive.rootFolderId),
+          maxDepth: 10,
+          includeRoot: true
+        });
+      }
       
       console.log(`Got ${entities.length} entities from ArDrive`);
       
@@ -1409,8 +1604,29 @@ class ArDriveApp {
       // Validate inputs
       const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
       
+      // Verify drive exists and is accessible
+      const drives = await this.walletManager.listDrives();
+      const targetDrive = drives.find(d => d.id === validatedDriveId);
+      
+      if (!targetDrive) {
+        throw new Error('Drive not found or not accessible');
+      }
+      
+      // Check if drive has been added to this device
+      const mappings = await databaseManager.getDriveMappings();
+      const driveMapping = mappings.find((m: any) => m.driveId === validatedDriveId);
+      
+      if (!driveMapping) {
+        throw new Error(`Drive "${targetDrive.name}" has not been added to this device yet`);
+      }
+      
+      // For private drives, check if it's unlocked
+      if (targetDrive.privacy === 'private' && !driveKeyManager.isUnlocked(validatedDriveId)) {
+        throw new Error(`Private drive "${targetDrive.name}" is locked. Please unlock it first.`);
+      }
+      
       // Set active drive in config
-      await configManager.setActiveDrive(validatedDriveId, mappingId);
+      await configManager.setActiveDrive(validatedDriveId, mappingId || driveMapping.id);
       
       return { success: true };
     }));
@@ -1437,6 +1653,19 @@ class ArDriveApp {
       
       if (!driveMapping) {
         throw new Error(`Drive "${targetDrive.name}" has not been added to this device yet. Please use "Add Existing Drive" first.`);
+      }
+      
+      // For private drives, check if it's unlocked
+      if (targetDrive.privacy === 'private' && !driveKeyManager.isUnlocked(validatedDriveId)) {
+        throw new Error(`Cannot switch to locked private drive "${targetDrive.name}". Please unlock it first.`);
+      }
+      
+      // Validate the sync folder exists
+      const syncFolder = driveMapping.localFolderPath;
+      try {
+        await fs.access(syncFolder);
+      } catch (error) {
+        throw new Error(`Sync folder "${syncFolder}" does not exist or is not accessible`);
       }
       
       // Switch the drive in sync manager
@@ -1537,8 +1766,31 @@ class ArDriveApp {
       
       console.log('Using drive mapping:', primaryMapping);
       
+      // Validate drive is accessible
+      const drives = await this.walletManager.listDrives();
+      const targetDrive = drives.find(d => d.id === primaryMapping.driveId);
+      
+      if (!targetDrive) {
+        throw new Error(`Drive ${primaryMapping.driveName} (${primaryMapping.driveId}) not found or not accessible`);
+      }
+      
+      // For private drives, check if it's unlocked
+      if (primaryMapping.drivePrivacy === 'private' && !driveKeyManager.isUnlocked(primaryMapping.driveId)) {
+        throw new Error(`Private drive "${primaryMapping.driveName}" is locked. Please unlock it before starting sync.`);
+      }
+      
+      // Validate sync folder exists
+      try {
+        await fs.access(primaryMapping.localFolderPath);
+      } catch (error) {
+        throw new Error(`Sync folder "${primaryMapping.localFolderPath}" does not exist or is not accessible`);
+      }
+      
+      // Get private key data for private drive operations
+      const privateKeyData = await driveKeyManager.getPrivateKeyData();
+      
       // Set ArDrive instance and start sync with drive mapping
-      this.syncManager.setArDrive(arDrive);
+      this.syncManager.setArDrive(arDrive, privateKeyData);
       return await this.syncManager.startSync(
         primaryMapping.driveId, 
         primaryMapping.rootFolderId, 

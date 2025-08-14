@@ -127,6 +127,7 @@ const result = await window.electronAPI.namespace.action(data);
 - **arns-service.ts**: ArNS name resolution
 - **input-validator.ts**: Security-critical input validation
 - **sync/interfaces.ts**: Core sync engine interfaces and types
+- **drive-key-manager.ts**: Private drive key management and encryption
 
 ## Important Patterns
 
@@ -178,14 +179,14 @@ try {
 ## Current Development Status
 Based on git status:
 - **Modified**: Core sync engine, database manager, upload queue components
-- **New**: FileOperationDetector, FolderOperationDetector, StreamingDownloader, FileHashVerifier, ErrorHandler, UploadApprovalQueueModern
-- **Deleted**: sync-engine.ts (functionality merged into sync-manager.ts), SYNC_MANAGER_CLEANUP_TODO.md, SYNC_MANAGER_REFACTOR_PLAN.md
+- **New**: drive-key-manager.ts, utils/, PrivateDriveUnlockModal.tsx
+- **Work in Progress**: Multi-drive support implementation
 
 Recent commits show active development on:
-- Advanced file operation detection (moves, renames, copies)
-- Streaming download implementation
-- Modern upload approval queue UI
-- Enhanced error handling and progress tracking
+- Multi-drive functionality
+- Direct file opening capabilities
+- Permaweb view with status indicators
+- Private drive support with encryption
 
 ## Testing
 
@@ -260,7 +261,7 @@ DEBUG=ardrive:*
 2. **IPC Handler Errors**
    - Ensure handler is registered in main.ts
    - Check preload.ts exposes the method
-   - Verify namespace matches (e.g., wallet:*, sync:*)
+   - Verify namespace matches (e.g., wallet:*, sync:*, drive:*)
 
 3. **Profile/Wallet Issues**
    - Profile data location: `%APPDATA%\ardrive-desktop-mvp\[profile-id]\`
@@ -271,6 +272,11 @@ DEBUG=ardrive:*
    - Check sync-manager.ts for file size limits (100MB)
    - Verify FileOperationDetector timing (3-second window)
    - Database queries in database-manager.ts
+
+5. **Private Drive Issues**
+   - Drive keys managed by drive-key-manager.ts
+   - Encryption/decryption in driveKeyManager service
+   - Check drive:unlock and drive:lock handlers
 
 ### Debug Mode
 Enable detailed logging with environment variables:
@@ -288,3 +294,4 @@ DEBUG=ardrive:* npm run dev
 - `EPERM`: Permission denied - check file access rights
 - `Wallet decryption failed`: Wrong password or corrupted wallet
 - `IPC handler not found`: Missing handler registration in main.ts
+- `Drive key not found`: Private drive not unlocked - use drive:unlock

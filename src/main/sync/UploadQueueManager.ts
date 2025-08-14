@@ -75,6 +75,12 @@ export class UploadQueueManager {
     console.log('Upload queue processor stopped');
   }
 
+  clearQueue(): void {
+    const queueSize = this.uploadQueue.size;
+    this.uploadQueue.clear();
+    console.log(`Cleared upload queue (removed ${queueSize} items)`);
+  }
+
   private async processNextUpload(): Promise<void> {
     if (!this.isProcessing) return;
 

@@ -277,4 +277,9 @@ export class FolderOperationDetector {
     this.pendingDeletes.clear();
     this.recentOperations.clear();
   }
+
+  clearAllOperations(): void {
+    // Alias for clear() to match FileOperationDetector interface
+    this.clear();
+  }
 }

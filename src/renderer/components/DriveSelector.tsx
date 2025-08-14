@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check, Plus, HardDrive, Lock, Globe } from 'lucide-react';
-import { DriveInfo } from '../../types';
+import { DriveInfo, DriveInfoWithStatus } from '../../types';
+import { PrivateDriveUnlockModal } from './PrivateDriveUnlockModal';
 
 interface DriveSelectorProps {
   currentDrive: DriveInfo | null;
-  drives: DriveInfo[];
+  drives: DriveInfoWithStatus[];
   isLoading: boolean;
   onDriveSelect: (driveId: string) => void;
   onCreateDrive: () => void;
@@ -20,6 +21,8 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
   onAddExistingDrive
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [selectedLockedDrive, setSelectedLockedDrive] = useState<DriveInfoWithStatus | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,11 +38,45 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
     };
   }, []);
 
-  const handleDriveClick = (driveId: string) => {
-    if (driveId !== currentDrive?.id) {
-      onDriveSelect(driveId);
+  const handleDriveClick = (drive: DriveInfoWithStatus) => {
+    if (drive.id === currentDrive?.id) {
+      setIsOpen(false);
+      return;
     }
+
+    // If it's a locked private drive, show unlock modal
+    if (drive.privacy === 'private' && drive.isLocked) {
+      setSelectedLockedDrive(drive);
+      setShowUnlockModal(true);
+      setIsOpen(false);
+      return;
+    }
+
+    // Otherwise, select the drive normally
+    onDriveSelect(drive.id);
     setIsOpen(false);
+  };
+
+  const handleUnlockSuccess = async (password: string): Promise<boolean> => {
+    if (!selectedLockedDrive) return false;
+
+    try {
+      const success = await window.electronAPI.drive.unlock(selectedLockedDrive.id, password);
+      if (success) {
+        onDriveSelect(selectedLockedDrive.id);
+        setShowUnlockModal(false);
+        setSelectedLockedDrive(null);
+      }
+      return success;
+    } catch (error) {
+      console.error('Failed to unlock drive:', error);
+      return false;
+    }
+  };
+
+  const handleUnlockCancel = () => {
+    setShowUnlockModal(false);
+    setSelectedLockedDrive(null);
   };
 
   return (
@@ -101,7 +138,7 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
             <button
               key={drive.id}
               className="drive-option"
-              onClick={() => handleDriveClick(drive.id)}
+              onClick={() => handleDriveClick(drive)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -134,9 +171,16 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
                 <div style={{ width: '16px' }} />
               )}
               <HardDrive size={16} />
-              <span style={{ flex: 1 }}>{drive.name}</span>
+              <span style={{ flex: 1 }}>
+                {drive.name}
+                {drive.privacy === 'private' && drive.isLocked && drive.emojiFingerprint && (
+                  <span style={{ marginLeft: '8px', fontSize: '12px' }}>
+                    {drive.emojiFingerprint}
+                  </span>
+                )}
+              </span>
               {drive.privacy === 'private' ? (
-                <Lock size={14} style={{ opacity: 0.6 }} />
+                <Lock size={14} style={{ opacity: drive.isLocked ? 0.8 : 0.6, color: drive.isLocked ? 'var(--warning-600)' : 'var(--gray-500)' }} />
               ) : (
                 <Globe size={14} style={{ opacity: 0.6 }} />
               )}
@@ -209,6 +253,16 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {/* Private Drive Unlock Modal */}
+      {selectedLockedDrive && (
+        <PrivateDriveUnlockModal
+          drive={selectedLockedDrive}
+          isOpen={showUnlockModal}
+          onUnlock={handleUnlockSuccess}
+          onCancel={handleUnlockCancel}
+        />
       )}
     </div>
   );

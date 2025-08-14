@@ -59,6 +59,7 @@ interface FileItem {
   ardriveUrl?: string;
   dataTxId?: string;
   metadataTxId?: string;
+  fileKey?: string;
 }
 
 interface SyncState {
@@ -137,10 +138,11 @@ export const StorageTab: React.FC<StorageTabProps> = ({
           path: item.path || '/',
           parentId: item.parentId,
           children: item.type === 'folder' ? [] : undefined,
-          // Add ArDrive sharing URL
+          // Add ArDrive sharing URL and metadata
           ardriveUrl: item.ardriveUrl,
           dataTxId: item.dataTxId,
-          metadataTxId: item.metadataTxId
+          metadataTxId: item.metadataTxId,
+          fileKey: item.fileKey
         };
         itemMap.set(item.id, fileItem);
       });

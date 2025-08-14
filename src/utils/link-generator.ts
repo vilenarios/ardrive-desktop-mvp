@@ -22,7 +22,8 @@ export function generateFileLinks(
   dataTxId?: string,
   metadataTxId?: string,
   fileId?: string,
-  driveId?: string
+  driveId?: string,
+  fileKey?: string
 ): LinkSet {
   const links: LinkSet = {};
 
@@ -38,7 +39,9 @@ export function generateFileLinks(
 
   // ArDrive app links
   if (fileId) {
-    links.fileViewUrl = `https://app.ardrive.io/#/file/${fileId}/view`;
+    // Include file key for private files
+    const baseUrl = `https://app.ardrive.io/#/file/${fileId}/view`;
+    links.fileViewUrl = fileKey ? `${baseUrl}?fileKey=${fileKey}` : baseUrl;
   }
 
   if (driveId) {
@@ -51,13 +54,21 @@ export function generateFileLinks(
 /**
  * Generate a shareable link for a file
  */
-export function generateShareableFileLink(fileId: string, fileName?: string): string {
+export function generateShareableFileLink(fileId: string, fileName?: string, fileKey?: string): string {
   const baseUrl = `https://app.ardrive.io/#/file/${fileId}/view`;
-  if (fileName) {
-    // Add filename as a URL parameter for better sharing experience
-    return `${baseUrl}?name=${encodeURIComponent(fileName)}`;
+  const params: string[] = [];
+  
+  // Add file key for private files
+  if (fileKey) {
+    params.push(`fileKey=${fileKey}`);
   }
-  return baseUrl;
+  
+  // Add filename for better sharing experience
+  if (fileName) {
+    params.push(`name=${encodeURIComponent(fileName)}`);
+  }
+  
+  return params.length > 0 ? `${baseUrl}?${params.join('&')}` : baseUrl;
 }
 
 /**

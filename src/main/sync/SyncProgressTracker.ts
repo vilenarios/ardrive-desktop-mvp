@@ -45,6 +45,13 @@ export class SyncProgressTracker implements ISyncProgressTracker {
     this.pendingEmits.clear();
     this.lastEmitTime.clear();
   }
+
+  reset(): void {
+    // Clear all tracking data but keep the interval running
+    this.pendingEmits.clear();
+    this.lastEmitTime.clear();
+    console.log('SyncProgressTracker: Reset all progress tracking');
+  }
   emitSyncProgress(progress: any): void {
     console.log('🟣 [PROGRESS-TRACKER] emitSyncProgress queued:', {
       phase: progress.phase,
