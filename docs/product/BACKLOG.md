@@ -325,11 +325,11 @@ Acceptance: user can remove a mapped drive from the UI (with confirm); mapping d
 
 ## INFRA — Build, test, release
 
-### INFRA-1 · P0 · Phase 1 · `in-progress`
+### INFRA-1 · P0 · Phase 1 · `done`
 **Make CI able to run.** Evidence: §6.7.
 Fix: un-gitignore + commit `package-lock.json`; commit `mvp-workflow.yml`; remove the deleted `build-release.yml` from the repo properly; reconcile release-guide.md/testing-distribution.md with the real workflow names and lockfile policy.
 Acceptance: a manual workflow dispatch completes install on a clean runner.
-Note 2026-07-02: lockfile + workflow committed locally (commit 6299771). Remaining: push, run a dispatch to verify acceptance, and the docs-reconciliation half (with INFRA-11).
+Done 2026-07-03: pushed; acceptance verified on clean windows-latest — run 28665170914 fully green (npm ci → tests → build → installer → Windows-build artifact, 7m03s) after 3 empirical workflow fixes (YAML parse: unquoted # truncation + matrix-context in job-level if; WIN_CSC_LINK 'none' resolved as cert path; electron-builder auto-publish demanding GH_TOKEN → --publish never). Docs-reconciliation half stays with INFRA-11. CI annotation for SEC-6: actions forced Node 20→24.
 
 ### INFRA-2 · P0 · Phase 4 · `done`
 **Resurrect the test suite.** Evidence: §6.7, ground truth.
