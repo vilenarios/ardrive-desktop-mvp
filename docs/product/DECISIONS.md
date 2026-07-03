@@ -44,3 +44,7 @@ Local deletions are surfaced truthfully in the UI ("removed locally — still st
 ## D-008 · Preload events return unsubscribe functions · PROVISIONAL · 2026-07-02
 
 Replace `removeAllListeners`-based cleanup with per-subscription unsubscribe closures (UX-4). No component may remove listeners it didn't register.
+
+## D-009 · PM may merge QA-passed branches and push · CONFIRMED · 2026-07-03
+
+Phil: "You can push to wherever you need — as long as you follow our deployment/contribution standards." The PM merges item branches into main only after a QA-gate PASS, pushes main/wip/item branches to origin as needed, and follows CONTRIBUTING.md. Releases, tags, and version bumps remain Phil's. Contribution standards codified in CONTRIBUTING.md (2026-07-03).
