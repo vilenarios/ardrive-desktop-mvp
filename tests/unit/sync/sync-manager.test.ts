@@ -78,6 +78,17 @@ describe('SyncManager', () => {
     localFolderPath: testSyncPath,
     isActive: true,
   };
+  const otherDriveId = '33333333-3333-4333-8333-333333333333';
+  const otherRootFolderId = '44444444-4444-4444-8444-444444444444';
+  const otherMapping = {
+    id: 'other-mapping-id',
+    driveId: otherDriveId,
+    driveName: 'Other Drive',
+    drivePrivacy: 'public',
+    rootFolderId: otherRootFolderId,
+    localFolderPath: '/other/profile/folder',
+    isActive: true,
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -181,6 +192,90 @@ describe('SyncManager', () => {
 
       expect(secondResult).toBe(true);
       expect(vi.mocked(chokidar.watch)).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Logout / profile-switch teardown (SEC-3)', () => {
+    it('should sever every wallet-bearing reference after stopAndClearAllState', async () => {
+      const fakePrivateKeyData = { fake: 'privateKeyData' } as any;
+      syncManager.setArDrive(mockArDrive, fakePrivateKeyData);
+      await syncManager.startSync(testDriveId, testRootFolderId);
+      expect(syncManager.getCurrentSyncState()).toBe('monitoring');
+
+      await syncManager.stopAndClearAllState();
+
+      // No active watcher...
+      expect(mockWatcher.close).toHaveBeenCalled();
+      expect(syncManager.getCurrentSyncState()).toBe('idle');
+      // ...and no wallet-bearing or profile-specific state anywhere
+      expect(syncManager['arDrive']).toBeNull();
+      expect(syncManager['privateKeyData']).toBeUndefined();
+      expect(syncManager['downloadManager']['arDrive']).toBeNull();
+      expect(syncManager['syncFolderPath']).toBeNull();
+      expect(syncManager['driveId']).toBeNull();
+      expect(syncManager['rootFolderId']).toBeNull();
+    });
+
+    it('should be safe to call when sync was never started', async () => {
+      await expect(syncManager.stopAndClearAllState()).resolves.toBeUndefined();
+      expect(syncManager.getCurrentSyncState()).toBe('idle');
+      expect(syncManager['arDrive']).toBeNull();
+    });
+
+    it('should let a new profile start sync against its own drive after teardown', async () => {
+      await syncManager.startSync(testDriveId, testRootFolderId);
+      await syncManager.stopAndClearAllState();
+
+      // Simulate the next profile's sync:start (handler re-sets folder + ArDrive)
+      const otherFolder = '/other/profile/folder';
+      const otherArDrive = createMockArDrive();
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([otherMapping]);
+      syncManager.setSyncFolder(otherFolder);
+      syncManager.setArDrive(otherArDrive);
+
+      const result = await syncManager.startSync(otherDriveId, otherRootFolderId);
+
+      expect(result).toBe(true);
+      expect(syncManager.getCurrentSyncState()).toBe('monitoring');
+      expect(syncManager['driveId']).toBe(otherDriveId);
+      expect(vi.mocked(chokidar.watch)).toHaveBeenLastCalledWith(
+        otherFolder,
+        expect.objectContaining({ ignoreInitial: true })
+      );
+    });
+  });
+
+  describe('Re-targeting while monitoring (SEC-3)', () => {
+    it('should re-target when a different drive is requested while monitoring', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([testMapping, otherMapping]);
+      await syncManager.startSync(testDriveId, testRootFolderId);
+      expect(syncManager.getCurrentSyncState()).toBe('monitoring');
+
+      const result = await syncManager.startSync(otherDriveId, otherRootFolderId);
+
+      expect(result).toBe(true);
+      expect(syncManager.getCurrentSyncState()).toBe('monitoring');
+      expect(syncManager['driveId']).toBe(otherDriveId);
+      expect(syncManager['rootFolderId']).toBe(otherRootFolderId);
+      // Old watcher closed, new one created
+      expect(mockWatcher.close).toHaveBeenCalled();
+      expect(vi.mocked(chokidar.watch)).toHaveBeenCalledTimes(2);
+    });
+
+    it('should re-target when the sync folder changed for the same drive', async () => {
+      await syncManager.startSync(testDriveId, testRootFolderId);
+      expect(vi.mocked(chokidar.watch)).toHaveBeenCalledTimes(1);
+
+      const newFolder = '/moved/sync/folder';
+      syncManager.setSyncFolder(newFolder);
+      const result = await syncManager.startSync(testDriveId, testRootFolderId);
+
+      expect(result).toBe(true);
+      expect(vi.mocked(chokidar.watch)).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(chokidar.watch)).toHaveBeenLastCalledWith(
+        newFolder,
+        expect.objectContaining({ ignoreInitial: true })
+      );
     });
   });
 

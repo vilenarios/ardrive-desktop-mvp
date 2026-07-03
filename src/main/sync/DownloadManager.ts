@@ -219,7 +219,7 @@ export class DownloadManager {
     }
   }
 
-  setArDrive(arDrive: ArDrive): void {
+  setArDrive(arDrive: ArDrive | null): void {
     this.arDrive = arDrive;
   }
 
