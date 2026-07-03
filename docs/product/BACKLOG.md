@@ -19,7 +19,7 @@ Working an item: set `in-progress`, implement, verify per the acceptance criteri
 Fix: remove/redact the `JSON.stringify(result)` logs; route through secure-logger.
 Acceptance: creating a private drive emits no key material to stdout/logs; grep for `JSON.stringify(result` in wallet-manager-secure.ts is clean.
 
-### SEC-2 · P0 · Phase 1 · `todo`
+### SEC-2 · P0 · Phase 1 · `in-progress`
 **Gate `system:get-env` behind dev mode.** Evidence: §6.4 (main.ts:2891-2898).
 Fix: return nothing when `app.isPackaged` or `ARDRIVE_DEV_MODE !== 'true'`.
 Acceptance: packaged build returns empty for `ARDRIVE_DEV_PASSWORD`/`ARDRIVE_DEV_WALLET_PATH`.
