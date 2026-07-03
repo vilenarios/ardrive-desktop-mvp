@@ -146,7 +146,7 @@ Acceptance: killing the network mid-download leaves the row `failed` with retry 
 Fix: on DB init, reset rows stuck in `uploading`→`pending`(re-approval-safe) and `downloading`/`queued`→`pending`; rehydrate queues from DB; add CHECK constraints on status columns (needs INFRA-7 migrations).
 Acceptance: kill -9 during an upload+download; relaunch resumes/requeues both; nothing remains stuck.
 
-### SYNC-4 · P0 · Phase 2 · `todo`
+### SYNC-4 · P0 · Phase 2 · `in-progress`
 **Fix stop→start lifecycle.** Evidence: §2.6 (destroyed DownloadManager/SyncProgressTracker never rebuilt).
 Fix: recreate (or make restartable) the tracker and download manager on start; drive switch must not leave progress reporting dead.
 Acceptance: stop sync → start sync → upload/download progress still reaches the UI.
