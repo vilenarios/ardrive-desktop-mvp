@@ -183,6 +183,20 @@ export class DownloadManager {
     console.log(`Cleared download queue (removed ${queueSize} queued, ${activeSize} active downloads)`);
   }
 
+  /**
+   * SYNC-4: re-arms the intervals destroy() cleared. Called from
+   * SyncManager.startSync so a stop -> start cycle (or drive switch) leaves
+   * download progress batching and memory cleanup alive.
+   */
+  ensureStarted(): void {
+    if (!this.progressFlushInterval) {
+      this.startProgressBatching();
+    }
+    if (!this.memoryCleanupInterval) {
+      this.startMemoryCleanup();
+    }
+  }
+
   destroy(): void {
     // Stop all timers
     if (this.progressFlushInterval) {

@@ -219,6 +219,12 @@ export class SyncManager {
     this.driveId = driveId;
     this.rootFolderId = rootFolderId;
     
+    // SYNC-4: stopSync destroys the progress tracker and download manager in
+    // place; re-arm them so progress reporting and download batching survive
+    // stop -> start cycles and drive switches.
+    this.progressTracker.ensureStarted();
+    this.downloadManager.ensureStarted();
+    
     // Update download manager with drive info
     if (this.syncFolderPath) {
       this.downloadManager.setDriveInfo(driveId, rootFolderId, this.syncFolderPath);
