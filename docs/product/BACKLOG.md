@@ -244,6 +244,7 @@ Acceptance: visiting Turbo screen / Permaweb tab / upload queue no longer kills 
 ### UX-5 · P1 · Phase 3 · `todo`
 **Make profile switching real.** Evidence: §5.5, §4.8 (UserMenu props unused; post-switch stale renderer; add-profile reload loop).
 Fix: wire UserMenu menu items; after `profiles:switch`, main emits a `profile-switched` event → renderer re-runs initializeApp (full state reset); "Add Profile" routes to wallet-setup.
+Also (implementer finding 2026-07-03): when `loadWallet` returns false mid-switch, rollback restores only `currentProfileId` — not the already-cleared arDrive/wallet objects; the failed-switch path must restore or fully clear all manager state (pairs with SEC-3).
 Acceptance: switch profile from the dashboard → UI shows the new profile's drives/balances without manual reload; add-profile lands on wallet import.
 
 ### UX-6 · P1 · Phase 3 · `todo`
@@ -253,7 +254,8 @@ Acceptance: opted-in returning user lands on the dashboard without typing a pass
 ### UX-7 · P1 · Phase 3 · `todo`
 **Fail-safe boot routing.** Evidence: §4.10 (initializeApp catch → wallet-setup; listDrives `[]` on network error → auto-create-drive routing).
 Fix: distinguish "no drives" from "couldn't fetch drives" (error state + retry); boot exceptions route to an error screen with retry, never to create-account for existing profiles.
-Acceptance: booting offline with an existing profile shows retry, not "Create New Account" or the create-drive flow.
+Also (implementer finding 2026-07-03): `loadWallet` swallows its specific "Invalid password" error — the outer catch (wallet-manager-secure.ts:434) rethrows everything as generic "Failed to decrypt wallet"; surface the real cause to the login UI.
+Acceptance: booting offline with an existing profile shows retry, not "Create New Account" or the create-drive flow; a wrong password says so, distinctly from corruption/IO failures.
 
 ### UX-8 · P1 · Phase 3 · `todo`
 **Sync progress modal: error state + escape hatch.** Evidence: §5.7.
@@ -267,7 +269,7 @@ Acceptance: a failed sync shows the error and the modal is dismissible; no infin
 Acceptance: copied links resolve; files without a dataTxId offer no raw-gateway link.
 
 ### UX-11 · P2 · Track D · `todo`
-**Small-wiring batch**: rename doesn't refresh drive name (OverviewTab); DownloadQueueTab retry/pause/resume props never passed + not drive-filtered; UserMenu turbo refresh doesn't update displayed balance; `App.tsx:291` sets active drive to `drivesList[0]` on any drive:update; Permaweb copy-link feedback console-only; StorageTab `parentFolderId: ''` TODO. Evidence: §5.6, §5.8.
+**Small-wiring batch**: rename doesn't refresh drive name (OverviewTab); DownloadQueueTab retry/pause/resume props never passed + not drive-filtered; UserMenu turbo refresh doesn't update displayed balance; `App.tsx:291` sets active drive to `drivesList[0]` on any drive:update; Permaweb copy-link feedback console-only; StorageTab `parentFolderId: ''` TODO; TurboCreditsManager shares one `loading` flag between mount-time balance load and checkout — Pay button can re-enable while a checkout session is pending (implementer finding 2026-07-03). Evidence: §5.6, §5.8.
 
 ### UX-12 · P2 · Track D · `todo`
 **Move wallet keygen off the main process** (worker thread) + real progress. Evidence: §4.4.

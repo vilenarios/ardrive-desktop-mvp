@@ -58,5 +58,5 @@ A working session = PM loops items continuously within the current phase until: 
 
 1. ~~**Baseline commit**~~ ✅ 2026-07-02 — Phil's WIP parked on `wip/drive-key-persistence` (c8a1469); docs + agent setup committed to main (da5d3d9); repo/docs reorganized (root cleaned, docs/ indexed).
 2. ~~**INFRA-1** (lockfile + workflow committed)~~ ✅ committed locally (6299771); acceptance (clean-runner dispatch) verifies on first push.
-3. **INFRA-2** (test suite resurrected) — the QA gate is weak until `vitest --run` is green; this is the loop's linchpin and goes first among code items. ← **current**
-4. Then Phase 1 in BACKLOG order.
+3. ~~**INFRA-2** (test suite resurrected)~~ ✅ 2026-07-03 — merged (ea419f9) after the loop's first full cycle: implement → QA FAIL (1 defect) → fix iteration → QA PASS (static). 110 tests + 1 visible skip, green.
+4. **Phase 1 in BACKLOG order.** ← **current**
