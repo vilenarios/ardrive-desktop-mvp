@@ -154,6 +154,7 @@ Done 2026-07-03 (334a707, qa-gate PASS — network-shaped failures injected at t
 ### SYNC-3 · P0 · Phase 2 · `in-progress`
 **Startup crash recovery.** Evidence: §2.7.
 Fix: on DB init, reset rows stuck in `uploading`→`pending`(re-approval-safe) and `downloading`/`queued`→`pending`; rehydrate queues from DB; add CHECK constraints on status columns (needs INFRA-7 migrations).
+QA findings from SYNC-2's gate to absorb here (2026-07-03): rows sit `downloading` between transient retries (stuck after crash mid-retry — exactly this item's reset scope); each retry attempt inserts a fresh downloads-table row (accumulation — reuse keyed rows); brief unhandled-rejection window in downloadFile (implementer-reported, unreproduced — five-minute look while in the file).
 Acceptance: kill -9 during an upload+download; relaunch resumes/requeues both; nothing remains stuck.
 
 ### SYNC-4 · P0 · Phase 2 · `done`
@@ -184,6 +185,7 @@ QA finding 2026-07-03 (SYNC-4 gate): tray "Resume Sync" (main.ts:383) restarts d
 **Minimum offline resilience.** Evidence: §2.10.
 Fix: surface metadata-sync failures (no silent "continuing anyway"); watcher error → user-visible sync error state; startSync failure at boot retries with backoff or shows actionable state. Beta gateway minimum per D-012: no single-gateway hard dependency — `turbo-gateway.com` primary with simple failover (full Wayfinder routing = SYNC-15).
 Acceptance: pulling the network cable yields a visible degraded-sync state, not a silent healthy-looking app.
+QA finding 2026-07-03 (SYNC-2 gate): `isPermanentError` substring-matches messages that now embed user paths — a filename containing "404"/"file not found" misclassifies as permanent; harden to error codes/classes.
 
 ### SYNC-10 · P1 · Phase 2 · `todo`
 **Perf: streaming hash + indexed lookups.** Evidence: §2.12 (whole-file reads ×3 per event; full-table `getProcessedFiles` per event). Promoted from Track C per D-014 — hard prerequisite for the 2 GiB upload cap (SYNC-6).
@@ -194,6 +196,7 @@ Acceptance: hashing a multi-GB file keeps process memory flat (stream-based); pe
 
 ### SYNC-12 · P1 · Track C · `deferred`
 **Real download hash verification.** Evidence: §2.2 (compares against never-populated field). Needs upstream hash capture at upload/listing time.
+QA finding 2026-07-03 (SYNC-2 gate): failed re-download keeps stale `localFileExists=1` — display-level only (`isDownloaded` at main.ts:1086 can claim downloaded for an externally-deleted file whose re-download failed); fix alongside verification.
 
 ### SYNC-13 · P1 · Phase 2 · `todo`
 **Fix the 30s FileStateManager eviction feedback loop.** Evidence: §2.14.
@@ -351,7 +354,7 @@ Acceptance: a tester on build N is offered build N+1.
 Acceptance: a thrown error in main produces an inspectable report with app version.
 
 ### INFRA-6 · P2 · Track D · `in-progress`
-**Repo hygiene.** Evidence: §6.10. Delete 8 dead components + 2 unreachable (≈5k lines, list in AUDIT §5.9); delete unreferenced scripts (build-installers/build-simple/test-build/quick-test-*/build-windows-simple) and `scripts/manual-tests/`; drop patch-package or add a patch; move `@types/*` to devDependencies. QA finding 2026-07-03 (MONEY-5 gate): the dead legacy UploadApprovalQueue.tsx still contains a complete conflict-resolution modal (13 refs) and `ConflictResolution` in src/types/index.ts:149 survives only to serve it — delete together.
+**Repo hygiene.** Evidence: §6.10. Delete 8 dead components + 2 unreachable (≈5k lines, list in AUDIT §5.9); delete unreferenced scripts (build-installers/build-simple/test-build/quick-test-*/build-windows-simple) and `scripts/manual-tests/`; drop patch-package or add a patch; move `@types/*` to devDependencies. QA finding 2026-07-03 (MONEY-5 gate): the dead legacy UploadApprovalQueue.tsx still contains a complete conflict-resolution modal (13 refs) and `ConflictResolution` in src/types/index.ts:149 survives only to serve it — delete together. SYNC-2 gate adds: sync-manager's private downloadMissingFiles/downloadMissingFilesWithProgress/downloadIndividualFile (:3056-:3190) are unreachable ungated synced-writers — delete to keep the writer sweep trivially clean.
 Note 2026-07-02: root reorganization done — `nul` deleted; vendored docs → `docs/vendor/`; images → `docs/branding/`; stale plans → `docs/archive/`; workflow docs → `docs/developer/`; `test-scripts/` → `scripts/manual-tests/`. Remaining: dead-component/script deletion (needs Phil's confirmation) and dependency moves.
 
 ### INFRA-7 · P1 · Phase 4 · `todo`
