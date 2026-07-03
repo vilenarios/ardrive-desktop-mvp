@@ -65,7 +65,10 @@ const WalletExport: React.FC<WalletExportProps> = ({ walletAddress, onClose }) =
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [showExportData, setShowExportData] = useState(false);
+  // SEC-12: two separate concerns — exportComplete shows the result screen,
+  // revealed controls secret visibility (always starts masked).
+  const [exportComplete, setExportComplete] = useState(false);
+  const [revealed, setRevealed] = useState(false);
   const [exportData, setExportData] = useState<string>('');
   const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string>('');
@@ -111,7 +114,8 @@ const WalletExport: React.FC<WalletExportProps> = ({ walletAddress, onClose }) =
       if (result.success) {
         setExportData(result.data || '');
         setWarning(result.warning || '');
-        setShowExportData(true);
+        setExportComplete(true);
+        setRevealed(false);
         setShowFinalWarning(false);
       } else {
         setError(result.error || 'Export failed');
@@ -171,12 +175,19 @@ const WalletExport: React.FC<WalletExportProps> = ({ walletAddress, onClose }) =
     setNewPassword('');
     setConfirmNewPassword('');
     setShowPassword(false);
-    setShowExportData(false);
+    setExportComplete(false);
+    setRevealed(false);
     setExportData('');
     setError('');
     setWarning('');
     setShowFinalWarning(false);
   };
+
+  // SEC-12: formats whose result text is raw (unencrypted) secret material —
+  // masked until explicit reveal. The seed phrase has its own masked branch;
+  // 'jwk-encrypted' output is password-protected, so it renders directly.
+  const isRawTextSecret =
+    selectedFormat === 'jwk-plain' || selectedFormat === 'private-key';
 
   return (
     <div className="wallet-export-modal fade-in">
@@ -190,7 +201,7 @@ const WalletExport: React.FC<WalletExportProps> = ({ walletAddress, onClose }) =
           </button>
         </div>
 
-        {!showExportData ? (
+        {!exportComplete ? (
           <>
             {/* Export Format Selection */}
             {!selectedFormat && (
@@ -369,21 +380,32 @@ const WalletExport: React.FC<WalletExportProps> = ({ walletAddress, onClose }) =
               <div className="data-container">
                 {selectedFormat === 'seed-phrase' ? (
                   <div className="seed-phrase">
-                    {showExportData ? (
-                      <div className="phrase-words">
-                        {exportData.split(' ').map((word, index) => (
-                          <span key={index} className="seed-word">
-                            <span className="word-index">{index + 1}</span>
-                            <span className="word-text">{word}</span>
-                          </span>
-                        ))}
-                      </div>
+                    {revealed ? (
+                      <>
+                        <div className="phrase-words">
+                          {exportData.split(' ').map((word, index) => (
+                            <span key={index} className="seed-word">
+                              <span className="word-index">{index + 1}</span>
+                              <span className="word-text">{word}</span>
+                            </span>
+                          ))}
+                        </div>
+                        <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                          <button
+                            className="button small outline"
+                            onClick={() => setRevealed(false)}
+                          >
+                            <EyeOff size={14} />
+                            Hide Seed Phrase
+                          </button>
+                        </div>
+                      </>
                     ) : (
                       <div className="masked-data">
                         <p>••••• ••••• ••••• •••••</p>
                         <button
                           className="button small outline"
-                          onClick={() => setShowExportData(true)}
+                          onClick={() => setRevealed(true)}
                         >
                           <Eye size={14} />
                           Reveal Seed Phrase
@@ -392,11 +414,26 @@ const WalletExport: React.FC<WalletExportProps> = ({ walletAddress, onClose }) =
                     )}
                   </div>
                 ) : (
-                  <pre className="export-text">
-                    {selectedFormat === 'private-key' && !showExportData
-                      ? '•'.repeat(64)
-                      : exportData}
-                  </pre>
+                  <>
+                    <pre className="export-text">
+                      {isRawTextSecret && !revealed
+                        ? '•'.repeat(64)
+                        : exportData}
+                    </pre>
+                    {isRawTextSecret && (
+                      <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                        <button
+                          className="button small outline"
+                          onClick={() => setRevealed(!revealed)}
+                        >
+                          {revealed ? <EyeOff size={14} /> : <Eye size={14} />}
+                          {selectedFormat === 'private-key'
+                            ? (revealed ? 'Hide Private Key' : 'Reveal Private Key')
+                            : (revealed ? 'Hide Keyfile' : 'Reveal Keyfile')}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
