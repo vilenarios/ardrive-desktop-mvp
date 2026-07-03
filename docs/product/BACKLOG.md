@@ -203,7 +203,7 @@ Acceptance: wrong password → `success: false`, nothing cached; correct passwor
 **Fix private-drive create UX.** Evidence: §3.3 (user pays, UI says failed, no mapping). Root cause is UX-3's envelope mismatch — fix both handler shape and modal expectations together; create mapping + sync folder on success.
 
 ### PRIV-4 · P0 · Track A · `deferred`
-**Fix key persistence serialization.** Evidence: §3.4-3.5. `key.keyData.toString('base64')` on save; `new EntityKey(Buffer.from(..., 'base64'))` (+ driveSignatureType for VersionedDriveKey) on load; App.tsx must forward `persistKey`; wire the write-only DB prefs (or drop them); implement plan steps 5 (session restore) and 6 (settings UI) from SELECTIVE_DRIVE_PERSISTENCE_PLAN.md.
+**Fix key persistence serialization.** Evidence: §3.4-3.5. `key.keyData.toString('base64')` on save; `new EntityKey(Buffer.from(..., 'base64'))` (+ driveSignatureType for VersionedDriveKey) on load; App.tsx must forward `persistKey`; wire the write-only DB prefs (or drop them); implement plan steps 5 (session restore) and 6 (settings UI) from docs/archive/SELECTIVE_DRIVE_PERSISTENCE_PLAN.md. The parked partial implementation lives on branch `wip/drive-key-persistence` (commit c8a1469) — review before reusing.
 Acceptance: unlock with "remember" → restart → drive auto-unlocks and decrypts listings; unlock without → restart → drive locked.
 
 ### PRIV-5 · P1 · Track A · `deferred`
@@ -284,10 +284,11 @@ Acceptance: no UI implies simultaneous multi-drive sync.
 
 ## INFRA — Build, test, release
 
-### INFRA-1 · P0 · Phase 1 · `todo`
+### INFRA-1 · P0 · Phase 1 · `in-progress`
 **Make CI able to run.** Evidence: §6.7.
-Fix: un-gitignore + commit `package-lock.json`; commit `mvp-workflow.yml`; remove the deleted `build-release.yml` from the repo properly; reconcile RELEASE_GUIDE.md/TESTING_DISTRIBUTION.md with the real workflow names and lockfile policy.
+Fix: un-gitignore + commit `package-lock.json`; commit `mvp-workflow.yml`; remove the deleted `build-release.yml` from the repo properly; reconcile release-guide.md/testing-distribution.md with the real workflow names and lockfile policy.
 Acceptance: a manual workflow dispatch completes install on a clean runner.
+Note 2026-07-02: lockfile + workflow committed locally (commit 6299771). Remaining: push, run a dispatch to verify acceptance, and the docs-reconciliation half (with INFRA-11).
 
 ### INFRA-2 · P0 · Phase 4 · `todo`
 **Resurrect the test suite.** Evidence: §6.7, ground truth.
@@ -306,8 +307,9 @@ Acceptance: a tester on build N is offered build N+1.
 **Crash & error telemetry.** No crash reporting exists. Add opt-in Sentry (or crashReporter + minidump endpoint) for main + renderer; wire unhandled rejections; pair with SEC-8 so reports carry no secrets.
 Acceptance: a thrown error in main produces an inspectable report with app version.
 
-### INFRA-6 · P2 · Track D · `todo`
-**Repo hygiene.** Evidence: §6.10. Delete `nul`; delete 8 dead components + 2 unreachable (≈5k lines, list in AUDIT §5.9); delete unreferenced scripts (build-installers/build-simple/test-build/quick-test-*/build-windows-simple) and `test-scripts/`; move or delete vendored root docs/images; drop patch-package or add a patch; move `@types/*` to devDependencies.
+### INFRA-6 · P2 · Track D · `in-progress`
+**Repo hygiene.** Evidence: §6.10. Delete 8 dead components + 2 unreachable (≈5k lines, list in AUDIT §5.9); delete unreferenced scripts (build-installers/build-simple/test-build/quick-test-*/build-windows-simple) and `scripts/manual-tests/`; drop patch-package or add a patch; move `@types/*` to devDependencies.
+Note 2026-07-02: root reorganization done — `nul` deleted; vendored docs → `docs/vendor/`; images → `docs/branding/`; stale plans → `docs/archive/`; workflow docs → `docs/developer/`; `test-scripts/` → `scripts/manual-tests/`. Remaining: dead-component/script deletion (needs Phil's confirmation) and dependency moves.
 
 ### INFRA-7 · P1 · Phase 4 · `todo`
 **Database migration framework.** Evidence: §6.11 ("no migrations needed", schemaVersion=3). Released apps cannot recreate tables.

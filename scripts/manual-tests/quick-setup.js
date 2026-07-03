@@ -1,5 +1,5 @@
 // Quick setup script for testing
-// Run with: node test-scripts/quick-setup.js
+// Run with: node scripts/manual-tests/quick-setup.js
 
 const TEST_PROFILES = {
   newUser: {

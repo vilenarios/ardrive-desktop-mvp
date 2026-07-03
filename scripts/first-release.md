@@ -74,7 +74,7 @@ Once this works, you can:
 
 ## Need Help?
 
-- Check `RELEASE_GUIDE.md` for detailed info
+- Check `docs/developer/release-guide.md` for detailed info
 - GitHub Actions are in `.github/workflows/`
 - Free tier = 2000 minutes/month (plenty for MVP!)
 

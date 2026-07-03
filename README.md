@@ -282,10 +282,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## 📚 Documentation
 
-- **[Security Guide](SECURITY.md)** - Detailed security implementation
-- **[Development Guide](DEVELOPMENT.md)** - Developer documentation
-- **[User Guide](USER-GUIDE.md)** - Complete user manual
-- **[API Reference](API.md)** - Technical API documentation
+- **[Security Guide](docs/operations/security.md)** - Detailed security implementation
+- **[Development Guide](docs/developer/development.md)** - Developer documentation
+- **[User Guide](docs/user/user-guide.md)** - Complete user manual
+- **[API Reference](docs/api/api-reference.md)** - Technical API documentation
 
 ## 📞 Support
 

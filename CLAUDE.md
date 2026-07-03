@@ -20,7 +20,7 @@ Workflow rules for agents:
 2. A fix isn't done until verified against its acceptance criteria (drive the actual flow, not just typecheck) and covered by at least one behavioral test where feasible.
 3. **Never spend real funds.** Uploads cost AR/Turbo Credits. Use free-tier (<100KB) files for upload testing; anything larger requires the dedicated test wallet and explicit budget (see BACKLOG INFRA-9).
 4. Known trap: IPC handlers currently return inconsistent shapes (raw vs `{success, data}`); the standard is the envelope (D-005). Don't add new handlers that return raw values.
-5. Root-level planning docs (`DRIVE_KEY_PERSISTENCE_FIX.md`, `SELECTIVE_DRIVE_PERSISTENCE_PLAN.md`) are superseded by the backlog — don't implement from them.
+5. Docs under `docs/archive/` are superseded historical plans — don't implement from them. The parked drive-key persistence WIP lives on branch `wip/drive-key-persistence` (see PRIV-4).
 
 ## Commands
 
@@ -67,7 +67,7 @@ npm run uat:clean        # Clean build + run UAT
 ```
 
 ### Releases
-Single-branch strategy: all development on `main`, releases via tags. GitHub Actions builds are manual only (`.github/workflows/mvp-workflow.yml`, workflow_dispatch) to save CI minutes. `npm run release:patch|minor|major` bumps version, tags, and pushes; `npm run prerelease` runs typecheck + lint. See `RELEASE_GUIDE.md`, `MVP_WORKFLOW.md`, and `TESTING_DISTRIBUTION.md`.
+Development on `main` with branch-per-backlog-item (see PROCESS.md); releases via tags. GitHub Actions builds are manual only (`.github/workflows/mvp-workflow.yml`, workflow_dispatch) to save CI minutes. `npm run release:patch|minor|major` bumps version, tags, and pushes; `npm run prerelease` runs typecheck + lint. See `docs/developer/release-guide.md`, `docs/developer/mvp-workflow.md`, and `docs/developer/testing-distribution.md`.
 
 ## Architecture
 
@@ -213,4 +213,4 @@ DEBUG=ardrive:*                              # Detailed logging
 
 ## Documentation
 
-Extensive docs live in `docs/` (developer setup, architecture, building, testing, API reference). Top-level workflow docs: `MVP_WORKFLOW.md` (dev/CI workflow), `RELEASE_GUIDE.md`, `TESTING_DISTRIBUTION.md`, `MVP_GETTING_STARTED.md`.
+All docs live in `docs/` — see [docs/README.md](docs/README.md) for the index. Key areas: `docs/product/` (backlog/roadmap/process — the working docs), `docs/developer/` (setup, architecture, release/workflow guides), `docs/archive/` (superseded plans — historical only), `docs/vendor/` (third-party SDK readmes).

@@ -3,9 +3,9 @@
 ## 📁 Your Key Documents
 
 1. **THIS FILE** - Start here! Step-by-step instructions
-2. **MVP_WORKFLOW.md** - Your development workflow
-3. **RELEASE_GUIDE.md** - Detailed release process
-4. **TESTING_DISTRIBUTION.md** - How to share with testers
+2. **mvp-workflow.md** - Your development workflow
+3. **release-guide.md** - Detailed release process
+4. **testing-distribution.md** - How to share with testers
 
 ---
 
@@ -231,9 +231,9 @@ npm run release:major  # 0.0.1 → 1.0.0 + release
 
 ## 📚 Additional Resources
 
-- **Workflow Details**: See `MVP_WORKFLOW.md`
-- **Release Process**: See `RELEASE_GUIDE.md`
-- **Testing Guide**: See `TESTING_DISTRIBUTION.md`
+- **Workflow Details**: See `mvp-workflow.md`
+- **Release Process**: See `release-guide.md`
+- **Testing Guide**: See `testing-distribution.md`
 - **GitHub Actions**: `.github/workflows/mvp-workflow.yml`
 
 ---

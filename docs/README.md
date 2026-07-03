@@ -4,6 +4,13 @@ Welcome to the ArDrive Desktop documentation. This directory contains all projec
 
 ## 📁 Documentation Structure
 
+### Product & Process (`/product`) — start here for current work
+- **[Backlog](./product/BACKLOG.md)** - Canonical work tracker (stable item IDs, acceptance criteria)
+- **[Roadmap](./product/ROADMAP.md)** - Beta milestones and post-beta tracks
+- **[Process](./product/PROCESS.md)** - The PM / implementer / QA-gate loop
+- **[Decisions](./product/DECISIONS.md)** - Append-only decision log (D-###)
+- **[Audit 2026-07-02](./product/AUDIT-2026-07-02.md)** - Immutable audit evidence snapshot
+
 ### User Documentation (`/user`)
 - **[Getting Started](./user/getting-started.md)** - Quick start guide for new users
 - **[User Guide](./user/user-guide.md)** - Comprehensive user manual
@@ -15,9 +22,13 @@ Welcome to the ArDrive Desktop documentation. This directory contains all projec
 - **[Architecture](./developer/architecture.md)** - System architecture overview
 - **[Codebase Map](./developer/codebase-map.md)** - Project structure guide
 - **[Design Guidelines](./developer/design-guidelines.md)** - UI/UX design principles
-- **Building**
+- **Building & Releasing**
   - **[Quick Build](./developer/building/quick-build.md)** - Fast build instructions
   - **[Installers](./developer/building/installers.md)** - Creating installers
+  - **[MVP Getting Started](./developer/mvp-getting-started.md)** - Dev/release onboarding
+  - **[MVP Workflow](./developer/mvp-workflow.md)** - Branch/CI workflow
+  - **[Release Guide](./developer/release-guide.md)** - Release process
+  - **[Testing Distribution](./developer/testing-distribution.md)** - Sharing builds with testers
 
 ### API & SDK Documentation (`/api`)
 - **[API Reference](./api/api-reference.md)** - API endpoints and usage
@@ -52,6 +63,15 @@ Welcome to the ArDrive Desktop documentation. This directory contains all projec
 ### Releases (`/releases`)
 - **[Changelog](./releases/changelog.md)** - Version history
 - **[v0.0.1 Release Notes](./releases/v0.0.1.md)** - Initial release notes
+
+### Archive (`/archive`) — superseded, historical only
+Old plans and reviews kept for reference (drive-key persistence plans, old test plan, move-detection review, private-drives implementation guide). Do not implement from these; current work is in `/product`.
+
+### Vendor (`/vendor`)
+Third-party SDK readmes vendored for offline reference (ardrive-core-js, wayfinder-core).
+
+### Branding (`/branding`)
+Style guide and marketing images (kept out of `assets/`, which ships inside installers).
 
 ## 🔍 Finding Information
 
