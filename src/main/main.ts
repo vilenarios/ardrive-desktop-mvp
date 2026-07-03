@@ -383,9 +383,20 @@ class ArDriveApp {
               if (globalStatus?.isActive) {
                 await this.syncManager.stopSync();
               } else {
-                const drives = await this.walletManager.listDrives();
-                if (drives && drives.length > 0) {
-                  await this.syncManager.startSync(drives[0].id, drives[0].rootFolderId, drives[0].name);
+                // SYNC-7 (qa-gate FAIL reason): resume the ACTIVE mapping's
+                // drive with ITS folder — restarting drives[0] re-created the
+                // audited watch-A-upload-B divergence in two tray clicks.
+                const mappings = await databaseManager.getDriveMappings();
+                const activeMapping = mappings.find((m: any) => m.isActive) || mappings[0];
+                if (activeMapping) {
+                  if (activeMapping.localFolderPath) {
+                    this.syncManager.setSyncFolder(activeMapping.localFolderPath);
+                  }
+                  await this.syncManager.startSync(
+                    activeMapping.driveId,
+                    activeMapping.rootFolderId,
+                    activeMapping.driveName
+                  );
                 }
               }
             } catch (trayError) {
