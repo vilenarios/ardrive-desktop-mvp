@@ -64,10 +64,11 @@ Acceptance: paths outside configured sync folders (after realpath resolution) ar
 ### SEC-11 · P2 · Track D · `todo`
 **Rate-limit local password attempts** on `profiles:switch`/`wallet:load`. Evidence: §4.6.
 
-### SEC-12 · P1 · Phase 1 · `in-progress`
+### SEC-12 · P1 · Phase 1 · `done`
 **Fix wallet-export reveal-mask bug.** Evidence: §4.11 (WalletExport.tsx:114, 372, 396).
 Fix: separate `exportComplete` from `revealed`; secrets masked until explicit reveal click. Scope extended 2026-07-03 (PM, from implementer finding): plain JWK export renders raw key material on the same screen — same defect class, included; encrypted keyfile stays unmasked (password-protected, not raw secret).
 Acceptance: after export, seed phrase, private key, and plain JWK render masked; reveal toggles.
+Done 2026-07-03 (1411460 + 6936567, qa-gate PASS — component driven end-to-end, mutation-checked, DOM-vector leak probe): 7 behavioral tests; no reveal-state carryover path exists; suite 122+1 green. QA notes: Copy stays ungated behind reveal (deliberate — explicit action); clipboard-timer issue filed to UX-11.
 
 ### SEC-13 · P2 · Track D · `todo`
 **Make seed-confirmation real.** Evidence: §4.5 (completeSetup stub; wallet committed pre-confirmation; orphan profiles on Back).
