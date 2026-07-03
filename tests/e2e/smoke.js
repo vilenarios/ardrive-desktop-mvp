@@ -145,7 +145,8 @@ function blockedError(message) {
   return e;
 }
 
-/** Poll an async predicate until truthy or timeout. */
+/** Poll an async predicate until truthy or timeout. Errors thrown by the
+ *  predicate are retried unless marked `smokeAbort` (terminal condition). */
 async function waitUntil(fn, { timeout, interval = 1_000, description }) {
   const deadline = Date.now() + timeout;
   let lastErr = null;
@@ -154,6 +155,7 @@ async function waitUntil(fn, { timeout, interval = 1_000, description }) {
       const value = await fn();
       if (value) return value;
     } catch (err) {
+      if (err && err.smokeAbort) throw err;
       lastErr = err;
     }
     if (Date.now() > deadline) {
@@ -450,7 +452,9 @@ async function main() {
           const uploads = await page.evaluate(() => window.electronAPI.files.getUploads());
           const row = (uploads || []).find((u) => u.fileName === junkName);
           if (row && row.status === 'failed') {
-            throw new Error(`upload failed: ${row.error || 'no error detail recorded'}`);
+            const e = new Error(`upload failed: ${row.error || 'no error detail recorded'}`);
+            e.smokeAbort = true; // terminal — do not keep polling
+            throw e;
           }
           return row && row.status === 'completed' ? row : null;
         },
