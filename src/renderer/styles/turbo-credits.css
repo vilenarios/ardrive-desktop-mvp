@@ -376,8 +376,7 @@
 
 /* Button Styles - Following Dashboard Pattern */
 .tcm-purchase-btn,
-.tcm-convert-btn,
-.tcm-save-btn {
+.tcm-convert-btn {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -396,8 +395,7 @@
   background: var(--gray-700);
 }
 
-.tcm-purchase-btn:hover,
-.tcm-save-btn:hover {
+.tcm-purchase-btn:hover {
   background: var(--ardrive-primary-hover);
 }
 
@@ -406,8 +404,7 @@
 }
 
 .tcm-purchase-btn:disabled,
-.tcm-convert-btn:disabled,
-.tcm-save-btn:disabled {
+.tcm-convert-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -492,143 +489,6 @@
   margin-top: var(--space-2);
   padding-top: var(--space-2);
   color: var(--gray-900);
-}
-
-/* Settings Tab */
-.tcm-auto-topup-card {
-  background: var(--gray-50);
-  border-radius: var(--radius-md);
-  padding: var(--space-4);
-}
-
-.tcm-setting-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--gray-200);
-}
-
-.tcm-setting-row:last-child {
-  border-bottom: none;
-}
-
-.tcm-setting-info {
-  flex: 1;
-}
-
-.tcm-setting-info label {
-  display: block;
-  font-weight: 500;
-  color: var(--gray-900);
-  margin-bottom: var(--space-1);
-}
-
-.tcm-setting-info p {
-  margin: 0;
-  font-size: 0.8125rem;
-  color: var(--gray-600);
-}
-
-.tcm-setting-input {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.tcm-setting-input input {
-  width: 5rem;
-  padding: var(--space-2);
-  border: 1px solid var(--gray-300);
-  border-radius: var(--radius-sm);
-  text-align: right;
-  font-size: 0.875rem;
-}
-
-.tcm-setting-input span {
-  font-size: 0.875rem;
-  color: var(--gray-600);
-}
-
-/* Toggle Switch */
-.tcm-toggle {
-  position: relative;
-  display: inline-block;
-  width: 3rem;
-  height: 1.5rem;
-}
-
-.tcm-toggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.tcm-toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: var(--gray-300);
-  transition: .4s;
-  border-radius: 1.5rem;
-}
-
-.tcm-toggle-slider:before {
-  position: absolute;
-  content: "";
-  height: 1.125rem;
-  width: 1.125rem;
-  left: 0.1875rem;
-  bottom: 0.1875rem;
-  background-color: white;
-  transition: .4s;
-  border-radius: 50%;
-}
-
-.tcm-toggle input:checked + .tcm-toggle-slider {
-  background-color: var(--ardrive-primary);
-}
-
-.tcm-toggle input:checked + .tcm-toggle-slider:before {
-  transform: translateX(1.5rem);
-}
-
-.tcm-auto-topup-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--gray-200);
-}
-
-.tcm-saved-indicator {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--success-600);
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-.tcm-auto-topup-info {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-  padding: var(--space-3);
-  background: var(--info-50);
-  border-radius: var(--radius);
-  font-size: 0.8125rem;
-  color: var(--info-700);
-}
-
-.tcm-auto-topup-info svg {
-  flex-shrink: 0;
-  margin-top: 2px;
 }
 
 /* Stats Grid */

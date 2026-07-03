@@ -42,13 +42,6 @@ interface FiatEstimate {
   winc: string;
 }
 
-interface AutoTopUpSettings {
-  enabled: boolean;
-  threshold: number; // AR amount
-  amount: number; // USD amount to top up
-  paymentMethod?: string;
-}
-
 const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, onClose }) => {
   const [balance, setBalance] = useState<TurboBalance | null>(null);
   const [loading, setLoading] = useState(false);
@@ -59,12 +52,6 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
   const [tokenAmount, setTokenAmount] = useState<string>('0.001');
   const [fiatEstimate, setFiatEstimate] = useState<FiatEstimate | null>(null);
   const [activeTab, setActiveTab] = useState<'purchase' | 'settings' | 'coming-soon' | 'about'>('purchase');
-  const [autoTopUp, setAutoTopUp] = useState<AutoTopUpSettings>({
-    enabled: false,
-    threshold: 0.1,
-    amount: 10
-  });
-  const [showAutoTopUpSaved, setShowAutoTopUpSaved] = useState(false);
 
   // Calculate storage amount for dollar amount
   const calculateStorageAmount = (dollarAmount: number): string => {
@@ -210,13 +197,6 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
     }
   };
 
-  const handleAutoTopUpSave = () => {
-    // TODO: Save to config
-    console.log('Auto top-up settings:', autoTopUp);
-    setShowAutoTopUpSaved(true);
-    setTimeout(() => setShowAutoTopUpSaved(false), 3000);
-  };
-
   const formatCreditsUsage = (winc: string) => {
     const ar = parseFloat(winc) / 1e12;
     if (ar < 0.000001) return '< 0.000001 AR';
@@ -316,12 +296,7 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
         )}
 
         {activeTab === 'settings' && (
-          <TurboSettingsTab
-            autoTopUp={autoTopUp}
-            setAutoTopUp={setAutoTopUp}
-            showAutoTopUpSaved={showAutoTopUpSaved}
-            handleAutoTopUpSave={handleAutoTopUpSave}
-          />
+          <TurboSettingsTab />
         )}
 
         {activeTab === 'coming-soon' && (
