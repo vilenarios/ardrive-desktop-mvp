@@ -212,9 +212,10 @@ Acceptance: gateway outage triggers transparent failover; gateway selection obse
 **Implement private download decryption.** Evidence: §3.1 (raw ciphertext written to sync folder). Upstream ardrive-core-js APIs may be extended if needed (D-016).
 Acceptance: round-trip UAT — upload to private drive, delete locally, re-download → plaintext bytes hash-equal the original.
 
-### PRIV-2 · P0 · Phase 2 · `in-progress`
+### PRIV-2 · P0 · Phase 2 · `done`
 **Verify drive passwords with trial decryption.** Evidence: §3.2 (HKDF never fails; garbage keys cached).
 Acceptance: wrong password → `success: false`, nothing cached; correct password → decrypted drive name renders.
+Note 2026-07-03: done — merged from `fix/PRIV-2-trial-decrypt` (053385e + QA-finding 094f093) after qa-gate PASS (static — GUI render of the decrypted name verified at handler/component level). deriveKey/cacheKey split; unlockPrivateDrive trial-decrypts the drive entity before caching (only real decrypt/auth error strings classify as wrong password — gateway errors report a verification failure); DriveSelector envelope-as-boolean bug fixed (§5.3.6).
 
 ### PRIV-3 · P0 · Phase 2 · `todo`
 **Fix private-drive create UX.** Evidence: §3.3 (user pays, UI says failed, no mapping). Root cause is UX-3's envelope mismatch — fix both handler shape and modal expectations together; create mapping + sync folder on success.
@@ -251,6 +252,7 @@ Acceptance: changing the folder from Settings persists and re-targets sync (resp
 **One IPC response envelope.** Evidence: §5.3, §3.3, §3.6 (raw-vs-`{success,data}` roulette breaks CreateDriveModal private path, DriveSelector unlock, Dashboard.handleDriveCreated).
 Fix: standardize every handler on `{success, data?, error?}` (extend `safeIpcHandler` to all 91), regenerate preload types, sweep all renderer call sites.
 Acceptance: typecheck enforces the envelope; the three known-broken call sites pass UAT; no `.find()`/`.id` on wrapper objects remains.
+Also (PRIV-2 qa-gate findings 2026-07-03): the specific unlock error plumbed through `drive:unlock` is displayed nowhere — PrivateDriveUnlockModal hardcodes 'Invalid password' on any false return, and App.tsx/DriveSelector reduce the envelope to a boolean, so the network-vs-password distinction never reaches the user; `drive:unlock` also uses `drive` instead of D-005's `data` field.
 
 ### UX-4 · P1 · Phase 3 · `todo`
 **Redesign preload event subscriptions.** Evidence: §5.4 (removeAllListeners clobbering family + StorageTab leak + App's uncleaned registrations).

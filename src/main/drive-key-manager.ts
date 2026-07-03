@@ -38,27 +38,39 @@ export class DriveKeyManager {
   }
 
   /**
-   * Unlock a private drive by deriving its key from the password
+   * Derive a drive key from a password WITHOUT caching it.
+   *
+   * PRIV-2: HKDF derivation succeeds for ANY password — a derived key proves
+   * nothing. Callers handling user-supplied passwords must trial-decrypt
+   * something real (e.g. the drive entity) before caching via cacheKey().
    */
-  async unlockDrive(driveId: string, password: string): Promise<boolean> {
+  async deriveKey(driveId: string, password: string): Promise<DriveKey> {
+    if (!this.walletJson) {
+      throw new Error('Wallet not loaded');
+    }
+    return deriveDriveKey(password, driveId, JSON.stringify(this.walletJson));
+  }
+
+  /**
+   * Cache a VERIFIED drive key for the session. Only call after the key has
+   * been proven by trial decryption (or for a drive this session just
+   * created, where the password is known-correct).
+   */
+  cacheKey(driveId: string, driveKey: DriveKey): void {
+    this.drivesKeyCache.set(driveId, driveKey);
+    console.log(`[DRIVE-KEY-MANAGER] ✅ Drive ${driveId.slice(0, 8)}... unlocked for session`);
+  }
+
+  /**
+   * Derive + cache WITHOUT verification. Only safe when the password is
+   * known-correct — i.e. for a drive this session just created with that
+   * same password. User-supplied unlocks go through
+   * SecureWalletManager.unlockPrivateDrive (trial decryption, PRIV-2).
+   */
+  async unlockDriveUnverified(driveId: string, password: string): Promise<boolean> {
     try {
-      if (!this.walletJson) {
-        throw new Error('Wallet not loaded');
-      }
-
-      console.log(`[DRIVE-KEY-MANAGER] Attempting to unlock drive ${driveId.slice(0, 8)}...`);
-
-      // Derive drive key using ardrive-core-js
-      const driveKey = await deriveDriveKey(
-        password,
-        driveId,
-        JSON.stringify(this.walletJson)
-      );
-
-      // Cache the key for this session
-      this.drivesKeyCache.set(driveId, driveKey);
-      
-      console.log(`[DRIVE-KEY-MANAGER] ✅ Drive ${driveId.slice(0, 8)}... unlocked for session`);
+      const driveKey = await this.deriveKey(driveId, password);
+      this.cacheKey(driveId, driveKey);
       return true;
     } catch (error) {
       console.error(`[DRIVE-KEY-MANAGER] ❌ Failed to unlock drive ${driveId.slice(0, 8)}:`, error);
