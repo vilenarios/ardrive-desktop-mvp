@@ -38,27 +38,19 @@ jobs:
     name: Build ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     
-    # Skip jobs based on platform selection
-    if: |
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
-      (github.event.inputs.platforms == 'both') ||
-      (github.event.inputs.platforms == 'windows' && matrix.os == 'windows-latest') ||
-      (github.event.inputs.platforms == 'mac' && matrix.os == 'macos-latest')
-    
+    # Platform selection: the matrix context is NOT available in a job-level
+    # `if` (GitHub rejects the workflow with "Unrecognized named-value:
+    # 'matrix'"), so the platform filter is built into the matrix itself via
+    # fromJSON. Tag pushes (no inputs) build both platforms.
     strategy:
       matrix:
-        include:
-          - os: windows-latest
-            name: Windows
-            build_cmd: dist:win
-            artifact_path: release/*.exe
-          
-          - os: macos-latest
-            name: macOS  
-            build_cmd: dist:mac
-            artifact_path: |
-              release/*.dmg
-              release/*.zip
+        include: ${{ fromJSON(
+            github.event.inputs.platforms == 'windows'
+              && '[{"os":"windows-latest","name":"Windows","build_cmd":"dist:win","artifact_path":"release/*.exe"}]'
+            || github.event.inputs.platforms == 'mac'
+              && '[{"os":"macos-latest","name":"macOS","build_cmd":"dist:mac","artifact_path":"release/*.dmg\nrelease/*.zip"}]'
+            || '[{"os":"windows-latest","name":"Windows","build_cmd":"dist:win","artifact_path":"release/*.exe"},{"os":"macos-latest","name":"macOS","build_cmd":"dist:mac","artifact_path":"release/*.dmg\nrelease/*.zip"}]'
+          ) }}
 
     steps:
     - name: Checkout
@@ -83,9 +75,10 @@ jobs:
     - name: Create installer
       env:
         CSC_IDENTITY_AUTO_DISCOVERY: false
-        WIN_CSC_LINK: none
-        CSC_LINK: none
-      run: npm run ${{ matrix.build_cmd }}
+      # --publish never: electron-builder auto-publishes when it detects CI,
+      # then dies on the missing GH_TOKEN. Test builds must never publish -
+      # releases go through the release job on Phil's explicit dispatch (D-004).
+      run: npm run ${{ matrix.build_cmd }} -- --publish never
 
     - name: Upload build
       uses: actions/upload-artifact@v4
@@ -114,7 +107,7 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ github.ref_name || format('v0.0.{0}-test', github.run_number) }}
-        name: ${{ github.ref_name || format('Test Build #{0}', github.run_number) }}
+        name: "${{ github.ref_name || format('Test Build {0}', github.run_number) }}"
         draft: ${{ github.event.inputs.build_type == 'test' }}
         prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         generate_release_notes: true
