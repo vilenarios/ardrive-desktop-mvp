@@ -61,13 +61,17 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
     if (!selectedLockedDrive) return false;
 
     try {
-      const success = await window.electronAPI.drive.unlock(selectedLockedDrive.id, password);
-      if (success) {
+      // drive:unlock returns a {success, drive?/error?} envelope — reading it
+      // as a boolean made {success:false} look like a successful unlock
+      // (audit §5.3). PRIV-2: only a verified unlock selects the drive.
+      const result = await window.electronAPI.drive.unlock(selectedLockedDrive.id, password);
+      const unlocked = !!(result && (result as { success?: boolean }).success);
+      if (unlocked) {
         onDriveSelect(selectedLockedDrive.id);
         setShowUnlockModal(false);
         setSelectedLockedDrive(null);
       }
-      return success;
+      return unlocked;
     } catch (error) {
       console.error('Failed to unlock drive:', error);
       return false;

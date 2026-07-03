@@ -828,9 +828,9 @@ class ArDriveApp {
         const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
         const validatedPassword = InputValidator.validatePassword(password, 'password');
         
-        const success = await this.walletManager.unlockPrivateDrive(validatedDriveId, validatedPassword);
+        const unlockResult = await this.walletManager.unlockPrivateDrive(validatedDriveId, validatedPassword);
         
-        if (success) {
+        if (unlockResult.success) {
           // Update the ArDrive instance in sync manager with the new private key data
           const arDrive = this.walletManager.getArDrive();
           if (arDrive) {
@@ -851,10 +851,10 @@ class ArDriveApp {
             drive: unlockedDrive // Return the decrypted drive info
           };
         } else {
-          // Invalid password
+          // Wrong password or verification failure — pass the specific reason
           return { 
             success: false, 
-            error: 'Invalid password. Please check your password and try again.' 
+            error: unlockResult.error || 'Invalid password. Please check your password and try again.' 
           };
         }
       } catch (error) {

@@ -2,7 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { app } from 'electron';
-import { arDriveFactory, ArDrive, readJWKFile, ArweaveAddress } from 'ardrive-core-js';
+import { arDriveFactory, ArDrive, readJWKFile, ArweaveAddress, EID } from 'ardrive-core-js';
 import Arweave from 'arweave';
 import { DriveInfo, DriveInfoWithStatus, WalletInfo, WalletStorageFormat } from '../types';
 import { turboManager } from './turbo-manager';
@@ -1157,8 +1157,10 @@ export class SecureWalletManager {
       }
       const driveId = driveEntity.entityId.toString();
       
-      // Unlock the drive immediately for this session
-      const unlocked = await driveKeyManager.unlockDrive(driveId, password);
+      // Unlock the drive immediately for this session. Unverified is correct
+      // here: the drive was just created with this exact password, and its
+      // entity is not yet queryable for trial decryption.
+      const unlocked = await driveKeyManager.unlockDriveUnverified(driveId, password);
       if (!unlocked) {
         console.warn('Drive created but failed to unlock immediately');
       }
@@ -1185,25 +1187,44 @@ export class SecureWalletManager {
   /**
    * Unlock a private drive for the current session
    */
-  async unlockPrivateDrive(driveId: string, password: string): Promise<boolean> {
+  async unlockPrivateDrive(
+    driveId: string,
+    password: string
+  ): Promise<{ success: boolean; error?: string }> {
     try {
       console.log(`Attempting to unlock private drive ${driveId.slice(0, 8)}...`);
       
-      const success = await driveKeyManager.unlockDrive(driveId, password);
-      
-      if (success) {
-        console.log(`✅ Private drive ${driveId.slice(0, 8)}... unlocked successfully`);
-        
-        // Recreate ArDrive instance with updated private key data
-        await this.recreateArDriveWithPrivateKeys();
-      } else {
-        console.log(`❌ Failed to unlock private drive ${driveId.slice(0, 8)}...`);
+      if (!this.arDrive) {
+        return { success: false, error: 'Wallet not loaded. Please log in again.' };
       }
       
-      return success;
+      // PRIV-2: HKDF derives a key for ANY password — derivation success
+      // proves nothing. Trial-decrypt the drive entity before caching.
+      const driveKey = await driveKeyManager.deriveKey(driveId, password);
+      
+      try {
+        await this.arDrive.getPrivateDrive({ driveId: EID(driveId), driveKey });
+      } catch (trialError) {
+        const message = trialError instanceof Error ? trialError.message : String(trialError);
+        // Decryption/auth failures mean a wrong password; anything else
+        // (network, gateway) must not masquerade as "invalid password".
+        if (/decrypt|cipher|auth|tag|bad|invalid/i.test(message)) {
+          console.log(`❌ Trial decryption failed for drive ${driveId.slice(0, 8)}... — wrong password`);
+          return { success: false, error: 'Invalid password. Please check your password and try again.' };
+        }
+        console.error(`Trial decryption errored (non-decryption) for drive ${driveId.slice(0, 8)}:`, message);
+        return { success: false, error: 'Could not verify the password (network or gateway error). Please try again.' };
+      }
+      
+      // Verified — cache for the session and refresh ArDrive with the key
+      driveKeyManager.cacheKey(driveId, driveKey);
+      await this.recreateArDriveWithPrivateKeys();
+      
+      console.log(`✅ Private drive ${driveId.slice(0, 8)}... unlocked successfully`);
+      return { success: true };
     } catch (error) {
       console.error('Error unlocking private drive:', error);
-      return false;
+      return { success: false, error: 'Failed to unlock drive. Please try again.' };
     }
   }
 

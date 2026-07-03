@@ -47,7 +47,9 @@ vi.mock('../../../src/main/crypto-utils', () => ({
   encryptData: vi.fn()
 }));
 vi.mock('../../../src/main/drive-key-manager', () => ({
-  driveKeyManager: { unlockDrive: vi.fn(async () => true) }
+  // PRIV-2 renamed unlockDrive -> unlockDriveUnverified (createPrivateDrive's
+  // just-created-drive path); the trial-decrypt path uses deriveKey/cacheKey.
+  driveKeyManager: { unlockDriveUnverified: vi.fn(async () => true) }
 }));
 
 import { SecureWalletManager } from '../../../src/main/wallet-manager-secure';
