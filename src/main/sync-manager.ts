@@ -2061,7 +2061,7 @@ export class SyncManager {
         fileName: path.basename(filePath),
         fileSize: stats.size,
         estimatedCost,
-        estimatedTurboCost: estimatedTurboCost || undefined,
+        estimatedTurboCost: estimatedTurboCost ?? undefined, // MONEY-6: a legit 0 quote (free) must not coerce to 'estimate unavailable'
         recommendedMethod,
         hasSufficientTurboBalance,
         conflictType,
@@ -3588,8 +3588,10 @@ export class SyncManager {
           fileName: fileName,
           fileSize: fileStats.size,
           mimeType: existingFileInfo.mimeType || 'application/octet-stream',
-          estimatedCost: 0.000001, // Metadata-only operation
-          estimatedTurboCost: 0.000001,
+          // Honest values (MONEY-6): a move/rename is a metadata-only tx,
+          // well under the Turbo free tier — nothing synthetic
+          estimatedCost: 0,
+          estimatedTurboCost: 0,
           recommendedMethod: 'turbo', // Metadata operations are tiny, perfect for Turbo
           hasSufficientTurboBalance: true,
           conflictType: 'none',

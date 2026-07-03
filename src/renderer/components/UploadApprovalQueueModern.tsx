@@ -331,8 +331,17 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
     } else if (upload.estimatedTurboCost != null) {
       // Real Turbo quote from the payment service — always shown. If the
       // balance can't cover it, say so rather than hiding the real number.
+      // MONEY-6 staleness fix: prefer the LIVE balance (the walletInfo prop
+      // refreshes on top-up) over the flag stored at queue time — topping up
+      // must unblock rows without waiting for a re-quote. Falls back to the
+      // stored flag when no live balance is available.
       // (Truthy check: rows arrive DB-shaped over IPC with booleans as 0/1.)
-      if (upload.hasSufficientTurboBalance) {
+      const liveWinc = walletInfo?.turboWinc != null ? parseFloat(walletInfo.turboWinc) : NaN;
+      const costWinc = upload.estimatedTurboCost * 1e12;
+      const sufficient = !Number.isNaN(liveWinc)
+        ? liveWinc >= costWinc
+        : !!upload.hasSufficientTurboBalance;
+      if (sufficient) {
         return { method: 'turbo', cost: `${upload.estimatedTurboCost.toFixed(4)} Credits`, hasQuote: true };
       }
       // Known cost the balance cannot cover — approval of this row is
@@ -864,10 +873,10 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
             onClick={async () => {
               try {
                 // Rows with a real quote the balance cannot cover are
-                // SKIPPED with a visible reason (MONEY-1) — never submitted
-                if (blockedForBalanceCount > 0) {
-                  setBalanceSkippedCount(blockedForBalanceCount);
-                }
+                // SKIPPED with a visible reason (MONEY-1) — never submitted.
+                // Set unconditionally so a later all-sufficient click clears
+                // a stale banner (qa-gate finding).
+                setBalanceSkippedCount(blockedForBalanceCount);
 
                 const uploadsToProcess = approvableUploads;
 
