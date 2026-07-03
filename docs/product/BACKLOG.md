@@ -211,7 +211,7 @@ Acceptance: gateway outage triggers transparent failover; gateway selection obse
 **Implement private download decryption.** Evidence: §3.1 (raw ciphertext written to sync folder). Upstream ardrive-core-js APIs may be extended if needed (D-016).
 Acceptance: round-trip UAT — upload to private drive, delete locally, re-download → plaintext bytes hash-equal the original.
 
-### PRIV-2 · P0 · Phase 2 · `todo`
+### PRIV-2 · P0 · Phase 2 · `in-progress`
 **Verify drive passwords with trial decryption.** Evidence: §3.2 (HKDF never fails; garbage keys cached).
 Acceptance: wrong password → `success: false`, nothing cached; correct password → decrypted drive name renders.
 
