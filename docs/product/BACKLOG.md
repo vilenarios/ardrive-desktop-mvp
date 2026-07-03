@@ -64,7 +64,7 @@ Acceptance: paths outside configured sync folders (after realpath resolution) ar
 ### SEC-11 · P2 · Track D · `todo`
 **Rate-limit local password attempts** on `profiles:switch`/`wallet:load`. Evidence: §4.6.
 
-### SEC-12 · P1 · Phase 1 · `todo`
+### SEC-12 · P1 · Phase 1 · `in-progress`
 **Fix wallet-export reveal-mask bug.** Evidence: §4.11 (WalletExport.tsx:114, 372, 396).
 Fix: separate `exportComplete` from `revealed`; secrets masked until explicit reveal click.
 Acceptance: after export, seed/private key render masked; reveal button toggles.
