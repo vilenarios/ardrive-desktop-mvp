@@ -151,11 +151,12 @@ Fix: rethrow from `downloadFile`'s catch (or return a result the caller honors);
 Acceptance: killing the network mid-download leaves the row `failed` with retry available; no `synced` row without the file on disk.
 Done 2026-07-03 (334a707, qa-gate PASS — network-shaped failures injected at the streaming boundary; absolute synced-writer sweep clean; negative control 7/8 + independent mutation 5/8): downloadFile rethrows; fs.stat+isFile gates the sole reachable synced write (ordering proven by source and test); retry/permanent classification reachable with 3-retry cap; batch continues past per-file failures (242+1 green).
 
-### SYNC-3 · P0 · Phase 2 · `in-progress`
+### SYNC-3 · P0 · Phase 2 · `done`
 **Startup crash recovery.** Evidence: §2.7.
 Fix: on DB init, reset rows stuck in `uploading`→`pending`(re-approval-safe) and `downloading`/`queued`→`pending`; rehydrate queues from DB; add CHECK constraints on status columns (needs INFRA-7 migrations).
 QA findings from SYNC-2's gate to absorb here (2026-07-03): rows sit `downloading` between transient retries (stuck after crash mid-retry — exactly this item's reset scope); each retry attempt inserts a fresh downloads-table row (accumulation — reuse keyed rows); brief unhandled-rejection window in downloadFile (implementer-reported, unreproduced — five-minute look while in the file).
 Acceptance: kill -9 during an upload+download; relaunch resumes/requeues both; nothing remains stuck.
+Note 2026-07-03: done — merged from `fix/SYNC-3-crash-recovery` (3b2bbfe + findings 0be2e2d) after qa-gate PASS (static — recovery SQL exercised against a real sqlite replica of the production schema; kill -9 relaunch UAT not drivable in this env). recoverInterruptedOperations() runs on every DB init: in-flight uploads → terminal failed with verify-before-retry (deviation from 'pending' judged sound by qa-gate: auto-resume is a blind resubmission of a possibly-completed paid call, and nothing consumes pending rows at boot anyway); never-started pending uploads → failed 'nothing was charged'; downloads → failed; metadata → pending (auto-requeued by the existing boot flow — verified). CHECK constraints remain with INFRA-7.
 
 ### SYNC-4 · P0 · Phase 2 · `done`
 **Fix stop→start lifecycle.** Evidence: §2.6 (destroyed DownloadManager/SyncProgressTracker never rebuilt).
@@ -213,6 +214,10 @@ Acceptance: gateway outage triggers transparent failover; gateway selection obse
 ---
 
 ## PRIV — Private drives (beta scope per D-010)
+
+### SYNC-16 · P1 · Phase 2 · `todo`
+**`syncStatus='failed'` writes violate the drive_metadata_cache CHECK on real DBs.** qa-gate finding (SYNC-3 gate, 2026-07-03): live code writes `syncStatus='failed'` (DownloadManager.ts:496, 1161, 1179, 1229; sync-manager.ts:3095, 3186) but the CHECK allows only ('synced','pending','downloading','queued','cloud_only','error') — on a real (non-mocked) DB these UPDATEs throw; invisible under mocked tests. Fix: map 'failed' → 'error' at the write sites (extending the CHECK needs INFRA-7).
+Also (same gate): wallet-import flows re-point the DB without stopping sync (wallet-manager-secure.ts:157, 272) — SEC-3 family, transient self-correcting, fold into UX-6/SEC-4 rework; no upload-retry UI affordance exists (preload uploads.retry/retryAll have zero renderer callers) — fold into UX-11.
 
 ### PRIV-0 · P0 · Phase 1 · `wont-fix`
 **Feature-flag private drives off for beta.** Obsolete: D-010 (2026-07-03) put private drives IN the beta — they stay enabled and get fixed (PRIV-1..7 rephased onto the critical path) instead of hidden.

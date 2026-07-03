@@ -34,7 +34,9 @@ const { mockDbInstance } = vi.hoisted(() => ({
       if (typeof params === 'function') {
         callback = params;
       }
-      if (callback) callback(null);
+      // sqlite3 invokes the callback with `this.changes` set — SYNC-3's
+      // recovery counts rely on it
+      if (callback) callback.call({ changes: 0 }, null);
     }),
     get: vi.fn((sql: string, params?: any, callback?: (err: Error | null, row?: any) => void) => {
       if (typeof params === 'function') {
@@ -76,6 +78,92 @@ describe('DatabaseManager', () => {
   describe('initialize', () => {
     it('should initialize the database successfully', async () => {
       await expect(databaseManager.initialize()).resolves.not.toThrow();
+    });
+
+    it('runs crash recovery as part of initialization (SYNC-3)', async () => {
+      await databaseManager.initialize();
+
+      const sqls = mockDbInstance.run.mock.calls.map((c: any[]) => String(c[0]));
+      expect(sqls.some((q) => q.includes("SET status = 'failed'") && q.includes('uploads') && q.includes("status = 'uploading'"))).toBe(true);
+      expect(sqls.some((q) => q.includes('downloads') && q.includes("'downloading', 'queued', 'pending'"))).toBe(true);
+      expect(sqls.some((q) => q.includes('drive_metadata_cache') && q.includes("syncStatus = 'pending'"))).toBe(true);
+    });
+  });
+
+  describe('recoverInterruptedOperations (SYNC-3)', () => {
+    it('fails interrupted uploads with a verify-before-retry message (never re-queues them)', async () => {
+      await databaseManager.recoverInterruptedOperations();
+
+      const uploadCall = mockDbInstance.run.mock.calls.find((c: any[]) =>
+        String(c[0]).includes('UPDATE uploads')
+      );
+      expect(uploadCall).toBeDefined();
+      // Terminal failed — NOT 'pending': blind re-queueing an interrupted
+      // upload could pay for the same file twice (MONEY-2)
+      expect(String(uploadCall![0])).toContain("SET status = 'failed'");
+      expect(String(uploadCall![0])).toContain("WHERE status = 'uploading'");
+      expect(uploadCall![1][0]).toMatch(/may or may not have reached Arweave/);
+    });
+
+    it('fails never-started pending uploads with a never-charged message (batch-crash gap)', async () => {
+      await databaseManager.recoverInterruptedOperations();
+
+      const pendingCall = mockDbInstance.run.mock.calls.find((c: any[]) =>
+        String(c[0]).includes("WHERE status = 'pending'") && String(c[0]).includes('uploads')
+      );
+      expect(pendingCall).toBeDefined();
+      expect(String(pendingCall![0])).toContain("SET status = 'failed'");
+      expect(String(pendingCall![0])).toContain('nothing was charged');
+    });
+
+    it('resets stuck download rows and metadata to recoverable states', async () => {
+      await databaseManager.recoverInterruptedOperations();
+
+      const sqls = mockDbInstance.run.mock.calls.map((c: any[]) => String(c[0]));
+      const downloadSql = sqls.find((q) => q.includes('UPDATE downloads'));
+      const metaSql = sqls.find((q) => q.includes('UPDATE drive_metadata_cache'));
+
+      expect(downloadSql).toContain("SET status = 'failed'");
+      expect(downloadSql).toContain("IN ('downloading', 'queued', 'pending')");
+      // Metadata rows go back to 'pending' so the boot sync re-queues the
+      // downloads automatically (free to redo)
+      expect(metaSql).toContain("SET syncStatus = 'pending'");
+      expect(metaSql).toContain("IN ('downloading', 'queued')");
+    });
+
+    it('reports how many rows were recovered', async () => {
+      mockDbInstance.run.mockImplementation((sql: string, params?: any, callback?: any) => {
+        if (typeof params === 'function') callback = params;
+        const changes = String(sql).includes('UPDATE uploads') ? 2
+          : String(sql).includes('UPDATE downloads') ? 3
+          : String(sql).includes('UPDATE drive_metadata_cache') ? 5 : 0;
+        // note: both uploads statements (in-flight + pending) report 2 each
+        if (callback) callback.call({ changes }, null);
+      });
+
+      let result;
+      try {
+        result = await databaseManager.recoverInterruptedOperations();
+      } finally {
+        // restore the default impl — mockImplementation (not ...Once) would
+        // otherwise leak into later tests (qa-gate hygiene note)
+        mockDbInstance.run.mockImplementation((sql: string, params?: any, callback?: any) => {
+          if (typeof params === 'function') callback = params;
+          if (callback) callback.call({ changes: 0 }, null);
+        });
+      }
+
+      // uploadsReset = in-flight (2) + never-started pending (2)
+      expect(result).toEqual({ uploadsReset: 4, downloadsReset: 3, metadataReset: 5 });
+    });
+
+    it('propagates database errors', async () => {
+      mockDbInstance.run.mockImplementationOnce((sql: string, params?: any, callback?: any) => {
+        if (typeof params === 'function') callback = params;
+        if (callback) callback.call({ changes: 0 }, new Error('db locked'));
+      });
+
+      await expect(databaseManager.recoverInterruptedOperations()).rejects.toThrow('db locked');
     });
   });
 
