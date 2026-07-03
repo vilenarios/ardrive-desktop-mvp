@@ -212,3 +212,73 @@ describe('DownloadManager private downloads (PRIV-1)', () => {
     ).toBe(false);
   });
 });
+
+describe('Manifest-named files in private drives (qa-gate fix round)', () => {
+  // qa-gate FAIL repro, inverted: a file merely NAMED like a manifest inside
+  // a private drive is an ordinary encrypted file — it must decrypt, never
+  // raw-fetch (ArFS manifests are public-only; core exposes only
+  // uploadPublicManifest).
+  it('decrypts private files whose names look like manifests', async () => {
+    const mockDb = createMockDatabaseManager() as any;
+    mockDb.getDriveMappings.mockResolvedValue([
+      {
+        id: 'mapping-1',
+        driveId: DRIVE_ID,
+        driveName: 'Secret Drive',
+        drivePrivacy: 'private',
+        rootFolderId: ROOT_FOLDER_ID,
+        localFolderPath: SYNC_PATH,
+        isActive: true,
+      },
+    ]);
+    const mockArDrive = { downloadPrivateFile: vi.fn().mockResolvedValue(undefined) };
+    const progressTracker = {
+      emitSyncProgress: vi.fn(),
+      emitUploadProgress: vi.fn(),
+      emitDownloadProgress: vi.fn(),
+      destroy: vi.fn(),
+      reset: vi.fn(),
+      ensureStarted: vi.fn(),
+    };
+    const fileStateManager = {
+      setDownloadPromise: vi.fn(),
+      clearDownload: vi.fn(),
+      isDownloading: vi.fn(() => false),
+      clearAllProcessing: vi.fn(),
+      markProcessing: vi.fn(),
+      isProcessing: vi.fn(() => false),
+      clearProcessing: vi.fn(),
+      addRecentDownload: vi.fn(),
+      isRecentDownload: vi.fn(() => false),
+    };
+    const manager = new DownloadManager(
+      mockDb, fileStateManager as any, progressTracker as any,
+      mockArDrive as any, DRIVE_ID, ROOT_FOLDER_ID, SYNC_PATH
+    );
+    const fs = await import('fs/promises');
+    vi.mocked(fs.readFile).mockResolvedValue(PLAINTEXT as any);
+    vi.mocked(fs.stat).mockResolvedValue({ size: PLAINTEXT.length } as any);
+
+    const manifestNamed = {
+      fileId: FILE_ID,
+      name: 'package-manifest.json',
+      path: '',
+      size: PLAINTEXT.length,
+      dataTxId: 'raw-tx',
+      type: 'file',
+      contentType: 'application/json',
+    };
+
+    try {
+      await manager['performFileDownload'](
+        manifestNamed, `${SYNC_PATH}/package-manifest.json`, SYNC_PATH, 'dl-m', 'ph'
+      );
+    } finally {
+      manager.destroy();
+    }
+
+    // Decrypting route used; the raw manifest fetch never touched it
+    expect(mockArDrive.downloadPrivateFile).toHaveBeenCalled();
+    expect(mockStreamingDownload).not.toHaveBeenCalled();
+  });
+});

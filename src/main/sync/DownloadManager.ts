@@ -681,15 +681,17 @@ export class DownloadManager {
 
   private async performFileDownload(fileData: any, localFilePath: string, dir: string, downloadId: string, placeholderHash: string): Promise<void> {
     try {
-      // Check if this is a manifest file
-      const isManifest = this.isManifestFile(fileData);
-      let hash: string = ''; // Declare hash variable outside the if/else block
-      
       // PRIV-1: files in private drives are ciphertext at the raw gateway
       // URL — the old path wrote encrypted bytes to the sync folder. Route
       // them through ardrive-core's downloadPrivateFile, which fetches AND
-      // decrypts to plaintext.
-      const isPrivateDownload = !isManifest && (await this.isPrivateDriveDownload());
+      // decrypts to plaintext. Privacy is decided FIRST: ArFS manifests are
+      // public-only (core exposes only uploadPublicManifest), so a
+      // manifest-looking NAME inside a private drive is just an ordinary
+      // encrypted file — the raw manifest fetch must never apply to it
+      // (qa-gate FAIL: the name heuristic bypassed decryption).
+      const isPrivateDownload = await this.isPrivateDriveDownload();
+      const isManifest = !isPrivateDownload && this.isManifestFile(fileData);
+      let hash: string = ''; // Declare hash variable outside the if/else block
       
       if (isManifest) {
         console.log(`Detected manifest file: ${fileData.name}, using raw download method`);
