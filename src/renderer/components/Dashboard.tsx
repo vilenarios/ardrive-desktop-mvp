@@ -369,7 +369,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         setIsDrivesLoading(true);
         const mappedDrives = await window.electronAPI.drive.getMapped();
         // Get drives with status info for private drive support
-        const drivesWithStatus = await window.electronAPI.drive.listWithStatus();
+        const drivesWithStatus = extractDrivesWithStatus(await window.electronAPI.drive.listWithStatus());
         
         // Merge mapped drives with status info
         const mergedDrives = mappedDrives.map((mappedDrive: any) => {
@@ -392,6 +392,18 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     loadDrives();
   }, []);
+
+  // drive:listWithStatus returns a {success, data} envelope (main.ts) while
+  // drive:getMapped returns a raw array — unwrap defensively, same pattern as
+  // App.initializeApp. Without this, .find() on the wrapper TypeErrors and
+  // (post-UX-1) surfaces a false "Failed to load drives" toast on every mount.
+  const extractDrivesWithStatus = (result: unknown): DriveInfoWithStatus[] => {
+    if (!result) return [];
+    if (Array.isArray(result)) return result;
+    const wrapped = result as { success?: boolean; data?: DriveInfoWithStatus[] };
+    if (wrapped.success && Array.isArray(wrapped.data)) return wrapped.data;
+    return [];
+  };
 
   // Profile management handlers
   const handleSwitchProfile = () => {
@@ -460,7 +472,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     try {
       // Refresh drives list with status info
       const mappedDrives = await window.electronAPI.drive.getMapped();
-      const drivesWithStatus = await window.electronAPI.drive.listWithStatus();
+      const drivesWithStatus = extractDrivesWithStatus(await window.electronAPI.drive.listWithStatus());
       
       // Merge mapped drives with status info
       const mergedDrives = mappedDrives.map((mappedDrive: any) => {
@@ -487,7 +499,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     try {
       // Refresh drives list with status info
       const mappedDrives = await window.electronAPI.drive.getMapped();
-      const drivesWithStatus = await window.electronAPI.drive.listWithStatus();
+      const drivesWithStatus = extractDrivesWithStatus(await window.electronAPI.drive.listWithStatus());
       
       // Merge mapped drives with status info
       const mergedDrives = mappedDrives.map((mappedDrive: any) => {

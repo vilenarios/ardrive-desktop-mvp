@@ -152,7 +152,13 @@ describe('Dashboard toast feedback (UX-1)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockElectronAPI.drive.getMapped.mockResolvedValue([driveA, otherDrive]);
-    mockElectronAPI.drive.listWithStatus.mockResolvedValue([driveA, otherDrive]);
+    // Real handler shape: drive:listWithStatus returns a {success, data}
+    // envelope (main.ts:894), NOT a raw array — qa-gate caught the first
+    // version of this suite mocking the wrong shape.
+    mockElectronAPI.drive.listWithStatus.mockResolvedValue({
+      success: true,
+      data: [driveA, otherDrive],
+    });
     mockElectronAPI.uploads.getPending.mockResolvedValue([]);
     mockElectronAPI.files.getDownloads.mockResolvedValue([]);
     mockElectronAPI.files.getQueueStatus.mockResolvedValue({ queued: 0, active: 0, total: 0 });
@@ -230,5 +236,38 @@ describe('Dashboard toast feedback (UX-1)', () => {
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith('Drive "New Drive" created successfully!');
     });
+  });
+
+  it('does not fire a false error toast on mount with real handler shapes', async () => {
+    // Regression guard (qa-gate finding): wiring the toast prop surfaced a
+    // false "Failed to load drives" toast on every mount because loadDrives
+    // called .find() on the {success, data} wrapper.
+    await renderDashboard();
+
+    // Let the mount-time loads settle
+    await waitFor(() => {
+      expect(mockElectronAPI.drive.listWithStatus).toHaveBeenCalled();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('still loads the drive list when listWithStatus returns a raw array (legacy shape)', async () => {
+    mockElectronAPI.drive.listWithStatus.mockResolvedValue([driveA, otherDrive]);
+    mockElectronAPI.drive.switchTo.mockResolvedValue({
+      success: true,
+      driveInfo: { name: 'Other Drive' },
+    });
+
+    await renderDashboard();
+    fireEvent.click(await screen.findByText('stub-switch-drive'));
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith(
+        expect.stringContaining('Successfully switched to "Other Drive"')
+      );
+    });
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });
