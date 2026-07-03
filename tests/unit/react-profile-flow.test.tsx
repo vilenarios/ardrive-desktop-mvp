@@ -218,25 +218,9 @@ describe('ProfileSwitcher Component', () => {
     expect(document.querySelector('.profile-dropdown')).toBeNull();
   });
 
-  it('should prevent state updates after unmount', async () => {
-    // Delay the profiles.list call to simulate slow IPC
-    let resolveProfilesList: (profiles: Profile[]) => void;
-    const profilesListPromise = new Promise<Profile[]>((resolve) => {
-      resolveProfilesList = resolve;
-    });
-    mockElectronAPI.profiles.list.mockReturnValue(profilesListPromise);
-
-    const { unmount } = render(<ProfileSwitcher {...defaultProps} />);
-
-    // Unmount component before profiles load
-    unmount();
-
-    // Resolve the promise after unmount
-    resolveProfilesList!(mockProfiles);
-
-    // Wait a tick to ensure no state updates occur
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    // Passes if React does not warn about state updates on an unmounted component
-  });
+  // NOTE: a "should prevent state updates after unmount" test was removed here.
+  // The component guards setState via isMountedRef, but React 18 makes
+  // post-unmount setState a silent no-op (the unmounted-component warning was
+  // removed), so no assertion could detect a regression — the test could not
+  // meaningfully fail.
 });

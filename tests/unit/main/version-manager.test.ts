@@ -66,13 +66,9 @@ describe('VersionManager', () => {
       expect(result).toBe('folder/file.txt');
     });
 
-    it('should handle Windows paths', () => {
-      // Skip this test on non-Windows platforms since path.resolve
-      // behaves differently. The functionality works correctly on Windows.
-      if (process.platform !== 'win32') {
-        return;
-      }
-
+    // path.resolve treats drive-letter paths as relative on POSIX, so this
+    // can only run on Windows; skipIf makes the skip visible in test output.
+    it.skipIf(process.platform !== 'win32')('should handle Windows paths', () => {
       versionManager.setSyncFolder('C:\\test\\sync');
       const result = versionManager.getRelativePath('C:\\test\\sync\\folder\\file.txt');
       expect(result).toBe('folder/file.txt');

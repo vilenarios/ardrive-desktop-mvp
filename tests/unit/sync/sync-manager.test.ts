@@ -200,16 +200,27 @@ describe('SyncManager', () => {
   });
 
   describe('Progress Tracking', () => {
+    // Managers constructed inside these tests; stopped in afterEach so their
+    // progress-tracker intervals don't leak across tests.
+    const extraManagers: SyncManager[] = [];
+
+    const createManager = (): SyncManager => {
+      const manager = new SyncManager(createMockDatabaseManager());
+      extraManagers.push(manager);
+      return manager;
+    };
+
     beforeEach(() => {
       vi.useFakeTimers();
     });
 
-    afterEach(() => {
+    afterEach(async () => {
       vi.useRealTimers();
+      await Promise.all(extraManagers.splice(0).map((manager) => manager.stopSync()));
     });
 
     it('should emit sync progress to the renderer window (throttled)', () => {
-      const manager = new SyncManager(createMockDatabaseManager());
+      const manager = createManager();
       const testProgress = {
         phase: 'syncing',
         description: 'Halfway there',
@@ -227,7 +238,7 @@ describe('SyncManager', () => {
     });
 
     it('should not emit sync progress when silent flag is set', () => {
-      const manager = new SyncManager(createMockDatabaseManager());
+      const manager = createManager();
 
       manager['emitSyncProgress']({ phase: 'syncing' }, true);
       vi.advanceTimersByTime(600);
@@ -237,7 +248,7 @@ describe('SyncManager', () => {
 
     it('should handle missing main window gracefully', () => {
       mockGetAllWindows.mockReturnValue([]);
-      const manager = new SyncManager(createMockDatabaseManager());
+      const manager = createManager();
 
       manager['emitSyncProgress']({ phase: 'syncing' });
 

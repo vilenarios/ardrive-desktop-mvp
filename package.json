@@ -90,7 +90,6 @@
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0",
     "html-webpack-plugin": "^5.5.3",
-    "identity-obj-proxy": "^3.0.0",
     "jsdom": "^25.0.0",
     "mini-css-extract-plugin": "^2.9.2",
     "patch-package": "^8.0.0",
