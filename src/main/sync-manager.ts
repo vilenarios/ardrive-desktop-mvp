@@ -72,6 +72,7 @@ export class SyncManager {
   
   // New sync state management
   private syncState: 'idle' | 'syncing' | 'monitoring' = 'idle';
+  private watchedFolderPath: string | null = null; // folder the active watcher points at (SEC-3 re-target)
   private syncPromise: Promise<void> | null = null;
   private totalItemsToSync = 0;
   private foldersToCreate = 0;
@@ -187,13 +188,31 @@ export class SyncManager {
     if (this.syncState !== 'idle') {
       console.log('Sync already in progress or monitoring active, current state:', this.syncState);
       
-      // If already monitoring, just return true (sync is working)
       if (this.syncState === 'monitoring') {
-        console.log('Already in monitoring state, file watching should be active');
-        return true;
+        const sameTarget =
+          this.driveId === driveId &&
+          this.rootFolderId === rootFolderId &&
+          this.watchedFolderPath === this.syncFolderPath;
+        
+        if (sameTarget) {
+          console.log('Already monitoring the requested drive/folder');
+          return true;
+        }
+        
+        // SEC-3: a different drive or folder was requested while monitoring —
+        // re-target instead of silently "succeeding" against the old target.
+        console.log('Monitoring a different drive/folder — re-targeting sync', {
+          fromDrive: this.driveId,
+          toDrive: driveId,
+          fromFolder: this.watchedFolderPath,
+          toFolder: this.syncFolderPath
+        });
+        await this.stopSync();
+        await this.clearAllDriveState();
+        // fall through to a fresh start below
+      } else {
+        return false;
       }
-      
-      return false;
     }
 
     this.syncState = 'syncing';
@@ -285,6 +304,7 @@ export class SyncManager {
     console.log(`🔍 Watching folder: ${this.syncFolderPath}`);
     console.log(`📊 Current sync state: ${this.syncState}`);
     
+    this.watchedFolderPath = this.syncFolderPath;
     this.watcher = chokidar.watch(this.syncFolderPath!, {
       ignored: [
         /(^|[/\\])\../, // ignore dotfiles
@@ -338,6 +358,7 @@ export class SyncManager {
       await this.watcher.close();
       this.watcher = null;
     }
+    this.watchedFolderPath = null;
 
     // Stop upload queue processing
     this.uploadQueueManager.stopProcessing();
@@ -368,6 +389,24 @@ export class SyncManager {
     return this.startSync(newDriveId, newRootFolderId);
   }
   
+  /**
+   * SEC-3: fully sever the engine from the current profile's wallet and drive.
+   * Called on logout and profile switch so profile A's watcher/ArDrive can
+   * never keep running against profile B's database.
+   */
+  async stopAndClearAllState(): Promise<void> {
+    await this.stopSync();
+    await this.clearAllDriveState();
+    
+    // Drop every wallet-bearing / profile-specific reference
+    this.arDrive = null;
+    this.privateKeyData = undefined;
+    this.downloadManager.setArDrive(null);
+    this.syncFolderPath = null;
+    
+    console.log('SyncManager: stopped and cleared all wallet/drive state');
+  }
+
   private async clearAllDriveState(): Promise<void> {
     console.log('Clearing all drive state...');
     

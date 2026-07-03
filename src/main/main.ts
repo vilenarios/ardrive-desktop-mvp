@@ -561,11 +561,17 @@ class ArDriveApp {
     });
 
     ipcMain.handle('wallet:clear-stored', safeIpcHandler(async () => {
+      // SEC-3: stop the watcher and drop wallet-bearing sync state before the
+      // wallet session and database are torn down.
+      await this.syncManager.stopAndClearAllState();
       await this.walletManager.logout();
       return true;
     }));
 
     ipcMain.handle('wallet:logout', safeIpcHandler(async () => {
+      // SEC-3: stop the watcher and drop wallet-bearing sync state before the
+      // wallet session and database are torn down.
+      await this.syncManager.stopAndClearAllState();
       await this.walletManager.logout();
       return true;
     }));
@@ -711,6 +717,17 @@ class ArDriveApp {
         let validatedPassword: string | undefined;
         if (password) {
           validatedPassword = InputValidator.validatePassword(password, 'password');
+        }
+        
+        // SEC-3: profile A's sync engine must never survive into profile B.
+        // Stop before the switch attempt — switchProfile re-points the DB and
+        // clears the in-memory wallet mid-flight, and the engine's own
+        // ArDrive/watcher would otherwise keep running against the new
+        // profile's database. (No-op switches to the already-active profile
+        // keep sync running.)
+        const activeProfile = await profileManager.getActiveProfile();
+        if (!activeProfile || activeProfile.id !== validatedProfileId) {
+          await this.syncManager.stopAndClearAllState();
         }
         
         return await this.walletManager.switchProfile(validatedProfileId, validatedPassword);
