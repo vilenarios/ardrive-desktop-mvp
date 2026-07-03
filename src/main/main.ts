@@ -725,8 +725,8 @@ class ArDriveApp {
         // ArDrive/watcher would otherwise keep running against the new
         // profile's database. (No-op switches to the already-active profile
         // keep sync running.)
-        const activeProfile = await profileManager.getActiveProfile();
-        if (!activeProfile || activeProfile.id !== validatedProfileId) {
+        const activeProfileId = await profileManager.getActiveProfileId();
+        if (activeProfileId !== validatedProfileId) {
           await this.syncManager.stopAndClearAllState();
         }
         

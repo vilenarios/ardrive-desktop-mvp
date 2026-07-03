@@ -135,6 +135,15 @@ class ProfileManager {
     return profiles;
   }
 
+  /**
+   * Raw active profile id — no ArNS enrichment, no network. Use this for
+   * identity checks (e.g. the SEC-3 same-profile guard in profiles:switch).
+   */
+  async getActiveProfileId(): Promise<string | null> {
+    if (!this.profilesConfig) await this.initialize();
+    return this.profilesConfig!.activeProfileId;
+  }
+
   async getActiveProfile(): Promise<Profile | null> {
     if (!this.profilesConfig) await this.initialize();
     
