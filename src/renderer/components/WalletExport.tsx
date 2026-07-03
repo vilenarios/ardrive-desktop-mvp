@@ -183,6 +183,12 @@ const WalletExport: React.FC<WalletExportProps> = ({ walletAddress, onClose }) =
     setShowFinalWarning(false);
   };
 
+  // SEC-12: formats whose result text is raw (unencrypted) secret material —
+  // masked until explicit reveal. The seed phrase has its own masked branch;
+  // 'jwk-encrypted' output is password-protected, so it renders directly.
+  const isRawTextSecret =
+    selectedFormat === 'jwk-plain' || selectedFormat === 'private-key';
+
   return (
     <div className="wallet-export-modal fade-in">
       <div className="modal-overlay" onClick={onClose} />
@@ -410,18 +416,20 @@ const WalletExport: React.FC<WalletExportProps> = ({ walletAddress, onClose }) =
                 ) : (
                   <>
                     <pre className="export-text">
-                      {selectedFormat === 'private-key' && !revealed
+                      {isRawTextSecret && !revealed
                         ? '•'.repeat(64)
                         : exportData}
                     </pre>
-                    {selectedFormat === 'private-key' && (
+                    {isRawTextSecret && (
                       <div style={{ textAlign: 'center', marginTop: '12px' }}>
                         <button
                           className="button small outline"
                           onClick={() => setRevealed(!revealed)}
                         >
                           {revealed ? <EyeOff size={14} /> : <Eye size={14} />}
-                          {revealed ? 'Hide Private Key' : 'Reveal Private Key'}
+                          {selectedFormat === 'private-key'
+                            ? (revealed ? 'Hide Private Key' : 'Reveal Private Key')
+                            : (revealed ? 'Hide Keyfile' : 'Reveal Keyfile')}
                         </button>
                       </div>
                     )}

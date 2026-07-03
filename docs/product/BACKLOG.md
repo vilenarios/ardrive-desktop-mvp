@@ -66,8 +66,8 @@ Acceptance: paths outside configured sync folders (after realpath resolution) ar
 
 ### SEC-12 · P1 · Phase 1 · `in-progress`
 **Fix wallet-export reveal-mask bug.** Evidence: §4.11 (WalletExport.tsx:114, 372, 396).
-Fix: separate `exportComplete` from `revealed`; secrets masked until explicit reveal click.
-Acceptance: after export, seed/private key render masked; reveal button toggles.
+Fix: separate `exportComplete` from `revealed`; secrets masked until explicit reveal click. Scope extended 2026-07-03 (PM, from implementer finding): plain JWK export renders raw key material on the same screen — same defect class, included; encrypted keyfile stays unmasked (password-protected, not raw secret).
+Acceptance: after export, seed phrase, private key, and plain JWK render masked; reveal toggles.
 
 ### SEC-13 · P2 · Track D · `todo`
 **Make seed-confirmation real.** Evidence: §4.5 (completeSetup stub; wallet committed pre-confirmation; orphan profiles on Back).
