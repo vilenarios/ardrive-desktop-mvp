@@ -145,10 +145,11 @@ Acceptance: every figure in Usage Statistics derives from real data, or the pane
 Fix: on hash-differs-for-known-path, route to the new-version upload path (ArFS new file revision) via the approval queue.
 Acceptance: UAT — edit a synced file locally → new pending upload appears → approval uploads a new revision visible in the Permaweb view.
 
-### SYNC-2 · P0 · Phase 2 · `todo`
+### SYNC-2 · P0 · Phase 2 · `done`
 **Failed downloads must be recorded as failed.** Evidence: §2.2.
 Fix: rethrow from `downloadFile`'s catch (or return a result the caller honors); only mark `synced` after verifying the file exists (and hash once SYNC-12 lands); make retry/permanent-error logic reachable.
 Acceptance: killing the network mid-download leaves the row `failed` with retry available; no `synced` row without the file on disk.
+Done 2026-07-03 (334a707, qa-gate PASS — network-shaped failures injected at the streaming boundary; absolute synced-writer sweep clean; negative control 7/8 + independent mutation 5/8): downloadFile rethrows; fs.stat+isFile gates the sole reachable synced write (ordering proven by source and test); retry/permanent classification reachable with 3-retry cap; batch continues past per-file failures (242+1 green).
 
 ### SYNC-3 · P0 · Phase 2 · `in-progress`
 **Startup crash recovery.** Evidence: §2.7.

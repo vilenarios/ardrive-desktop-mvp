@@ -406,15 +406,29 @@ export class DownloadManager {
     // Download missing files
     this.isDownloading = true;
     let downloaded = 0;
-    
+    let failed = 0;
+
     for (const file of missingFiles) {
-      await this.downloadFile(file);
-      downloaded++;
-      console.log(`Downloaded ${downloaded}/${missingFiles.length} files`);
+      try {
+        await this.downloadFile(file);
+        downloaded++;
+        console.log(`Downloaded ${downloaded}/${missingFiles.length} files`);
+      } catch (error) {
+        // SYNC-2: record the failure honestly and continue with the remaining files
+        failed++;
+        const errorMessage = error instanceof Error ? error.message : 'Download failed';
+        console.error(`Download failed for ${file.name}: ${errorMessage}`);
+        try {
+          await this.databaseManager.updateFileSyncStatus(file.fileId, 'failed', errorMessage);
+          this.emitFileStateChange(file.fileId, 'failed');
+        } catch (dbError) {
+          console.error(`Failed to record download failure for ${file.name}:`, dbError);
+        }
+      }
     }
-    
+
     this.isDownloading = false;
-    console.log(`Download completed: ${downloaded} files`);
+    console.log(`Download completed: ${downloaded} files${failed > 0 ? `, ${failed} failed` : ''}`);
   }
 
   async downloadMissingFilesWithProgress(): Promise<void> {
@@ -483,21 +497,24 @@ export class DownloadManager {
 
   private async downloadFile(fileData: any): Promise<void> {
     if (!this.syncFolderPath || !this.arDrive) {
-      console.error('Sync folder path or ArDrive not available');
-      return;
+      // SYNC-2: throw instead of silently returning - a silent return here made
+      // callers record the file as synced without anything on disk
+      throw new Error('Sync folder path or ArDrive not available');
     }
 
     // Validate file size before downloading
     const MAX_DOWNLOAD_SIZE = 5 * 1024 * 1024 * 1024; // 5GB limit
     const fileSize = fileData.size || 0;
-    
+
     if (fileSize > MAX_DOWNLOAD_SIZE) {
+      const tooLargeMessage = `File too large: ${(fileSize / (1024 * 1024 * 1024)).toFixed(2)}GB`;
       console.error(`File ${fileData.name} is too large (${fileSize} bytes, max: ${MAX_DOWNLOAD_SIZE} bytes)`);
-      await this.databaseManager.updateFileSyncStatus(fileData.fileId, 'failed', `File too large: ${(fileSize / (1024 * 1024 * 1024)).toFixed(2)}GB`);
+      await this.databaseManager.updateFileSyncStatus(fileData.fileId, 'failed', tooLargeMessage);
       this.emitFileStateChange(fileData.fileId, 'failed');
-      
-      // Don't throw - just skip this file
-      return;
+
+      // SYNC-2: throw so callers never overwrite the 'failed' status with 'synced'.
+      // "File too large" is classified as a permanent error (no retry).
+      throw new Error(tooLargeMessage);
     }
 
     const localFilePath = path.join(this.syncFolderPath, fileData.path, fileData.name);
@@ -582,6 +599,9 @@ export class DownloadManager {
         localFilePath,
         fileData
       });
+      // SYNC-2: propagate the failure so callers record it honestly instead of
+      // marking the file synced (the old swallow made every download "succeed")
+      throw error;
     }
   }
 
@@ -1128,7 +1148,24 @@ export class DownloadManager {
       
       // Start the download
       await this.downloadFile(fileToDownload);
-      
+
+      // SYNC-2: only mark synced after verifying the file actually landed on disk.
+      // A download that "succeeded" without a file present must never be recorded
+      // as synced.
+      if (!this.syncFolderPath) {
+        throw new Error('Sync folder path not available');
+      }
+      const expectedPath = path.join(this.syncFolderPath, fileToDownload.path, fileToDownload.name);
+      let diskStats;
+      try {
+        diskStats = await fs.stat(expectedPath);
+      } catch {
+        throw new Error(`Download completed but the file is missing on disk: ${expectedPath}`);
+      }
+      if (!diskStats.isFile()) {
+        throw new Error(`Download completed but the path on disk is not a file: ${expectedPath}`);
+      }
+
       // Mark as synced and update local file exists flag
       await this.databaseManager.updateDriveMetadataStatus(fileId, 'synced', true);
       this.emitFileStateChange(fileId, 'synced');
