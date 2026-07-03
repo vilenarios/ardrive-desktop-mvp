@@ -14,6 +14,7 @@ import InputValidator, { ValidationError } from './input-validator';
 import { driveKeyManager } from './drive-key-manager';
 import { readDevEnv } from './utils/dev-env';
 import { applySyncFolderChange } from './utils/sync-folder-change';
+import { isRetryAllowed } from './utils/upload-retry-guard';
 
 // Load .env file in development
 if (process.env.NODE_ENV !== 'production') {
@@ -2350,13 +2351,28 @@ class ArDriveApp {
     
     ipcMain.handle('uploads:cancel', async (_, uploadId: string) => {
       try {
-        // Cancel the upload in sync manager
-        if (this.syncManager) {
-          this.syncManager.cancelUpload(uploadId);
+        // MONEY-2: a completed upload is already stored and charged — cancel
+        // must never rewrite that history as 'failed'.
+        const uploads = await databaseManager.getUploads();
+        const dbUpload = uploads.find(u => u.id === uploadId);
+        if (dbUpload?.status === 'completed') {
+          console.warn(`Refusing to cancel upload ${uploadId}: already completed (stored and charged)`);
+          return false;
         }
         
+        // Cancel in the queue: pending items are removed before any spend;
+        // in-flight items get a cancellation request honored at every spend
+        // checkpoint and at completion (no resurrection).
+        const result = this.syncManager
+          ? this.syncManager.cancelUpload(uploadId)
+          : { cancelled: false, wasInFlight: false };
+        
+        const message = result.wasInFlight
+          ? 'Cancellation requested — the upload was already in flight; the final state will reflect whether it completed on Arweave'
+          : 'Cancelled by user';
+        
         // Update database status
-        await databaseManager.updateUpload(uploadId, { status: 'failed', error: 'Cancelled by user' });
+        await databaseManager.updateUpload(uploadId, { status: 'failed', error: message });
         
         // Emit progress event
         if (this.mainWindow) {
@@ -2364,7 +2380,7 @@ class ArDriveApp {
             uploadId,
             progress: 0,
             status: 'failed',
-            error: 'Cancelled by user'
+            error: message
           });
         }
         
@@ -2383,6 +2399,18 @@ class ArDriveApp {
         
         if (!upload) {
           throw new Error('Upload not found');
+        }
+        
+        // MONEY-2: only terminal failures may be retried — re-queueing an
+        // in-flight upload paid for the same file twice (audit §1.2).
+        const guard = isRetryAllowed({
+          dbStatus: upload.status,
+          queueStatus: this.syncManager?.getQueueEntryStatus(uploadId),
+          cancellationPending: this.syncManager?.isUploadCancellationPending(uploadId) ?? false
+        });
+        if (!guard.allowed) {
+          console.warn(`Refusing retry of upload ${uploadId}: ${guard.reason}`);
+          return false;
         }
         
         // Reset status to pending
@@ -2411,9 +2439,15 @@ class ArDriveApp {
     
     ipcMain.handle('uploads:retry-all', async () => {
       try {
-        // Get all failed uploads
+        // Get all failed uploads that pass retry admission (MONEY-2)
         const uploads = await databaseManager.getUploads();
-        const failedUploads = uploads.filter(u => u.status === 'failed');
+        const failedUploads = uploads.filter(u =>
+          isRetryAllowed({
+            dbStatus: u.status,
+            queueStatus: this.syncManager?.getQueueEntryStatus(u.id),
+            cancellationPending: this.syncManager?.isUploadCancellationPending(u.id) ?? false
+          }).allowed
+        );
         
         for (const upload of failedUploads) {
           // Reset status

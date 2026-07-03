@@ -508,9 +508,40 @@ export class SyncManager {
   }
   
   // Cancel an upload
-  cancelUpload(uploadId: string): void {
+  cancelUpload(uploadId: string): { cancelled: boolean; wasInFlight: boolean } {
     console.log(`Cancelling upload: ${uploadId}`);
-    this.uploadQueueManager.cancelUpload(uploadId);
+    return this.uploadQueueManager.cancelUpload(uploadId);
+  }
+
+  /** MONEY-2: retry admission inputs for the uploads:retry handlers. */
+  getQueueEntryStatus(uploadId: string): string | undefined {
+    return this.uploadQueueManager.getQueueEntryStatus(uploadId);
+  }
+
+  isUploadCancellationPending(uploadId: string): boolean {
+    return this.uploadQueueManager.isCancellationRequested(uploadId);
+  }
+
+  /**
+   * MONEY-2 spend checkpoint: if cancellation was requested and no money has
+   * been spent yet, finalize the upload as cancelled. Returns true when the
+   * upload was finalized (caller must stop).
+   */
+  private async finalizeCancelledUpload(upload: FileUpload): Promise<boolean> {
+    if (!this.uploadQueueManager.isCancellationRequested(upload.id)) {
+      return false;
+    }
+    this.uploadQueueManager.clearCancellationRequest(upload.id);
+    upload.status = 'failed';
+    upload.error = 'Cancelled by user';
+    await this.databaseManager.updateUpload(upload.id, {
+      status: 'failed',
+      error: 'Cancelled by user'
+    });
+    this.emitUploadProgress(upload.id, 0, 'failed', 'Cancelled by user');
+    this.uploadQueueManager.removeFromQueue(upload.id);
+    console.log(`Upload ${upload.id} cancelled before any paid work started`);
+    return true;
   }
   
   // Emit upload progress event
@@ -2186,6 +2217,11 @@ export class SyncManager {
     const itemName = upload.fileName;
     console.log(`Uploading ${itemName} with ArDrive Core (method: ${upload.uploadMethod || 'ar'})`);
     
+    // MONEY-2: spend checkpoint — nothing paid has happened yet
+    if (await this.finalizeCancelledUpload(upload)) {
+      return;
+    }
+    
     try {
       if (isFolder) {
         // For folders, we need to create the folder on Arweave
@@ -2323,6 +2359,11 @@ export class SyncManager {
         }
       }
       
+      // MONEY-2: last spend checkpoint before the paid network call
+      if (await this.finalizeCancelledUpload(upload)) {
+        return;
+      }
+      
       // Upload file using ArDrive Core's recommended API
       const result = await this.arDrive!.uploadAllEntities(uploadOptions);
 
@@ -2349,6 +2390,12 @@ export class SyncManager {
           // Retry once with explicit folder structure verification
           try {
             console.log('Retrying upload after folder structure verification...');
+            
+            // MONEY-2: the retry is a second paid attempt — honor cancellation
+            if (await this.finalizeCancelledUpload(upload)) {
+              return;
+            }
+            
             await this.ensureFolderStructure(path.dirname(upload.localPath));
             
             // Small delay to ensure folder is fully created
@@ -2693,6 +2740,33 @@ export class SyncManager {
           fileId = createdItem.entityId.toString();
         }
       }
+    }
+
+    // MONEY-2: never resurrect a cancelled record as 'completed'. If the
+    // network call finished before cancellation could take effect, money WAS
+    // spent and the file IS stored — record that truth in the terminal
+    // cancelled state (with the tx ids as evidence) instead of flipping the
+    // record back to completed.
+    if (this.uploadQueueManager.isCancellationRequested(upload.id)) {
+      this.uploadQueueManager.clearCancellationRequest(upload.id);
+      const truth = 'Cancelled — but the upload had already completed on Arweave (file stored and charged)';
+      upload.status = 'failed';
+      upload.error = truth;
+      upload.dataTxId = dataTxId;
+      upload.metadataTxId = metadataTxId;
+      upload.fileId = fileId;
+      await this.databaseManager.updateUpload(upload.id, {
+        status: 'failed',
+        error: truth,
+        dataTxId,
+        metadataTxId,
+        fileId,
+        completedAt: new Date()
+      });
+      this.emitUploadProgress(upload.id, 100, 'failed', truth);
+      this.uploadQueueManager.removeFromQueue(upload.id);
+      console.warn(`Upload ${upload.id} completed on-chain despite cancellation — recorded truthfully (dataTxId: ${dataTxId})`);
+      return;
     }
 
     // Update as completed
