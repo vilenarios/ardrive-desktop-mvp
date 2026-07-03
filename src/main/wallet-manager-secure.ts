@@ -15,6 +15,7 @@ import * as crypto from 'crypto';
 import { keychainService } from './keychain-service';
 import { driveKeyManager } from './drive-key-manager';
 import { getDriveEmojiFingerprint } from './utils/drive-fingerprint';
+import { summarizeArFSResult } from './utils/arfs-result-summary';
 
 /**
  * Secure Wallet Manager
@@ -577,7 +578,8 @@ export class SecureWalletManager {
         driveName: name
       });
 
-      console.log('Drive creation result:', JSON.stringify(result, null, 2));
+      // SEC-1: never log the raw ArFSResult — log a key-free summary instead
+      console.log('Drive creation result:', summarizeArFSResult(result));
 
       if (!result.created || result.created.length === 0) {
         throw new Error('Invalid drive creation response');
@@ -619,7 +621,7 @@ export class SecureWalletManager {
       }
 
       if (!driveId || !rootFolderId) {
-        console.error('Failed to extract IDs:', { driveId, rootFolderId, created: result.created });
+        console.error('Failed to extract IDs:', { driveId, rootFolderId, created: summarizeArFSResult(result).created });
         throw new Error('Failed to get drive or folder ID from creation result');
       }
 
@@ -1131,7 +1133,9 @@ export class SecureWalletManager {
         newPrivateDriveData
       });
 
-      console.log('Private drive creation result:', JSON.stringify(result, null, 2));
+      // SEC-1: never log the raw ArFSResult — for private drives,
+      // created[].key serializes to the RAW drive key. Log a key-free summary.
+      console.log('Private drive creation result:', summarizeArFSResult(result));
 
       if (!result.created || result.created.length === 0) {
         throw new Error('Invalid private drive creation response');

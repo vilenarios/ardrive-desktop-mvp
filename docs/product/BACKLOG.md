@@ -14,7 +14,7 @@ Working an item: set `in-progress`, implement, verify per the acceptance criteri
 
 ## SEC — Security & data safety
 
-### SEC-1 · P0 · Phase 1 · `todo`
+### SEC-1 · P0 · Phase 1 · `in-progress`
 **Stop logging the private-drive key on creation.** Evidence: AUDIT §6.5 (wallet-manager-secure.ts:1179; same pattern :625).
 Fix: remove/redact the `JSON.stringify(result)` logs; route through secure-logger.
 Acceptance: creating a private drive emits no key material to stdout/logs; grep for `JSON.stringify(result` in wallet-manager-secure.ts is clean.
