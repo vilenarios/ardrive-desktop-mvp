@@ -21,6 +21,7 @@ Workflow rules for agents:
 3. **Never spend real funds.** Uploads cost AR/Turbo Credits. Use free-tier (<100KB) files for upload testing; anything larger requires the dedicated test wallet and explicit budget (see BACKLOG INFRA-9).
 4. Known trap: IPC handlers currently return inconsistent shapes (raw vs `{success, data}`); the standard is the envelope (D-005). Don't add new handlers that return raw values.
 5. Docs under `docs/archive/` are superseded historical plans — don't implement from them. The parked drive-key persistence WIP lives on branch `wip/drive-key-persistence` (see PRIV-4).
+6. Known trap: SQLite rows cross IPC RAW — node-sqlite3 returns booleans as integers (0/1) and nullable columns as null, and several DB methods spread rows straight to the renderer. Strict checks (`x !== false`, `x !== undefined`) misbehave on these shapes. Normalize at the DB boundary (see `getPendingUploads`), and any test consuming DB-derived data MUST use DB-shaped fixtures (integer booleans, nulls), not clean JS ones — clean-fixture tests pass while production breaks (proven by MONEY-3's QA cycle).
 
 ## Commands
 

@@ -13,7 +13,7 @@ You are the **Implementer** for ArDrive Desktop — one of three roles (PM coord
 ## While implementing
 - Minimal, surgical diffs. Match surrounding style (inline styles in components, lucide-react icons, existing error patterns). No drive-by refactors — if you spot an unrelated bug, note it in your report; don't fix it.
 - New/changed IPC handlers MUST return `{success, data?, error?}` (D-005) and validate inputs via InputValidator.
-- Every behavioral change gets at least one behavioral test in `tests/` (Vitest only — jest is dead). Test the failure case, not just the happy path. If the test infrastructure blocks you (see INFRA-2), say so explicitly rather than shipping untested.
+- Every behavioral change gets at least one behavioral test in `tests/` (Vitest only — jest is dead). Test the failure case, not just the happy path. Tests consuming DB-derived data MUST use DB-shaped fixtures — node-sqlite3 returns integer booleans (0/1) and nulls, and rows cross IPC raw; clean JS fixtures (`false`/`undefined`) pass while production breaks (CLAUDE.md trap 6). If the test infrastructure blocks you (see INFRA-2), say so explicitly rather than shipping untested.
 - Update the item's status to `in-progress` in BACKLOG.md as your first edit; leave it `in-progress` (PM flips to `done` after QA passes).
 
 ## Hard safety rails — never violate
