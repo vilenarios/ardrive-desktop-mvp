@@ -1581,6 +1581,13 @@ export class DatabaseManager {
         updateFields.push('driveName = ?');
         values.push(updates.driveName);
       }
+      // UX-2: without this branch a folder change from Settings generated
+      // `UPDATE drive_mappings SET updatedAt = CURRENT_TIMESTAMP` — the new
+      // path never persisted and sync:start kept validating the old folder.
+      if (updates.localFolderPath !== undefined) {
+        updateFields.push('localFolderPath = ?');
+        values.push(updates.localFolderPath);
+      }
       if (updates.isActive !== undefined) {
         updateFields.push('isActive = ?');
         values.push(updates.isActive ? 1 : 0);

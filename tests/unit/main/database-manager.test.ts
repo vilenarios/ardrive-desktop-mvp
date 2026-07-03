@@ -560,6 +560,55 @@ describe('DatabaseManager', () => {
     });
   });
 
+  describe('drive mapping updates (UX-2)', () => {
+    // QA-traced regression: updateDriveMapping had no localFolderPath branch,
+    // so a Settings folder change generated
+    //   UPDATE drive_mappings SET updatedAt = CURRENT_TIMESTAMP WHERE id = ?
+    // — the new path never persisted and sync:start kept fs.access-ing the
+    // old folder. These tests pin the REAL SQL construction, not a mock of
+    // updateDriveMapping.
+    it('generates an UPDATE whose SQL and values actually set localFolderPath', async () => {
+      await databaseManager.updateDriveMapping('mapping-1', {
+        localFolderPath: '/new/sync/folder',
+      });
+
+      expect(mockDbInstance.run).toHaveBeenCalledWith(
+        'UPDATE drive_mappings SET localFolderPath = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
+        ['/new/sync/folder', 'mapping-1'],
+        expect.any(Function)
+      );
+    });
+
+    it('combines localFolderPath with other mapped fields in one UPDATE', async () => {
+      await databaseManager.updateDriveMapping('mapping-1', {
+        driveName: 'Renamed Drive',
+        localFolderPath: '/new/sync/folder',
+        isActive: true,
+      });
+
+      const [sql, values] = mockDbInstance.run.mock.calls[0];
+      expect(sql).toContain('driveName = ?');
+      expect(sql).toContain('localFolderPath = ?');
+      expect(sql).toContain('isActive = ?');
+      expect(sql).toContain('WHERE id = ?');
+      // Values in SQL-clause order, id last; isActive stored as SQLite int
+      expect(values).toEqual(['Renamed Drive', '/new/sync/folder', 1, 'mapping-1']);
+    });
+
+    it('rejects when the UPDATE fails', async () => {
+      mockDbInstance.run.mockImplementationOnce(
+        (sql: string, params?: any, callback?: any) => {
+          if (typeof params === 'function') callback = params;
+          callback(new Error('SQLITE_ERROR'));
+        }
+      );
+
+      await expect(
+        databaseManager.updateDriveMapping('mapping-1', { localFolderPath: '/new' })
+      ).rejects.toThrow('SQLITE_ERROR');
+    });
+  });
+
   describe('close', () => {
     it('should close the database connection', async () => {
       await expect(databaseManager.close()).resolves.not.toThrow();
