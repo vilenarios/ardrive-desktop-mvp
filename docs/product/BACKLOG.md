@@ -88,7 +88,7 @@ Acceptance: UI offers no AR payment choice; DB `uploadMethod` matches actual exe
 Fix: AbortController through UploadQueueManager → uploadFile; `uploads:cancel` aborts in-flight work before marking failed; `uploads:retry` refuses items not in a terminal state; completion handler must not resurrect cancelled records.
 Acceptance: cancel during upload halts network activity and the file is not charged; retry of an in-flight upload is rejected; no path yields two charges for one file.
 
-### MONEY-3 · P0 · Phase 1 · `todo`
+### MONEY-3 · P0 · Phase 1 · `in-progress`
 **Remove fabricated USD pricing.** Evidence: §1.3-1.4 (MOCK_AR_PRICE_USD=6.50; 1 winston/byte AR estimate; fake `×1.1` Turbo fallback quote).
 Fix: fetch a real AR/USD rate (with cache + "as of" timestamp) or drop USD display for beta; show "estimate unavailable" instead of fake fallback quotes.
 Acceptance: no hardcoded exchange rate or synthetic quote is displayed anywhere.
