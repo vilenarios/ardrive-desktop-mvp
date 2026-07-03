@@ -38,27 +38,19 @@ jobs:
     name: Build ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     
-    # Skip jobs based on platform selection
-    if: |
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
-      (github.event.inputs.platforms == 'both') ||
-      (github.event.inputs.platforms == 'windows' && matrix.os == 'windows-latest') ||
-      (github.event.inputs.platforms == 'mac' && matrix.os == 'macos-latest')
-    
+    # Platform selection: the matrix context is NOT available in a job-level
+    # `if` (GitHub rejects the workflow with "Unrecognized named-value:
+    # 'matrix'"), so the platform filter is built into the matrix itself via
+    # fromJSON. Tag pushes (no inputs) build both platforms.
     strategy:
       matrix:
-        include:
-          - os: windows-latest
-            name: Windows
-            build_cmd: dist:win
-            artifact_path: release/*.exe
-          
-          - os: macos-latest
-            name: macOS  
-            build_cmd: dist:mac
-            artifact_path: |
-              release/*.dmg
-              release/*.zip
+        include: ${{ fromJSON(
+            github.event.inputs.platforms == 'windows'
+              && '[{"os":"windows-latest","name":"Windows","build_cmd":"dist:win","artifact_path":"release/*.exe"}]'
+            || github.event.inputs.platforms == 'mac'
+              && '[{"os":"macos-latest","name":"macOS","build_cmd":"dist:mac","artifact_path":"release/*.dmg\nrelease/*.zip"}]'
+            || '[{"os":"windows-latest","name":"Windows","build_cmd":"dist:win","artifact_path":"release/*.exe"},{"os":"macos-latest","name":"macOS","build_cmd":"dist:mac","artifact_path":"release/*.dmg\nrelease/*.zip"}]'
+          ) }}
 
     steps:
     - name: Checkout
