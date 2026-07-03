@@ -86,8 +86,8 @@ const api = {
   sync: {
     getFolder: () => 
       ipcRenderer.invoke('sync:getFolder'),
-    setFolder: (folderPath: string) => 
-      ipcRenderer.invoke('sync:setFolder', folderPath),
+    setFolder: (folderPath: string, options?: { updateActiveMapping?: boolean }) =>
+      ipcRenderer.invoke('sync:setFolder', folderPath, options),
     start: () => 
       ipcRenderer.invoke('sync:start'),
     stop: () => 

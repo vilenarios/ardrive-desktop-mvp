@@ -49,7 +49,11 @@ describe('Settings — Change Folder (UX-2)', () => {
     fireEvent.click(screen.getByText('Change Folder'));
 
     await waitFor(() => {
-      expect(mockElectronAPI.sync.setFolder).toHaveBeenCalledWith('/new/sync/folder');
+      // updateActiveMapping: true — Settings re-points the ACTIVE drive
+      // mapping (what sync:start validates); onboarding flows omit the flag.
+      expect(mockElectronAPI.sync.setFolder).toHaveBeenCalledWith('/new/sync/folder', {
+        updateActiveMapping: true,
+      });
       expect(mockElectronAPI.sync.start).toHaveBeenCalled();
     });
 

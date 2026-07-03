@@ -30,7 +30,9 @@ const Settings: React.FC<SettingsProps> = ({
         return; // user cancelled
       }
 
-      await window.electronAPI.sync.setFolder(selectedPath);
+      // updateActiveMapping: Settings is changing the folder of the drive
+      // being synced, so the active mapping must follow (onboarding doesn't).
+      await window.electronAPI.sync.setFolder(selectedPath, { updateActiveMapping: true });
       setCurrentFolder(selectedPath);
 
       // Re-target the running sync at the new folder (startSync re-targets

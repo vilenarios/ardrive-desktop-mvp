@@ -1841,16 +1841,18 @@ class ArDriveApp {
       return config.syncFolder;
     }));
 
-    ipcMain.handle('sync:setFolder', safeIpcHandler(async (_, folderPath: string) => {
+    ipcMain.handle('sync:setFolder', safeIpcHandler(async (_, folderPath: string, options?: { updateActiveMapping?: boolean }) => {
       const validatedFolderPath = InputValidator.validateFilePath(folderPath, 'folderPath');
-      // UX-2/SYNC-7: persist to config AND the active drive mapping, then
-      // update the running SyncManager (see utils/sync-folder-change.ts).
+      // UX-2/SYNC-7: persist to config, then update the running SyncManager.
+      // Settings passes updateActiveMapping: true to also re-point the ACTIVE
+      // drive mapping (what sync:start validates); onboarding flows don't —
+      // they create their own mapping afterwards (see utils/sync-folder-change.ts).
       await applySyncFolderChange(validatedFolderPath, {
         setConfigSyncFolder: (p) => configManager.setSyncFolder(p),
         getDriveMappings: () => databaseManager.getDriveMappings(),
         updateDriveMapping: (id, updates) => databaseManager.updateDriveMapping(id, updates),
         setSyncManagerFolder: (p) => this.syncManager.setSyncFolder(p),
-      });
+      }, { updateActiveMapping: options?.updateActiveMapping === true });
       return true;
     }));
 
