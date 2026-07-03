@@ -78,7 +78,7 @@ jobs:
       # --publish never: electron-builder auto-publishes when it detects CI,
       # then dies on the missing GH_TOKEN. Test builds must never publish -
       # releases go through the release job on Phil's explicit dispatch (D-004).
-      run: npm run ${{ matrix.build_cmd }} -- --publish never -- --publish never
+      run: npm run ${{ matrix.build_cmd }} -- --publish never
 
     - name: Upload build
       uses: actions/upload-artifact@v4
