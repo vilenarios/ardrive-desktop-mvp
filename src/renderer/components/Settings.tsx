@@ -16,18 +16,34 @@ const Settings: React.FC<SettingsProps> = ({
   onShowWalletExport
 }) => {
   const [isChangingFolder, setIsChangingFolder] = useState(false);
+  const [currentFolder, setCurrentFolder] = useState<string | null>(config.syncFolder ?? null);
+  const [folderError, setFolderError] = useState<string | null>(null);
 
   const handleChangeSyncFolder = async () => {
     try {
       setIsChangingFolder(true);
-      const result = await window.electronAPI.dialog.selectFolder();
+      setFolderError(null);
 
-      if (result && result.filePath) {
-        await window.electronAPI.sync.setFolder(result.filePath);
-        // The config will be updated through the normal flow
+      // dialog:select-folder resolves to the selected path string, or null on cancel
+      const selectedPath = await window.electronAPI.dialog.selectFolder();
+      if (!selectedPath) {
+        return; // user cancelled
+      }
+
+      await window.electronAPI.sync.setFolder(selectedPath);
+      setCurrentFolder(selectedPath);
+
+      // Re-target the running sync at the new folder (startSync re-targets
+      // when the configured folder differs from the watched one).
+      try {
+        await window.electronAPI.sync.start();
+      } catch (restartError) {
+        console.error('Folder changed but sync restart failed:', restartError);
+        setFolderError('Folder changed, but sync could not restart automatically. Use Sync to retry.');
       }
     } catch (error) {
       console.error('Failed to change sync folder:', error);
+      setFolderError('Failed to change sync folder. Please try again.');
     } finally {
       setIsChangingFolder(false);
     }
@@ -74,8 +90,13 @@ const Settings: React.FC<SettingsProps> = ({
               </div>
               <div className="settings-item-content">
                 <div className="folder-path">
-                  {config.syncFolder || 'No folder selected'}
+                  {currentFolder || 'No folder selected'}
                 </div>
+                {folderError && (
+                  <div className="folder-error" style={{ color: 'var(--red-700, #b91c1c)', fontSize: '13px', marginBottom: 'var(--space-2)' }}>
+                    {folderError}
+                  </div>
+                )}
                 <button 
                   className="settings-button"
                   onClick={handleChangeSyncFolder}

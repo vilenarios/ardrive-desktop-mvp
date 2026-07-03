@@ -13,6 +13,7 @@ import { profileManager } from './profile-manager';
 import InputValidator, { ValidationError } from './input-validator';
 import { driveKeyManager } from './drive-key-manager';
 import { readDevEnv } from './utils/dev-env';
+import { applySyncFolderChange } from './utils/sync-folder-change';
 
 // Load .env file in development
 if (process.env.NODE_ENV !== 'production') {
@@ -1841,17 +1842,15 @@ class ArDriveApp {
     }));
 
     ipcMain.handle('sync:setFolder', safeIpcHandler(async (_, folderPath: string) => {
-      // Create the folder if it doesn't exist
-      try {
-        await fs.mkdir(folderPath, { recursive: true });
-        console.log('Created sync folder:', folderPath);
-      } catch (error) {
-        console.error('Error creating sync folder:', error);
-        throw new Error('Failed to create sync folder');
-      }
-      
-      await configManager.setSyncFolder(folderPath);
-      this.syncManager.setSyncFolder(folderPath);
+      const validatedFolderPath = InputValidator.validateFilePath(folderPath, 'folderPath');
+      // UX-2/SYNC-7: persist to config AND the active drive mapping, then
+      // update the running SyncManager (see utils/sync-folder-change.ts).
+      await applySyncFolderChange(validatedFolderPath, {
+        setConfigSyncFolder: (p) => configManager.setSyncFolder(p),
+        getDriveMappings: () => databaseManager.getDriveMappings(),
+        updateDriveMapping: (id, updates) => databaseManager.updateDriveMapping(id, updates),
+        setSyncManagerFolder: (p) => this.syncManager.setSyncFolder(p),
+      });
       return true;
     }));
 
