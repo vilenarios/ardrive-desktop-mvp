@@ -234,9 +234,10 @@ QA finding 2026-07-03: sync-manager.ts:1559/1608 log raw rename/move results —
 **Pass the toast prop.** Evidence: §5.1 (App.tsx:654 renders Dashboard without `toast`; all feedback silent).
 Acceptance: drive switch failure / removal / creation / sync completion each shows a visible toast.
 
-### UX-2 · P0 · Phase 1 · `in-progress`
+### UX-2 · P0 · Phase 1 · `done`
 **Fix Settings "Change Folder".** Evidence: §5.2 (reads `.filePath` off a string).
 Acceptance: changing the folder from Settings persists and re-targets sync (respecting SYNC-7's source of truth).
+Done 2026-07-03 (2dec4c6 + 2a54c1b, qa-gate FAIL→fix→PASS static): renderer fix + the QA-caught silent no-op in updateDriveMapping (missing localFolderPath SQL branch) fixed at the DB layer; real-SQLite integration tests replicate sync:start's gate end-to-end; mapping update is opt-in (Settings only) so onboarding flows can't clobber other drives. Negative control: 5 fix-dependent tests fail on revert.
 
 ### UX-3 · P0 · Phase 3 · `todo`
 **One IPC response envelope.** Evidence: §5.3, §3.3, §3.6 (raw-vs-`{success,data}` roulette breaks CreateDriveModal private path, DriveSelector unlock, Dashboard.handleDriveCreated).
