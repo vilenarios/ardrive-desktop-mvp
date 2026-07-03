@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SyncManager } from '@/main/sync-manager';
 import { createMockDatabaseManager } from '../../helpers/mock-database';
+import { driveKeyManager } from '@/main/drive-key-manager';
 import { createMockArDrive } from '../../helpers/mock-ardrive';
 import * as chokidar from 'chokidar';
 
@@ -579,6 +580,41 @@ describe('SyncManager', () => {
       const writes = mockDatabaseManager.updateUpload.mock.calls;
       expect(writes.some((c: any[]) => c[1]?.status === 'failed' && c[1]?.error === 'Cancelled by user')).toBe(true);
       expect(writes.some((c: any[]) => c[1]?.status === 'completed')).toBe(false);
+    });
+  });
+
+  describe('Locked private drives (PRIV-5)', () => {
+    const privateMapping = {
+      ...testMapping,
+      drivePrivacy: 'private' as const,
+      driveName: 'Secret Drive',
+    };
+
+    afterEach(() => {
+      driveKeyManager.clearAllKeys();
+    });
+
+    it('refuses to sync a locked private drive loudly — no silent empty sync', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      // driveKeyManager has no key cached for this drive => locked
+
+      await expect(syncManager.startSync(testDriveId, testRootFolderId))
+        .rejects.toThrow(/Secret Drive.*locked — unlock it to sync/);
+
+      expect(syncManager.getCurrentSyncState()).toBe('idle');
+      // The metadata cache was NOT wiped and no watcher started
+      expect(mockDatabaseManager.clearDriveMetadataCache).not.toHaveBeenCalled();
+      expect(vi.mocked(chokidar.watch)).not.toHaveBeenCalled();
+    });
+
+    it('syncs an unlocked private drive normally', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      driveKeyManager.cacheKey(testDriveId, { keyData: Buffer.from('k') } as any);
+
+      const result = await syncManager.startSync(testDriveId, testRootFolderId);
+
+      expect(result).toBe(true);
+      expect(syncManager.getCurrentSyncState()).toBe('monitoring');
     });
   });
 

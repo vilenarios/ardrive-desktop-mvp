@@ -231,6 +231,18 @@ export class SyncManager {
     }
 
     try {
+      // PRIV-5: a locked private drive must fail loudly BEFORE any metadata
+      // work — the old flow cleared the metadata cache, listed nothing (the
+      // lock error was swallowed downstream), and reported a successful
+      // EMPTY sync.
+      const lockCheckMappings = await this.databaseManager.getDriveMappings();
+      const activeMapping = lockCheckMappings.find(m => m.driveId === driveId);
+      if (activeMapping?.drivePrivacy === 'private' && !driveKeyManager.isUnlocked(driveId)) {
+        throw new Error(
+          `Private drive "${activeMapping.driveName}" is locked — unlock it to sync`
+        );
+      }
+      
       console.log('🚀 About to perform full drive sync...');
       // Step 1: Complete full drive sync (no file watcher yet)
       await this.performFullDriveSync(silent);
