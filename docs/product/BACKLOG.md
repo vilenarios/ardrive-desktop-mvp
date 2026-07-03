@@ -127,6 +127,10 @@ Acceptance: concurrent uploads bounded; two files in one new folder create exact
 Fix: re-stat before wrap; if size changed beyond tolerance since approval, return to `awaiting_approval` with a note.
 Acceptance: a file grown after approval is not uploaded at the larger size without re-approval.
 
+
+### MONEY-11 · P2 · Track D · `todo`
+**Usage Statistics shows fabricated zeros.** Implementer finding 2026-07-03 (during MONEY-4): the Turbo Settings tab's surviving "Usage Statistics" section renders hardcoded 0 files / 0 AR / 0 GB — same fabricated-data class as the removed Auto Top-Up. Wire to real per-profile stats (uploads table aggregates) or remove the panel.
+Acceptance: every figure in Usage Statistics derives from real data, or the panel is gone.
 ---
 
 ## SYNC — Sync engine correctness
@@ -401,5 +405,5 @@ Acceptance: create-snapshot flow with cost approval; snapshot list per drive; a 
 
 ---
 
-## Item count: 66 · P0: 18 · P1: 31 · P2: 17
+## Item count: 67 · P0: 18 · P1: 31 · P2: 18
 (2026-07-03 rescope per D-010..D-017: PRIV-1..7 onto beta phases, PRIV-0 wont-fix, SYNC-5 promoted P0, SYNC-10 promoted P1/Phase 2, +SYNC-15, +UX-16, +UX-17, +INFRA-12, +FEAT-1, +FEAT-2. Later 2026-07-03 per D-018/D-019: +CORE-1..3 upstream ardrive-core-js track, +FEAT-3 snapshot UI.)
