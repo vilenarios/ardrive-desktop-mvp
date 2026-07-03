@@ -44,6 +44,14 @@ Three roles, one loop. This doc is the contract between them.
 - **Post-merge full suite is mandatory whenever any CODE commit landed on main after the gated branch's base** (docs-only deltas may skip it). A branch's gate proves the branch, not the combination — semantic conflicts auto-merge textually and break behaviorally (proven 2026-07-03: SYNC-3 + INFRA-7 both green individually, red combined). If red: hotfix branch immediately, priority over all lanes; the merger's session owns the reconciliation.
 - **User data**: no agent touches real profile data under `userData/`. UAT uses disposable test profiles.
 
+## Model tiering (cost discipline — Fable 5 drained the budget 2026-07-03; default Opus 4.8)
+
+The PM picks each dispatch's model by the item's risk and difficulty, not one-size-fits-all. Intelligence where it protects money/data; economy everywhere else. Never undercut a task that needs depth.
+- **Opus 4.8** — ALL qa-gates (a dumb gate is worse than none: false confidence), and any implementer on money / security / data-integrity / sync-correctness (the P0 spine).
+- **Sonnet 5** — default implementer tier: well-scoped fixes, test writing for defined behavior, moderate-risk items. CI/config gates.
+- **Haiku 4.5** — mechanical only: dead-code deletion, doc/asset moves, run-a-known-command-and-report. (Most such work the PM does inline — no agent at all.)
+Override per dispatch (`model:` on Agent/SendMessage) beats the role-file default. When unsure, go one tier up.
+
 ## Multi-session coordination
 
 - **BACKLOG.md is the claim ledger.** Any session (PM-driven or a parallel session Phil runs) claims an item by committing its status flip to `in-progress`. Before dispatching, the PM checks item status and recent `git log` for claims. Never double-claim.
