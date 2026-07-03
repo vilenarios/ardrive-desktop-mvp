@@ -145,7 +145,7 @@ Acceptance: every figure in Usage Statistics derives from real data, or the pane
 Fix: on hash-differs-for-known-path, route to the new-version upload path (ArFS new file revision) via the approval queue.
 Acceptance: UAT — edit a synced file locally → new pending upload appears → approval uploads a new revision visible in the Permaweb view.
 
-### SYNC-2 · P0 · Phase 2 · `todo`
+### SYNC-2 · P0 · Phase 2 · `in-progress`
 **Failed downloads must be recorded as failed.** Evidence: §2.2.
 Fix: rethrow from `downloadFile`'s catch (or return a result the caller honors); only mark `synced` after verifying the file exists (and hash once SYNC-12 lands); make retry/permanent-error logic reachable.
 Acceptance: killing the network mid-download leaves the row `failed` with retry available; no `synced` row without the file on disk.
