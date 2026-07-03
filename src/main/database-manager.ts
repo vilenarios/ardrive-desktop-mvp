@@ -38,7 +38,7 @@ export class DatabaseManager {
   }
 
   async initialize(): Promise<void> {
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const dbPath = this.getDbPath();
       console.log(`DatabaseManager - initializing database at: ${dbPath}`);
       this.db = new sqlite3.Database(dbPath, (err) => {
@@ -50,6 +50,62 @@ export class DatabaseManager {
         this.createTables().then(resolve).catch(reject);
       });
     });
+    
+    // SYNC-3: crash recovery — rows stuck in transient states from a killed
+    // process must never stay stuck.
+    await this.recoverInterruptedOperations();
+  }
+
+  /**
+   * SYNC-3: reset rows left in transient states by a crash/kill.
+   *
+   * - uploads stuck 'uploading' become terminal 'failed' with an honest
+   *   message: the network call may or may not have completed on Arweave, so
+   *   blindly re-queueing could pay for the same file twice (MONEY-2). The
+   *   user retries deliberately via uploads:retry, which admission-checks.
+   * - downloads stuck 'downloading' become 'failed' (free to redo).
+   * - drive metadata syncStatus stuck 'downloading'/'queued' resets to
+   *   'pending', which the boot sync flow re-queues automatically.
+   *
+   * Returns counts for observability/tests.
+   */
+  async recoverInterruptedOperations(): Promise<{
+    uploadsReset: number;
+    downloadsReset: number;
+    metadataReset: number;
+  }> {
+    const run = (sql: string, params: unknown[] = []): Promise<number> =>
+      new Promise((resolve, reject) => {
+        this.db!.run(sql, params, function (err) {
+          if (err) reject(err);
+          else resolve(this.changes ?? 0);
+        });
+      });
+
+    const interruptedUploadMessage =
+      'Interrupted by app shutdown mid-upload — the file may or may not have reached Arweave; verify before retrying';
+
+    const uploadsReset = await run(
+      `UPDATE uploads SET status = 'failed', error = ? WHERE status = 'uploading'`,
+      [interruptedUploadMessage]
+    );
+
+    const downloadsReset = await run(
+      `UPDATE downloads SET status = 'failed', error = 'Interrupted by app shutdown' WHERE status IN ('downloading', 'queued', 'pending')`
+    );
+
+    const metadataReset = await run(
+      `UPDATE drive_metadata_cache SET syncStatus = 'pending', lastError = NULL WHERE syncStatus IN ('downloading', 'queued')`
+    );
+
+    if (uploadsReset || downloadsReset || metadataReset) {
+      console.log(
+        `DatabaseManager - crash recovery: ${uploadsReset} uploads -> failed (verify-before-retry), ` +
+        `${downloadsReset} downloads -> failed, ${metadataReset} metadata rows -> pending`
+      );
+    }
+
+    return { uploadsReset, downloadsReset, metadataReset };
   }
 
   private async createTables(): Promise<void> {
