@@ -356,8 +356,13 @@ function createShim(engine: any) {
     run(sql: string, maybeParams?: any, maybeCb?: any) {
       const { params, cb } = shuffle(maybeParams, maybeCb);
       try {
-        engine.prepare(sql).run(...params);
-        cb?.(null);
+        const info = engine.prepare(sql).run(...params);
+        // node-sqlite3 binds run() callbacks to a Statement-like context
+        // exposing changes/lastID (SYNC-3's recovery reads this.changes).
+        cb?.call(
+          { changes: Number(info.changes), lastID: Number(info.lastInsertRowid) },
+          null
+        );
       } catch (e) {
         cb?.(e as Error);
       }
@@ -600,39 +605,70 @@ function createCapturingStub(options: {
   userVersion?: number;
   failOnSql?: (sql: string) => boolean;
 } = {}) {
+  // node-sqlite3 invokes statement callbacks with `this` bound to a
+  // Statement-like context carrying run metadata (`changes`, `lastID`) —
+  // SYNC-3's recoverInterruptedOperations reads `this.changes` in its run()
+  // callbacks. Model that context ONCE, for every callback the stub fires,
+  // so future initialize()-time statements never re-break these tests.
+  const statementContext = { changes: 0, lastID: 0 };
+  const invoke = (cb: ((...cbArgs: any[]) => void) | undefined, ...args: any[]) => {
+    cb?.call(statementContext, ...args);
+  };
   const stub = {
     execCalls: [] as string[],
+    runCalls: [] as string[],
+    /** Unified statement order across exec() and run() — for ordering pins. */
+    sqlLog: [] as string[],
     closed: false,
     exec(sql: string, cb?: (err: Error | null) => void) {
       stub.execCalls.push(sql);
+      stub.sqlLog.push(sql);
       if (options.failOnSql?.(sql)) {
-        cb?.(new Error('SQLITE_ERROR: injected failure'));
+        invoke(cb, new Error('SQLITE_ERROR: injected failure'));
         return;
       }
-      cb?.(null);
+      invoke(cb, null);
     },
     get(sql: string, maybeParams?: any, maybeCb?: any) {
       const cb = typeof maybeParams === 'function' ? maybeParams : maybeCb;
       if (sql === 'PRAGMA user_version') {
-        cb?.(null, { user_version: options.userVersion ?? 0 });
+        invoke(cb, null, { user_version: options.userVersion ?? 0 });
       } else {
-        cb?.(null, undefined);
+        invoke(cb, null, undefined);
       }
     },
     run(sql: string, maybeParams?: any, maybeCb?: any) {
       const cb = typeof maybeParams === 'function' ? maybeParams : maybeCb;
-      cb?.(null);
+      stub.runCalls.push(sql);
+      stub.sqlLog.push(sql);
+      invoke(cb, null);
     },
     all(sql: string, maybeParams?: any, maybeCb?: any) {
       const cb = typeof maybeParams === 'function' ? maybeParams : maybeCb;
-      cb?.(null, []);
+      invoke(cb, null, []);
     },
     close(cb?: (err: Error | null) => void) {
       stub.closed = true;
-      cb?.(null);
+      invoke(cb, null);
     },
   };
   return stub;
+}
+
+// SYNC-3's startup crash recovery runs these AFTER migrations complete; the
+// wiring tests below pin both the set and the ordering.
+const RECOVERY_STATEMENT_PATTERNS = [
+  /^UPDATE uploads SET status = 'failed'.*WHERE status = 'uploading'/,
+  /^UPDATE uploads SET status = 'failed'.*WHERE status = 'pending'/,
+  /^UPDATE downloads SET status = 'failed'.*WHERE status IN \('downloading', 'queued', 'pending'\)/,
+  /^UPDATE drive_metadata_cache SET syncStatus = 'pending'.*WHERE syncStatus IN \('downloading', 'queued'\)/,
+];
+
+function expectRecoveryStatements(runCalls: string[]): void {
+  expect(runCalls).toHaveLength(RECOVERY_STATEMENT_PATTERNS.length);
+  RECOVERY_STATEMENT_PATTERNS.forEach((pattern, i) => {
+    expect(runCalls[i]).toMatch(pattern);
+  });
 }
 
 function managerWithStub(stub: ReturnType<typeof createCapturingStub>): DatabaseManager {
@@ -665,13 +701,47 @@ describe('initialize() wiring (capturing stub)', () => {
     expect((dm as any).db).toBe(stub); // ready
   });
 
-  it('executes nothing when the DB is already at the current version', async () => {
+  it('runs SYNC-3 crash recovery strictly AFTER the final version stamp and COMMIT (combined initialize() contract)', async () => {
+    // The INFRA-7 + SYNC-3 merge relies on this ordering: recovery UPDATEs
+    // reference status columns/values whose shape belongs to the migrated
+    // schema, so they must never execute against a not-yet-migrated (or
+    // refused) database. Pin it so it can't silently invert.
+    const stub = createCapturingStub({ userVersion: 0 });
+    const dm = managerWithStub(stub);
+
+    await dm.initialize();
+
+    // All four recovery statements ran, exactly once each, via run().
+    expectRecoveryStatements(stub.runCalls);
+
+    // Ordering in the unified statement log: the LAST migration statement
+    // (final COMMIT, preceded by the v4 stamp) comes before the FIRST
+    // recovery statement.
+    const lastCommitIdx = stub.sqlLog.lastIndexOf('COMMIT');
+    const stampIdx = stub.sqlLog.indexOf(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);
+    const firstRecoveryIdx = stub.sqlLog.findIndex((sql) =>
+      RECOVERY_STATEMENT_PATTERNS[0].test(sql)
+    );
+    expect(stampIdx).toBeGreaterThan(-1);
+    expect(firstRecoveryIdx).toBeGreaterThan(-1);
+    expect(stampIdx).toBeLessThan(lastCommitIdx);
+    expect(lastCommitIdx).toBeLessThan(firstRecoveryIdx);
+    // Nothing migration-shaped after recovery starts (no interleaving).
+    expect(stub.sqlLog.slice(firstRecoveryIdx)).toHaveLength(
+      RECOVERY_STATEMENT_PATTERNS.length
+    );
+  });
+
+  it('runs no migration statements when the DB is already at the current version (recovery still runs)', async () => {
     const stub = createCapturingStub({ userVersion: CURRENT_SCHEMA_VERSION });
     const dm = managerWithStub(stub);
 
     await dm.initialize();
 
+    // Migration channel (exec) is silent — nothing to migrate...
     expect(stub.execCalls).toEqual([]);
+    // ...but SYNC-3 startup recovery still runs, and ONLY recovery.
+    expectRecoveryStatements(stub.runCalls);
     expect((dm as any).db).toBe(stub);
   });
 
@@ -684,6 +754,7 @@ describe('initialize() wiring (capturing stub)', () => {
     );
 
     expect(stub.execCalls).toEqual([]); // data never touched
+    expect(stub.runCalls).toEqual([]); // recovery never reached either
     expect(stub.closed).toBe(true);
     expect((dm as any).db).toBeNull(); // fail closed — DB is NOT ready
   });
@@ -706,6 +777,7 @@ describe('initialize() wiring (capturing stub)', () => {
       MIGRATIONS[1].sql,
       'ROLLBACK',
     ]);
+    expect(stub.runCalls).toEqual([]); // recovery never runs on a failed migration
     expect(stub.closed).toBe(true);
     expect((dm as any).db).toBeNull();
   });
