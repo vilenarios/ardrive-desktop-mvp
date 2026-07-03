@@ -87,10 +87,11 @@ Acceptance: UI offers no AR payment choice; DB `uploadMethod` matches actual exe
 Done 2026-07-03 (627c208 + d688d9e, qa-gate PASS — money boundary verified at the DB-write level via the REAL captured IPC handlers, mutation-checked): no AR choice representable in the queue; 'turbo' hardcoded at every addUpload site; AR gate deleted (0-AR wallets approve; live Turbo check authoritative); insufficient rows block/skip with visible reasons + top-up affordance; first main.ts handler test suite established (reusable pattern). Re-homed to MONEY-6: sync-manager :3392/:1973 money remnants + top-up row-refresh staleness.
 QA findings 2026-07-03 to resolve here: define what APPROVAL means for insufficient-Turbo-balance rows (currently routes to the 'ar' rail whose cost is undisplayed — MONEY-3 left the quote visible with an "Insufficient balance" hint, but approve still submits 'ar'); sync-manager.ts:3392 hardcodes synthetic `estimatedTurboCost: 0.000001` for metadata ops (renderer masks it as "Free"; make the stored value honest); sync-manager.ts:1973 `|| undefined` would coerce a legitimate zero quote; dead `totalArCost` accumulation and dead `calculateTurboCredits` (turbo-utils) can go.
 
-### MONEY-2 · P0 · Phase 2 · `in-progress`
+### MONEY-2 · P0 · Phase 2 · `done`
 **Make cancel abort and retry safe.** Evidence: §1.2.
 Fix: AbortController through UploadQueueManager → uploadFile; `uploads:cancel` aborts in-flight work before marking failed; `uploads:retry` refuses items not in a terminal state; completion handler must not resurrect cancelled records.
 Acceptance: cancel during upload halts network activity and the file is not charged; retry of an in-flight upload is rejected; no path yields two charges for one file.
+Note 2026-07-03: done — merged from `fix/MONEY-2-cancel-retry` (3feeae1 + fix round 0121f82 + 1e5eac8) after qa-gate FAIL → fix → PASS (static — handler wiring read-verified; all queue/pipeline/guard behavior exercised by adversarial probes). Shipped: spend checkpoints before EVERY paid call (incl. per-iteration in the folder-creation loops); pending cancels guaranteed free; no completion path resurrects a cancelled record (files AND folders — charged outcomes record the truth with tx-id evidence); retry admission (isRetryAllowed) refuses live/queued/cancellation-pending/charge-evidenced rows for retry and retry-all; uploads:cancel never rewrites completed history; cancelled-but-charged files register in processed_files (watcher re-charge closed). Known limit: an already-launched core call cannot be aborted — see MONEY-12. Money-safe residuals on record in the gate verdict (narrow interim-row race; crash-orphaned rows are SYNC-3/MONEY-10 scope).
 
 ### MONEY-3 · P0 · Phase 1 · `done`
 **Remove fabricated USD pricing.** Evidence: §1.3-1.4 (MOCK_AR_PRICE_USD=6.50; 1 winston/byte AR estimate; fake `×1.1` Turbo fallback quote).
@@ -132,6 +133,9 @@ Acceptance: concurrent uploads bounded; two files in one new folder create exact
 Fix: re-stat before wrap; if size changed beyond tolerance since approval, return to `awaiting_approval` with a note.
 Acceptance: a file grown after approval is not uploaded at the larger size without re-approval.
 
+
+### MONEY-12 · P1 · Track B · `todo`
+**Upstream: AbortSignal support in ardrive-core-js upload/create APIs.** Filed per D-016 as MONEY-2's merge condition: `uploadAllEntities`, `createPublicFolder`, `createPrivateFolder` accept no AbortSignal (ardrive-core-js lib/ardrive.d.ts), so a single already-launched paid call cannot be halted mid-flight — MONEY-2's checkpoints stop everything not yet launched. True cancel-in-flight needs core to thread a signal into its gateway/turbo requests.
 
 ### MONEY-11 · P2 · Track D · `todo`
 **Usage Statistics shows fabricated zeros.** Implementer finding 2026-07-03 (during MONEY-4): the Turbo Settings tab's surviving "Usage Statistics" section renders hardcoded 0 files / 0 AR / 0 GB — same fabricated-data class as the removed Auto Top-Up. Wire to real per-profile stats (uploads table aggregates) or remove the panel.

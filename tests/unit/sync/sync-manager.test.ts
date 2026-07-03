@@ -332,6 +332,256 @@ describe('SyncManager', () => {
     });
   });
 
+  describe('Upload cancellation (MONEY-2)', () => {
+    const makeUpload = (status: 'pending' | 'uploading') =>
+      ({
+        id: 'upload-1',
+        driveId: testDriveId,
+        localPath: `${testSyncPath}/doc.txt`,
+        fileName: 'doc.txt',
+        fileSize: 1024,
+        status,
+        progress: 0,
+        createdAt: new Date(),
+      }) as any;
+
+    it('cancelling a pending upload removes it before any paid work', () => {
+      const upload = makeUpload('pending');
+      syncManager.addToUploadQueue(upload);
+
+      const result = syncManager.cancelUpload('upload-1');
+
+      expect(result).toEqual({ cancelled: true, wasInFlight: false });
+      expect(syncManager.getQueueEntryStatus('upload-1')).toBeUndefined();
+    });
+
+    it('cancelling an in-flight upload registers a request instead of lying', () => {
+      const upload = makeUpload('uploading');
+      syncManager.addToUploadQueue(upload);
+
+      const result = syncManager.cancelUpload('upload-1');
+
+      expect(result).toEqual({ cancelled: true, wasInFlight: true });
+      expect(syncManager.isUploadCancellationPending('upload-1')).toBe(true);
+    });
+
+    it('spend checkpoint: a cancellation requested before the paid call skips it entirely', async () => {
+      const upload = makeUpload('uploading');
+      syncManager.addToUploadQueue(upload);
+      syncManager.cancelUpload('upload-1'); // registers the in-flight request
+
+      (mockArDrive as any).uploadAllEntities = vi.fn();
+      await syncManager['uploadFileWithArDriveCore'](upload);
+
+      // No network/paid call, upload finalized as cancelled
+      expect((mockArDrive as any).uploadAllEntities).not.toHaveBeenCalled();
+      expect(mockDatabaseManager.updateUpload).toHaveBeenCalledWith('upload-1', {
+        status: 'failed',
+        error: 'Cancelled by user',
+      });
+      expect(syncManager.isUploadCancellationPending('upload-1')).toBe(false);
+      expect(syncManager.getQueueEntryStatus('upload-1')).toBeUndefined();
+    });
+
+    it('completion never resurrects a cancelled record (truthful charged state)', async () => {
+      const upload = makeUpload('uploading');
+      syncManager.addToUploadQueue(upload);
+      syncManager.cancelUpload('upload-1');
+
+      // Simulate the network call having completed despite the cancellation
+      const fakeResult = {
+        created: [
+          {
+            type: 'file',
+            entityId: { toString: () => 'file-entity-id' },
+            dataTxId: { toString: () => 'data-tx-id' },
+            metadataTxId: { toString: () => 'meta-tx-id' },
+          },
+        ],
+        fees: {},
+      };
+
+      await syncManager['processUploadResult'](upload, fakeResult);
+
+      // Status stays terminal-cancelled, but the truth (stored + charged,
+      // with tx ids as evidence) is recorded — never flipped to 'completed'
+      const calls = mockDatabaseManager.updateUpload.mock.calls;
+      const finalWrite = calls[calls.length - 1];
+      expect(finalWrite[0]).toBe('upload-1');
+      expect(finalWrite[1].status).toBe('failed');
+      expect(finalWrite[1].error).toMatch(/already completed on Arweave/);
+      expect(finalWrite[1].dataTxId).toBe('data-tx-id');
+      expect(
+        calls.some((c: any[]) => c[1] && c[1].status === 'completed')
+      ).toBe(false);
+      expect(syncManager.isUploadCancellationPending('upload-1')).toBe(false);
+    });
+
+    it('an uncancelled completion still records completed (control)', async () => {
+      const upload = makeUpload('uploading');
+      syncManager.addToUploadQueue(upload);
+
+      const fakeResult = {
+        created: [
+          {
+            type: 'file',
+            entityId: { toString: () => 'file-entity-id' },
+            dataTxId: { toString: () => 'data-tx-id' },
+            metadataTxId: { toString: () => 'meta-tx-id' },
+          },
+        ],
+        fees: {},
+      };
+
+      await syncManager['processUploadResult'](upload, fakeResult);
+
+      expect(upload.status).toBe('completed');
+      // The completed state persists via addUpload (history insert; falls
+      // back to updateUpload only on duplicate ids)
+      expect(mockDatabaseManager.addUpload).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'upload-1', status: 'completed', dataTxId: 'data-tx-id' })
+      );
+    });
+  });
+
+  describe('Upload cancellation — qa-gate fix round (MONEY-2)', () => {
+    beforeEach(() => {
+      // These tests drive the upload pipeline directly (no startSync), so
+      // give the manager its drive context — uploadFile/ensureFolderStructure
+      // early-return without it.
+      syncManager['driveId'] = testDriveId;
+      syncManager['rootFolderId'] = testRootFolderId;
+    });
+
+    const makeUpload = (status: 'pending' | 'uploading') =>
+      ({
+        id: 'upload-1',
+        driveId: testDriveId,
+        localPath: `${testSyncPath}/doc.txt`,
+        fileName: 'doc.txt',
+        fileSize: 1024,
+        status,
+        progress: 0,
+        createdAt: new Date(),
+      }) as any;
+    const makeFolderUpload = () =>
+      ({
+        id: 'folder-upload-1',
+        driveId: testDriveId,
+        localPath: `${testSyncPath}/NewFolder`,
+        fileName: 'NewFolder',
+        fileSize: 0,
+        status: 'uploading',
+        progress: 0,
+        createdAt: new Date(),
+      }) as any;
+
+    it('folder short-circuit honors cancellation instead of resurrecting (free path)', async () => {
+      const upload = makeFolderUpload();
+      syncManager.addToUploadQueue(upload);
+      syncManager.cancelUpload('folder-upload-1');
+      // Folder already exists on Arweave — the free short-circuit
+      mockDatabaseManager.getFolderByPath.mockResolvedValue({
+        id: 'db-folder-1',
+        folderPath: upload.localPath,
+        arfsFolderId: 'existing-arfs-id',
+        isDeleted: false,
+      });
+
+      await syncManager['uploadFileWithArDriveCore'](upload);
+
+      const writes = mockDatabaseManager.updateUpload.mock.calls;
+      expect(writes.some((c: any[]) => c[1]?.status === 'completed')).toBe(false);
+      expect(writes.some((c: any[]) => c[1]?.status === 'failed' && c[1]?.error === 'Cancelled by user')).toBe(true);
+      expect(syncManager.isUploadCancellationPending('folder-upload-1')).toBe(false);
+    });
+
+    it('created-folder completion records the charged truth, never completed', async () => {
+      const upload = makeFolderUpload();
+      syncManager.addToUploadQueue(upload);
+      mockDatabaseManager.getFolderByPath.mockResolvedValue(null);
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([testMapping]);
+      // Cancellation arrives WHILE the paid folder creation is in flight
+      (mockArDrive as any).createPublicFolder = vi.fn(async () => {
+        syncManager.cancelUpload('folder-upload-1');
+        return { created: [{ type: 'folder', entityId: { toString: () => 'new-arfs-folder-id' } }] };
+      });
+
+      await syncManager['uploadFileWithArDriveCore'](upload);
+
+      const writes = mockDatabaseManager.updateUpload.mock.calls;
+      expect(writes.some((c: any[]) => c[1]?.status === 'completed')).toBe(false);
+      const truthWrite = writes.find((c: any[]) => c[1]?.status === 'failed');
+      expect(truthWrite![1].error).toMatch(/folder had already been created on Arweave/);
+      expect(truthWrite![1].fileId).toBe('new-arfs-folder-id');
+      expect(syncManager.isUploadCancellationPending('folder-upload-1')).toBe(false);
+    });
+
+    it('the paid folder-structure loop stops at a pending cancellation', async () => {
+      const upload = makeUpload('uploading');
+      syncManager.addToUploadQueue(upload);
+      syncManager.cancelUpload('upload-1');
+      mockDatabaseManager.getFolderByPath.mockResolvedValue(null);
+      (mockArDrive as any).createPublicFolder = vi.fn();
+
+      // Deep nested path -> multiple paid folder creations would launch
+      await expect(
+        syncManager['ensureFolderStructure'](`${testSyncPath}/a/b/c`, 'upload-1')
+      ).rejects.toThrow('UPLOAD_CANCELLED_BY_USER');
+
+      expect((mockArDrive as any).createPublicFolder).not.toHaveBeenCalled();
+    });
+
+    it('registers the cancelled-but-charged file in processed_files (no watcher re-charge)', async () => {
+      const upload = makeUpload('uploading');
+      syncManager.addToUploadQueue(upload);
+      syncManager.cancelUpload('upload-1');
+
+      const fakeResult = {
+        created: [
+          {
+            type: 'file',
+            entityId: { toString: () => 'file-entity-id' },
+            dataTxId: { toString: () => 'data-tx-id' },
+            metadataTxId: { toString: () => 'meta-tx-id' },
+          },
+        ],
+        fees: {},
+      };
+
+      await syncManager['processUploadResult'](upload, fakeResult);
+
+      expect(mockDatabaseManager.addProcessedFile).toHaveBeenCalledWith(
+        expect.any(String),
+        upload.fileName,
+        upload.fileSize,
+        upload.localPath,
+        'upload'
+      );
+    });
+
+    it('a cancelled upload that then throws resolves the cancellation (no request leak)', async () => {
+      const upload = makeUpload('uploading');
+      syncManager.addToUploadQueue(upload);
+      syncManager.cancelUpload('upload-1');
+      // Force a genuine failure after the cancellation was requested: the
+      // pre-spend checkpoint would normally finalize first, so simulate the
+      // request arriving mid-flight by re-registering inside the throw path
+      const spy = vi
+        .spyOn(syncManager as any, 'uploadFileWithArDriveCore')
+        .mockRejectedValue(new Error('network died'));
+
+      await syncManager['uploadFile'](upload);
+      spy.mockRestore();
+
+      // Request resolved — retry is not blocked forever
+      expect(syncManager.isUploadCancellationPending('upload-1')).toBe(false);
+      const writes = mockDatabaseManager.updateUpload.mock.calls;
+      expect(writes.some((c: any[]) => c[1]?.status === 'failed' && c[1]?.error === 'Cancelled by user')).toBe(true);
+      expect(writes.some((c: any[]) => c[1]?.status === 'completed')).toBe(false);
+    });
+  });
+
   describe('Error Scenarios', () => {
     it('should surface database failures and return to idle', async () => {
       mockDatabaseManager.getDriveMappings.mockRejectedValue(new Error('Database error'));

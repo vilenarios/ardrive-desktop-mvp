@@ -31,6 +31,9 @@ export class MockDatabaseManager {
   public addProcessedFile = vi.fn();
   public removeProcessedFile = vi.fn();
   public getLatestFileVersion = vi.fn();
+  public getFolderByPath = vi.fn();
+  public addFolder = vi.fn();
+  public updateFolderArweaveId = vi.fn();
   public addFileVersion = vi.fn();
   public addFileOperation = vi.fn();
   public getFileVersions = vi.fn();
@@ -58,6 +61,9 @@ export class MockDatabaseManager {
     this.getDownloads.mockResolvedValue([]);
     this.getProcessedFiles.mockResolvedValue([]);
     this.getLatestFileVersion.mockResolvedValue(null);
+    this.getFolderByPath.mockResolvedValue(null);
+    this.addFolder.mockResolvedValue(undefined);
+    this.updateFolderArweaveId.mockResolvedValue(undefined);
   }
 
   reset() {

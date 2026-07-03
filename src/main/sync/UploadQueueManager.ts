@@ -3,10 +3,21 @@ import { FileUpload } from '../../types';
 import { DatabaseManager } from '../database-manager';
 import { ISyncProgressTracker } from './interfaces';
 
+export interface CancelUploadResult {
+  /** True when the cancel request was accepted (pending removed or in-flight flagged). */
+  cancelled: boolean;
+  /** True when the upload was already uploading — network work may still complete. */
+  wasInFlight: boolean;
+}
+
 export class UploadQueueManager {
   private uploadQueue = new Map<string, FileUpload>();
   private isProcessing = false;
   private processingInterval: NodeJS.Timeout | null = null;
+  // MONEY-2: ids whose in-flight cancellation has been requested. The upload
+  // pipeline checks this at every spend checkpoint and at completion so a
+  // cancelled record is never resurrected as 'completed'.
+  private cancellationRequests = new Set<string>();
 
   constructor(
     private databaseManager: DatabaseManager,
@@ -78,6 +89,7 @@ export class UploadQueueManager {
   clearQueue(): void {
     const queueSize = this.uploadQueue.size;
     this.uploadQueue.clear();
+    this.cancellationRequests.clear();
     console.log(`Cleared upload queue (removed ${queueSize} items)`);
   }
 
@@ -137,15 +149,42 @@ export class UploadQueueManager {
   }
 
   // Queue management methods
-  cancelUpload(uploadId: string): void {
+  cancelUpload(uploadId: string): CancelUploadResult {
     const upload = this.uploadQueue.get(uploadId);
-    if (upload && upload.status === 'pending') {
-      // Mark as failed with cancellation message
+    if (!upload) {
+      return { cancelled: false, wasInFlight: false };
+    }
+    if (upload.status === 'pending') {
+      // Never started — guaranteed free. Mark as failed with cancellation message.
       upload.status = 'failed';
       upload.error = 'Cancelled by user';
       this.uploadQueue.delete(uploadId);
       console.log(`Upload ${uploadId} cancelled and removed from queue`);
+      return { cancelled: true, wasInFlight: false };
     }
+    if (upload.status === 'uploading') {
+      // MONEY-2: ardrive-core-js has no abort support, so the network call
+      // cannot be halted mid-flight. Register the request: the pipeline's
+      // spend checkpoints skip any work not yet started, and the completion
+      // handler refuses to resurrect the record.
+      this.cancellationRequests.add(uploadId);
+      console.log(`Upload ${uploadId} is in flight — cancellation requested`);
+      return { cancelled: true, wasInFlight: true };
+    }
+    return { cancelled: false, wasInFlight: false };
+  }
+
+  isCancellationRequested(uploadId: string): boolean {
+    return this.cancellationRequests.has(uploadId);
+  }
+
+  clearCancellationRequest(uploadId: string): void {
+    this.cancellationRequests.delete(uploadId);
+  }
+
+  /** Live status of the in-memory queue entry, if any (retry admission input). */
+  getQueueEntryStatus(uploadId: string): string | undefined {
+    return this.uploadQueue.get(uploadId)?.status;
   }
 
   retryUpload(uploadId: string): void {
