@@ -605,16 +605,98 @@ export class DownloadManager {
     }
   }
 
+  /** PRIV-1: is the active drive for this manager a private drive? */
+  private async isPrivateDriveDownload(): Promise<boolean> {
+    if (!this.driveId) return false;
+    const mappings = await this.databaseManager.getDriveMappings();
+    const mapping = mappings.find((m) => m.driveId === this.driveId);
+    return mapping?.drivePrivacy === 'private';
+  }
+
+  /**
+   * PRIV-1: download + decrypt a private file via ardrive-core-js.
+   *
+   * downloadPrivateFile fetches the ciphertext and writes decrypted plaintext.
+   * It offers no incremental progress events, so private downloads emit
+   * start/complete only. Written to a `.downloading`-suffixed temp name first
+   * (the watcher ignores that suffix and startup cleanup removes orphans),
+   * then renamed into place — parity with StreamingDownloader's atomic rename.
+   * Returns the sha256 of the decrypted plaintext.
+   */
+  private async downloadPrivateFileDecrypted(
+    fileData: any,
+    localFilePath: string,
+    downloadId: string
+  ): Promise<string> {
+    if (!this.arDrive) {
+      throw new Error('ArDrive not available for private download');
+    }
+    const driveKey = driveKeyManager.getDriveKey(this.driveId!);
+    if (!driveKey) {
+      throw new Error(`Private drive is locked — unlock it to download "${fileData.name}"`);
+    }
+    
+    const dir = path.dirname(localFilePath);
+    const finalName = path.basename(localFilePath);
+    const tempName = `${finalName}.downloading`;
+    const tempPath = path.join(dir, tempName);
+    
+    console.log(`Downloading private file ${fileData.name} with decryption (fileId: ${fileData.fileId})`);
+    this.queueProgressUpdate(downloadId, {
+      downloadId,
+      fileName: fileData.name,
+      progress: 0,
+      bytesDownloaded: 0,
+      totalBytes: fileData.size || 0,
+      speed: 0,
+      remainingTime: 0
+    });
+    
+    await this.arDrive.downloadPrivateFile({
+      fileId: EID(fileData.fileId),
+      driveKey,
+      destFolderPath: dir,
+      defaultFileName: tempName
+    });
+    
+    // Atomic-ish move into place
+    await fs.rename(tempPath, localFilePath);
+    
+    const plaintext = await fs.readFile(localFilePath);
+    const hash = crypto.createHash('sha256').update(plaintext).digest('hex');
+    
+    this.progressTracker.emitDownloadProgress({
+      downloadId,
+      fileName: fileData.name,
+      progress: 100,
+      bytesDownloaded: plaintext.length,
+      totalBytes: plaintext.length,
+      speed: 0,
+      remainingTime: 0
+    });
+    
+    console.log(`✓ Private file decrypted to plaintext: ${fileData.name} (${plaintext.length} bytes)`);
+    return hash;
+  }
+
   private async performFileDownload(fileData: any, localFilePath: string, dir: string, downloadId: string, placeholderHash: string): Promise<void> {
     try {
       // Check if this is a manifest file
       const isManifest = this.isManifestFile(fileData);
       let hash: string = ''; // Declare hash variable outside the if/else block
       
+      // PRIV-1: files in private drives are ciphertext at the raw gateway
+      // URL — the old path wrote encrypted bytes to the sync folder. Route
+      // them through ardrive-core's downloadPrivateFile, which fetches AND
+      // decrypts to plaintext.
+      const isPrivateDownload = !isManifest && (await this.isPrivateDriveDownload());
+      
       if (isManifest) {
         console.log(`Detected manifest file: ${fileData.name}, using raw download method`);
         const manifestResult = await this.downloadManifestFile(fileData, localFilePath, downloadId);
         hash = manifestResult.hash;
+      } else if (isPrivateDownload) {
+        hash = await this.downloadPrivateFileDecrypted(fileData, localFilePath, downloadId);
       } else {
         // Use streaming download for better reliability and progress tracking
         const gatewayUrl = 'https://arweave.net';
