@@ -179,7 +179,7 @@ Acceptance: delete a local file → hide operation appears in queue → approval
 **HARD DEPENDENCY: SYNC-10 must land first** — current whole-file-in-memory hashing (×3 per event) is fatal at 2 GiB.
 Acceptance: dropping an oversized file shows a visible "too large" entry; a multi-GB file uploaded via web downloads successfully with flat memory.
 
-### SYNC-7 · P0 · Phase 2 · `todo`
+### SYNC-7 · P0 · Phase 2 · `in-progress`
 **Kill the folder-vs-drive divergence.** Evidence: §2.8 (`sync:start` watches `config.syncFolder` while syncing the active mapping's drive; `drive:switchTo` never updates config).
 Fix: single source of truth = active drive mapping's `localFolderPath`; migrate `config.syncFolder` readers (OverviewTab, StorageTab, Settings, modals' base-folder heuristics).
 Acceptance: after switching drives, the watched folder, UI-displayed folder, and upload target always agree.
