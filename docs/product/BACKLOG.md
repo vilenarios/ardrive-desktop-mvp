@@ -387,6 +387,7 @@ Done 2026-07-03 (45b1b2e + adopted QA probe, qa-gate PASS — real-engine advers
 **Test-money strategy for agents & CI.** Uploads cost real money; agents and CI must be able to verify money paths safely.
 Fix: dedicated funded test wallet (small Turbo balance) checked into secrets (never the repo); free-tier (<100KB) fixtures for upload UAT; ArLocal or mocked gateway for integration tests; document in CLAUDE.md what may/may not spend.
 Acceptance: an agent can run an end-to-end upload UAT spending only free-tier or explicitly-budgeted test credits.
+Note 2026-07-03 (Phil, direct): tester wallet designated — `/mnt/c/source/arweave-keyfile-iKryOeZQMONi2965nKz528htMMN_sBcjlhc-VncoRjA.json` (the 'ikry' wallet: many drives, AR, Turbo Credits). Rules of engagement: reference by path only (contents never read into logs/transcripts/repo); free-tier (<100KB) files only unless Phil budgets spend per item; UAT runs against a disposable user-data dir, never real profile data. Local machine only — the path must never appear in CI config.
 
 ### INFRA-10 · P1 · Phase 4 · `todo`
 **IPC dead-surface reconciliation.** Evidence: §6.1-6.2. Remove or implement: `drive:get-metadata`/`refresh-metadata`, `multi-sync:*` (per UX-15), unexposed `sync:set-folder`/`sync:get-uploads`, ethereum stub, `wallet.completeSetup` fake, dead event channels (`sync:status-update`, `upload:complete`, `activity:update`, `sync:pending-uploads-updated`, `sync:upload-completed`), driveId/mappingId confusion (main.ts:1901).
