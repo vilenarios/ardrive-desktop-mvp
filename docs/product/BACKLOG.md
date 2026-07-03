@@ -144,10 +144,12 @@ Acceptance: every figure in Usage Statistics derives from real data, or the pane
 
 ## SYNC — Sync engine correctness
 
-### SYNC-1 · P0 · Phase 2 · `in-progress`
+### SYNC-1 · P0 · Phase 2 · `done`
 **Edited files must re-upload.** Evidence: §2.1 (path-match dedup bails before the update path; detectFileChange's 'update' result dead-ends).
 Fix: on hash-differs-for-known-path, route to the new-version upload path (ArFS new file revision) via the approval queue.
 Acceptance: UAT — edit a synced file locally → new pending upload appears → approval uploads a new revision visible in the Permaweb view.
+Note 2026-07-03: done — merged from `fix/SYNC-1-reupload-edits` (e2f8867 + findings f7a2f76) after qa-gate PASS (static — the revision-upload half verified from ardrive-core source: default upsert reuses the existing fileId = ArFS revision, on both v2 and Turbo paths; on-chain UAT requires spend). Dedup is content-aware (hash-match skips, path-only match = edit → approval queue); edits of downloaded files re-upload; gate's negative control proved the tests pin the fix. Folded finding: empty upsert-skip results record a truthful skip instead of 'completed' with undefined tx ids.
+Gate follow-ups filed: revert-to-original divergence + reject-is-permanent-for-content (both hash-dedup family, Track C conflict work); stale failed-download placeholder blocks edits (SYNC-2/3 cleanup family).
 
 ### SYNC-2 · P0 · Phase 2 · `done`
 **Failed downloads must be recorded as failed.** Evidence: §2.2.

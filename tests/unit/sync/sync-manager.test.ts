@@ -618,6 +618,166 @@ describe('SyncManager', () => {
     });
   });
 
+  describe('Edited files re-upload (SYNC-1)', () => {
+    const filePath = `${testSyncPath}/doc.txt`;
+    const NEW_CONTENT = Buffer.from('edited content v2');
+    let NEW_HASH: string;
+
+    beforeEach(async () => {
+      const crypto = await import('crypto');
+      NEW_HASH = crypto.createHash('sha256').update(NEW_CONTENT).digest('hex');
+
+      syncManager['driveId'] = testDriveId;
+      syncManager['rootFolderId'] = testRootFolderId;
+      // Deterministic costs, no network
+      syncManager['costCalculator'] = {
+        isFileTooBig: vi.fn(() => false),
+        isFreeWithTurbo: vi.fn(() => true),
+        calculateUploadCosts: vi.fn(async () => ({
+          estimatedCost: 0,
+          estimatedTurboCost: 100,
+          recommendedMethod: 'turbo',
+          hasSufficientTurboBalance: true,
+        })),
+        // qa-gate hygiene finding: without this the handleNewFile tail threw
+        // inside the swallow-all catch, leaving later code silently untested
+        formatCostInAR: vi.fn(() => '0.000000 AR'),
+      } as any;
+
+      const fs = await import('fs/promises');
+      vi.mocked(fs.access).mockResolvedValue(undefined);
+      vi.mocked(fs.stat).mockResolvedValue({ size: NEW_CONTENT.length, isFile: () => true, isDirectory: () => false } as any);
+      vi.mocked(fs.readFile).mockResolvedValue(NEW_CONTENT as any);
+    });
+
+    it('queues a new revision when a previously uploaded file is edited', async () => {
+      // The audited dead-end: same path, DIFFERENT content
+      mockDatabaseManager.getProcessedFiles.mockResolvedValue([
+        {
+          fileHash: 'old-content-hash',
+          fileName: 'doc.txt',
+          fileSize: 10,
+          localPath: filePath,
+          source: 'upload',
+          processedAt: new Date(),
+        },
+      ]);
+
+      await syncManager['handleNewFile'](filePath, 'update');
+
+      expect(mockDatabaseManager.addPendingUpload).toHaveBeenCalledWith(
+        expect.objectContaining({
+          localPath: filePath,
+          fileName: 'doc.txt',
+          status: 'awaiting_approval',
+        })
+      );
+      // The NEW content hash is registered so event storms don't re-queue it
+      expect(mockDatabaseManager.addProcessedFile).toHaveBeenCalledWith(
+        NEW_HASH,
+        'doc.txt',
+        NEW_CONTENT.length,
+        filePath,
+        'upload'
+      );
+    });
+
+    it('still skips identical, already-uploaded content (dedup control)', async () => {
+      mockDatabaseManager.getProcessedFiles.mockResolvedValue([
+        {
+          fileHash: NEW_HASH, // same content
+          fileName: 'doc.txt',
+          fileSize: NEW_CONTENT.length,
+          localPath: filePath,
+          source: 'upload',
+          processedAt: new Date(),
+        },
+      ]);
+
+      await syncManager['handleNewFile'](filePath, 'update');
+
+      expect(mockDatabaseManager.addPendingUpload).not.toHaveBeenCalled();
+    });
+
+    it('queues a new revision when a DOWNLOADED file is edited locally', async () => {
+      mockDatabaseManager.getProcessedFiles.mockResolvedValue([
+        {
+          fileHash: 'hash-of-downloaded-original',
+          fileName: 'doc.txt',
+          fileSize: 10,
+          localPath: filePath,
+          source: 'download',
+          processedAt: new Date(),
+        },
+      ]);
+      // Downloads-table row exists for the path — must not block the edit
+      mockDatabaseManager.getDownloads.mockResolvedValue([
+        { id: 'dl-1', localPath: filePath, status: 'completed', fileId: 'arfs-file-id' },
+      ]);
+
+      await syncManager['handleNewFile'](filePath, 'update');
+
+      expect(mockDatabaseManager.addPendingUpload).toHaveBeenCalledWith(
+        expect.objectContaining({ localPath: filePath, status: 'awaiting_approval' })
+      );
+    });
+
+    it('still skips identical downloaded content (no echo re-upload)', async () => {
+      mockDatabaseManager.getProcessedFiles.mockResolvedValue([
+        {
+          fileHash: NEW_HASH, // identical to what is on disk
+          fileName: 'doc.txt',
+          fileSize: NEW_CONTENT.length,
+          localPath: filePath,
+          source: 'download',
+          processedAt: new Date(),
+        },
+      ]);
+
+      await syncManager['handleNewFile'](filePath, 'update');
+
+      expect(mockDatabaseManager.addPendingUpload).not.toHaveBeenCalled();
+    });
+
+    it('does not double-queue while a pending approval already exists', async () => {
+      mockDatabaseManager.getProcessedFiles.mockResolvedValue([
+        {
+          fileHash: 'old-content-hash',
+          fileName: 'doc.txt',
+          fileSize: 10,
+          localPath: filePath,
+          source: 'upload',
+          processedAt: new Date(),
+        },
+      ]);
+      mockDatabaseManager.getPendingUploads.mockResolvedValue([
+        { id: 'pending-1', localPath: filePath, status: 'awaiting_approval' },
+      ]);
+
+      await syncManager['handleNewFile'](filePath, 'update');
+
+      expect(mockDatabaseManager.addPendingUpload).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Upsert-skip honesty (SYNC-1 qa-gate finding)', () => {
+    it('an empty core result records a skip, never a completed with undefined tx ids', async () => {
+      const upload = {
+        id: 'upload-skip', driveId: testDriveId, localPath: `${testSyncPath}/same.txt`,
+        fileName: 'same.txt', fileSize: 10, status: 'uploading', progress: 0, createdAt: new Date(),
+      } as any;
+      syncManager.addToUploadQueue(upload);
+
+      await syncManager['processUploadResult'](upload, { created: [], fees: {} });
+
+      const writes = mockDatabaseManager.updateUpload.mock.calls;
+      expect(writes.some((c: any[]) => c[1]?.status === 'completed')).toBe(false);
+      const skipWrite = writes.find((c: any[]) => c[1]?.status === 'failed');
+      expect(skipWrite![1].error).toMatch(/skipped by conflict resolution.*nothing was charged/);
+      expect(mockDatabaseManager.addUpload).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Error Scenarios', () => {
     it('should surface database failures and return to idle', async () => {
       mockDatabaseManager.getDriveMappings.mockRejectedValue(new Error('Database error'));
