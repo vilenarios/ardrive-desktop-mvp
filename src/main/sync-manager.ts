@@ -2797,6 +2797,26 @@ export class SyncManager {
   }
   
   private async processUploadResult(upload: FileUpload, result: any): Promise<void> {
+    // qa-gate finding (SYNC-1): core's upsert conflict resolution silently
+    // SKIPS when the local mtime equals the remote revision's — an empty
+    // result must never be recorded as a successful upload with undefined
+    // tx ids. Nothing was uploaded and nothing was charged.
+    if (!result?.created || result.created.length === 0) {
+      this.uploadQueueManager.clearCancellationRequest(upload.id);
+      const skipMessage =
+        'Upload skipped by conflict resolution — the remote revision already matches (same name and modified time); nothing was charged';
+      upload.status = 'failed';
+      upload.error = skipMessage;
+      await this.databaseManager.updateUpload(upload.id, {
+        status: 'failed',
+        error: skipMessage
+      });
+      this.emitUploadProgress(upload.id, 0, 'failed', skipMessage);
+      this.uploadQueueManager.removeFromQueue(upload.id);
+      console.warn(`Upload ${upload.id} produced no created entities — recorded as skipped, not completed`);
+      return;
+    }
+    
     // Extract transaction IDs and entity ID
     let dataTxId: string | undefined;
     let metadataTxId: string | undefined;

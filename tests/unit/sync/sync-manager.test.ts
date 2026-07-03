@@ -603,6 +603,9 @@ describe('SyncManager', () => {
           recommendedMethod: 'turbo',
           hasSufficientTurboBalance: true,
         })),
+        // qa-gate hygiene finding: without this the handleNewFile tail threw
+        // inside the swallow-all catch, leaving later code silently untested
+        formatCostInAR: vi.fn(() => '0.000000 AR'),
       } as any;
 
       const fs = await import('fs/promises');
@@ -718,6 +721,24 @@ describe('SyncManager', () => {
       await syncManager['handleNewFile'](filePath, 'update');
 
       expect(mockDatabaseManager.addPendingUpload).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Upsert-skip honesty (SYNC-1 qa-gate finding)', () => {
+    it('an empty core result records a skip, never a completed with undefined tx ids', async () => {
+      const upload = {
+        id: 'upload-skip', driveId: testDriveId, localPath: `${testSyncPath}/same.txt`,
+        fileName: 'same.txt', fileSize: 10, status: 'uploading', progress: 0, createdAt: new Date(),
+      } as any;
+      syncManager.addToUploadQueue(upload);
+
+      await syncManager['processUploadResult'](upload, { created: [], fees: {} });
+
+      const writes = mockDatabaseManager.updateUpload.mock.calls;
+      expect(writes.some((c: any[]) => c[1]?.status === 'completed')).toBe(false);
+      const skipWrite = writes.find((c: any[]) => c[1]?.status === 'failed');
+      expect(skipWrite![1].error).toMatch(/skipped by conflict resolution.*nothing was charged/);
+      expect(mockDatabaseManager.addUpload).not.toHaveBeenCalled();
     });
   });
 
