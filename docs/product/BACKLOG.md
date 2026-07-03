@@ -144,7 +144,7 @@ Acceptance: every figure in Usage Statistics derives from real data, or the pane
 
 ## SYNC — Sync engine correctness
 
-### SYNC-1 · P0 · Phase 2 · `todo`
+### SYNC-1 · P0 · Phase 2 · `in-progress`
 **Edited files must re-upload.** Evidence: §2.1 (path-match dedup bails before the update path; detectFileChange's 'update' result dead-ends).
 Fix: on hash-differs-for-known-path, route to the new-version upload path (ArFS new file revision) via the approval queue.
 Acceptance: UAT — edit a synced file locally → new pending upload appears → approval uploads a new revision visible in the Permaweb view.
