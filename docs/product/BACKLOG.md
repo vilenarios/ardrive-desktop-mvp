@@ -362,20 +362,21 @@ Work items in the ardrive-core-js repo that desktop depends on. Same loop applie
 
 ### CORE-1 · P1 · Track C · `deferred`
 **Owner-scoped GQL queries (turbo-gateway compatibility).** Per D-018: most ArFS queries fail on turbo-gateway.com GQL unless an `owner` is supplied. Audit every GQL query core-js emits (drive/folder/file listings, drive discovery, manifest lookups) and thread `owner` through; desktop always knows the owner for its own drives (profile wallet address). BLOCKS SYNC-15's metadata migration.
-Open sub-question: discovery flows where the owner ISN'T known up front (e.g. "add existing drive" by drive ID) — resolve owner first via a full-index gateway, or require owner input. Needs a design call.
-Acceptance: full drive listing + sync round-trip succeeds against turbo-gateway.com GQL; interop test vectors pass on both turbo-gateway and arweave.net.
+**Reference implementation (D-019, Phil): ardrive-web's GraphQL queries** — the web app already runs owner-scoped; diff core-js's queries against web's and converge, including web's pattern for owner-unknown discovery flows (add-existing-drive by ID).
+Acceptance: full drive listing + sync round-trip succeeds against turbo-gateway.com GQL; interop test vectors pass on both turbo-gateway and arweave.net; query shapes match ardrive-web's where semantics agree.
 
 ### CORE-2 · P1 · Track C · `deferred`
 **Incremental sync support.** Per D-018: listing APIs that accept a since/cursor (block height or timestamp) so clients fetch only changes instead of full drive history. Desktop consumers: SYNC-8 remote polling, drive_metadata_cache refresh (`lastMetadataSyncAt` already exists in the schema, waiting for this).
+**Head start (D-019, Phil): an incremental-sync branch was already started in ardrive-core-js** — first task is locating and assessing that branch (rebase/resume vs. cherry-pick vs. restart informed by it).
 Acceptance: second listing of an unchanged large drive transfers near-zero data; changed-entity listing returns exactly the delta.
 
 ### CORE-3 · P1 · Track C · `deferred`
-**ArFS snapshot support.** Per D-018: consume ArFS snapshot entities (as ardrive-web does) so cold-start listing of a large drive reads the snapshot + tail instead of replaying full GQL history. Read-side first; snapshot *writing* is a follow-on decision.
-Acceptance: cold listing of a snapshotted large drive is dramatically fewer queries than full-history replay; results identical to full replay on interop vectors.
+**ArFS snapshot support.** Per D-018: consume ArFS snapshot entities (as ardrive-web does) so cold-start listing of a large drive reads the snapshot + tail instead of replaying full GQL history. Read-side first; write-side (snapshot creation) confirmed in scope per D-019 — powers FEAT-3's desktop UI.
+Acceptance: cold listing of a snapshotted large drive is dramatically fewer queries than full-history replay; results identical to full replay on interop vectors; creation API produces snapshots ardrive-web reads correctly.
 
 ---
 
-## FEAT — Major feature work (Track B, per D-013)
+## FEAT — Major feature work
 
 ### FEAT-1 · P1 · Track B · `deferred`
 **Solana-default wallet onboarding with Turbo.** New users get a Solana wallet by default, paying via Turbo (turbo-sdk supports Solana signing/top-ups; sibling repo modifiable per D-016). OPEN DESIGN QUESTION (ROADMAP #2): ArFS private-drive key derivation for non-Arweave wallets — needs an ardrive-core-js decision before implementation starts.
@@ -384,7 +385,11 @@ Acceptance: new-user flow creates/imports a Solana wallet, tops up Turbo, and sy
 ### FEAT-2 · P2 · Track B · `deferred`
 **"Advanced mode": Arweave wallet + AR tokens + self-bundled uploads (lite bundler).** Per D-013: an opt-in mode where the user holds an Arweave wallet with AR tokens and the app builds/signs/posts its own ANS-104 bundles (arbundles is already a dependency). Scope question open (ROADMAP #4): per-file bundles vs batching with receipts.
 
+### FEAT-3 · P1 · Track C · `deferred`
+**Snapshot create/view UI (desktop, web parity).** Per D-019: users can create a snapshot of a drive and view existing snapshots, just like ardrive-web. Creation is a paid on-chain action → goes through the upload approval queue with cost shown. DEPENDS: CORE-3 (consumption + creation APIs).
+Acceptance: create-snapshot flow with cost approval; snapshot list per drive; a desktop-created snapshot is readable by ardrive-web (interop vector).
+
 ---
 
-## Item count: 64 · P0: 18 · P1: 29 · P2: 17
-(2026-07-03 rescope per D-010..D-017: PRIV-1..7 onto beta phases, PRIV-0 wont-fix, SYNC-5 promoted P0, SYNC-10 promoted P1/Phase 2, +SYNC-15, +UX-16, +UX-17, +INFRA-12, +FEAT-1, +FEAT-2. Later 2026-07-03 per D-018: +CORE-1..3 upstream ardrive-core-js track.)
+## Item count: 65 · P0: 18 · P1: 30 · P2: 17
+(2026-07-03 rescope per D-010..D-017: PRIV-1..7 onto beta phases, PRIV-0 wont-fix, SYNC-5 promoted P0, SYNC-10 promoted P1/Phase 2, +SYNC-15, +UX-16, +UX-17, +INFRA-12, +FEAT-1, +FEAT-2. Later 2026-07-03 per D-018/D-019: +CORE-1..3 upstream ardrive-core-js track, +FEAT-3 snapshot UI.)

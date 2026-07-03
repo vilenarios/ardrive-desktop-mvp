@@ -67,9 +67,7 @@ Ship via `build:testers` + GitHub Releases (unsigned, D-004) to Phil's Discord t
 2. **Solana + private drives** — ArFS drive keys derive from an Arweave JWK; what's the intended derivation for Solana-default users (D-013)? Needs an ardrive-core-js design decision before FEAT-1 starts.
 3. **Hide semantics in the UI** — when a user deletes locally and we hide on ArFS (D-011): should the Permaweb view show hidden files with an "unhide" affordance, and what copy communicates permanence best?
 4. **Advanced-mode bundler scope** (FEAT-2) — is "lite bundler" per-file ANS-104 bundles signed by the user's wallet, or batch bundling with local receipts? Shapes turbo-sdk/arbundles reuse.
-5. **Owner-unknown discovery on turbo-gateway** (CORE-1, D-018) — "add existing drive" by drive ID has no owner up front, and owner-scoped GQL can't find it. Resolve the owner via a full-index gateway first, require the owner address as input, or something else?
-6. **Snapshot writing** (CORE-3) — should desktop eventually *create* snapshots for drives it syncs (cost/benefit for heavy users), or stay read-only consumer?
 
 ## Answered (moved to DECISIONS.md)
 
-Gateway strategy → D-012 · Delete semantics → D-011 · Tester pool/feedback → D-017 · Ethereum → D-013 · Size ceiling → D-014 · ArNS/avatars → D-015 · Repo strategy → D-016 · Scope → D-010.
+Gateway strategy → D-012 · Delete semantics → D-011 · Tester pool/feedback → D-017 · Ethereum → D-013 · Size ceiling → D-014 · ArNS/avatars → D-015 · Repo strategy → D-016 · Scope → D-010 · Owner-unknown discovery → D-019 (mirror ardrive-web's GQL) · Snapshot writing → D-019 (yes — create/view UI, FEAT-3).

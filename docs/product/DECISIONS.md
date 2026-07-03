@@ -93,3 +93,10 @@ Three upstream work items (CORE-1..3 in BACKLOG, Track C):
 - **CORE-3 snapshot support** — consume ArFS snapshots (as ardrive-web does) for cold-start listing; read-side first.
 
 Sequencing implication: CORE work happens in the sibling repo under the same loop (D-016), consumed by desktop via version bumps gated on interop vectors.
+
+## D-019 · CORE track clarifications: web GQL as reference; snapshot create/view parity; resume existing incremental-sync branch · CONFIRMED · 2026-07-03
+
+Phil's clarifications on D-018:
+- **CORE-1**: "compare against our GraphQL in ardrive-web" — the web app's queries are the owner-scoped reference implementation, including its pattern for owner-unknown discovery. Answers ROADMAP open question 5.
+- **CORE-3/FEAT-3**: "eventually the desktop should give the user the ability to create/view snapshots, just like the web app" — snapshot writing is in scope (CORE-3 API), with a desktop create/view UI (new item FEAT-3; creation is paid → routed through the upload approval queue). Answers ROADMAP open question 6.
+- **CORE-2**: "we actually started an incremental sync branch in ardrive-core-js" — first task is locating/assessing that branch rather than greenfielding.
