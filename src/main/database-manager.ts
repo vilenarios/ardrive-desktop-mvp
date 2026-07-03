@@ -91,9 +91,11 @@ export class DatabaseManager {
   }> {
     const run = (sql: string, params: unknown[] = []): Promise<number> =>
       new Promise((resolve, reject) => {
-        this.db!.run(sql, params, function (err) {
+        this.db!.run(sql, params, function (this: { changes?: number } | undefined, err: Error | null) {
           if (err) reject(err);
-          else resolve(this.changes ?? 0);
+          // sqlite3 binds a RunResult as `this`; be defensive for callers
+          // (and test stubs) that invoke the callback unbound.
+          else resolve(this?.changes ?? 0);
         });
       });
 
