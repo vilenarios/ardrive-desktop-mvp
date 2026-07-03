@@ -89,10 +89,11 @@ Acceptance: UI offers no AR payment choice; DB `uploadMethod` matches actual exe
 Fix: AbortController through UploadQueueManager → uploadFile; `uploads:cancel` aborts in-flight work before marking failed; `uploads:retry` refuses items not in a terminal state; completion handler must not resurrect cancelled records.
 Acceptance: cancel during upload halts network activity and the file is not charged; retry of an in-flight upload is rejected; no path yields two charges for one file.
 
-### MONEY-3 · P0 · Phase 1 · `todo`
+### MONEY-3 · P0 · Phase 1 · `done`
 **Remove fabricated USD pricing.** Evidence: §1.3-1.4 (MOCK_AR_PRICE_USD=6.50; 1 winston/byte AR estimate; fake `×1.1` Turbo fallback quote).
 Fix: fetch a real AR/USD rate (with cache + "as of" timestamp) or drop USD display for beta; show "estimate unavailable" instead of fake fallback quotes.
 Acceptance: no hardcoded exchange rate or synthetic quote is displayed anywhere.
+Done 2026-07-03 (6aa174b + 29a5855, qa-gate FAIL→fix→PASS): ar-price-utils.ts deleted; honest "Estimate unavailable"/"Insufficient balance" states; ×1.1 fallback → null. QA caught a DB-shape coercion (sqlite integer booleans + raw row spread → fabricated "0.0000 Credits" banner) — fixed at the DB boundary (getPendingUploads normalization) + renderer; QA's empirical repro adopted as permanent tests (160+1 green). Left for MONEY-1: internal 1-winston/byte placeholder, approval semantics for insufficient-balance rows.
 
 ### MONEY-4 · P0 · Phase 1 · `todo`
 **Remove or implement Auto Top-Up.** Evidence: §1.11 (fake "saved" confirmation).

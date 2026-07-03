@@ -127,7 +127,7 @@ export interface PendingUpload {
   fileSize: number;
   mimeType?: string;            // MIME type of the file
   estimatedCost: number; // in AR tokens
-  estimatedTurboCost?: number; // in Turbo Credits (AR equivalent)
+  estimatedTurboCost?: number | null; // in Turbo Credits (AR equivalent); null = no real quote available ("estimate unavailable", MONEY-3)
   recommendedMethod?: 'ar' | 'turbo'; // Recommended upload method
   hasSufficientTurboBalance?: boolean; // Whether user has enough Turbo Credits
   conflictType?: 'none' | 'duplicate' | 'filename_conflict' | 'content_conflict';

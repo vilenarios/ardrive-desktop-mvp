@@ -166,6 +166,72 @@ describe('DatabaseManager', () => {
       expect(Array.isArray(result)).toBe(true);
     });
 
+    it('normalizes raw sqlite scalars (0/1 booleans, NULLs) at the DB boundary (MONEY-3)', async () => {
+      // Exactly what sqlite3 hands back for a SELECT *: BOOLEAN columns as
+      // integers, empty optional columns as null. These rows are spread
+      // through IPC to the renderer, so they must leave here as real
+      // booleans / explicit nulls — a raw 0 passing `!== false` once
+      // classified no-quote files as 0-credit Turbo uploads.
+      const baseDbRow = {
+        id: 'row-no-quote',
+        mappingId: null,
+        driveId: null,
+        localPath: '/sync/big.bin',
+        fileName: 'big.bin',
+        fileSize: 5 * 1024 * 1024,
+        estimatedCost: 0.000005,
+        estimatedTurboCost: null,     // SQLite NULL — no quote
+        recommendedMethod: null,
+        hasSufficientTurboBalance: 0, // SQLite false -> integer 0
+        conflictType: 'none',
+        conflictDetails: null,
+        status: 'awaiting_approval',
+        operationType: 'upload',
+        previousPath: null,
+        arfsFileId: null,
+        arfsFolderId: null,
+        metadata: null,
+        createdAt: '2026-07-03T00:00:00.000Z',
+      };
+      const quotedDbRow = {
+        ...baseDbRow,
+        id: 'row-quoted',
+        localPath: '/sync/quoted.bin',
+        fileName: 'quoted.bin',
+        estimatedTurboCost: 0.01,
+        hasSufficientTurboBalance: 1, // SQLite true -> integer 1
+        recommendedMethod: 'turbo',
+        previousPath: '/sync/old.bin',
+      };
+
+      mockDbInstance.all.mockImplementationOnce(
+        (sql: string, callback: (err: Error | null, rows?: any[]) => void) => {
+          callback(null, [baseDbRow, quotedDbRow]);
+        }
+      );
+
+      const result = await databaseManager.getPendingUploads();
+      const noQuote = result.find(u => u.id === 'row-no-quote')!;
+      const quoted = result.find(u => u.id === 'row-quoted')!;
+
+      // Integer booleans become real booleans
+      expect(noQuote.hasSufficientTurboBalance).toBe(false);
+      expect(quoted.hasSufficientTurboBalance).toBe(true);
+      // Missing quote stays an explicit null (never 0 / never a number)
+      expect(noQuote.estimatedTurboCost).toBeNull();
+      expect(quoted.estimatedTurboCost).toBe(0.01);
+      // Sibling nullable columns normalize to undefined per the TS shape
+      expect(noQuote.recommendedMethod).toBeUndefined();
+      expect(noQuote.conflictDetails).toBeUndefined();
+      expect(noQuote.previousPath).toBeUndefined();
+      expect(noQuote.arfsFileId).toBeUndefined();
+      expect(noQuote.arfsFolderId).toBeUndefined();
+      expect(quoted.previousPath).toBe('/sync/old.bin');
+      // Existing conversions still apply
+      expect(noQuote.createdAt).toBeInstanceOf(Date);
+      expect(noQuote.metadata).toBeUndefined();
+    });
+
     it('should update pending upload status', async () => {
       await expect(
         databaseManager.updatePendingUploadStatus('test-pending-1', 'approved')

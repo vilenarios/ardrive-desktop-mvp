@@ -471,7 +471,7 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
   const getFileUploadMethod = (upload: PendingUpload): { method: 'turbo-free' | 'turbo' | 'ar'; cost: string } => {
     if (isTurboFree(upload.fileSize)) {
       return { method: 'turbo-free', cost: 'Free' };
-    } else if (upload.hasSufficientTurboBalance !== false && upload.estimatedTurboCost !== undefined) {
+    } else if (upload.hasSufficientTurboBalance !== false && upload.estimatedTurboCost != null) {
       return { method: 'turbo', cost: `${upload.estimatedTurboCost.toFixed(4)} Credits` };
     } else {
       return { method: 'ar', cost: formatArCost(upload.estimatedCost) };

@@ -11,7 +11,11 @@ export class CostCalculator {
     recommendedMethod: 'ar' | 'turbo';
     hasSufficientTurboBalance: boolean;
   }> {
-    // ArDrive uses ~1 winston per byte, convert to AR (1 AR = 1e12 winston)
+    // INTERNAL PLACEHOLDER ONLY (1 winston per byte, converted to AR).
+    // This is NOT network pricing and excludes the community tip — it exists
+    // because downstream code (sync-manager, DB rows) depends on the field's
+    // shape. It must never be rendered to the user as a real AR quote
+    // (MONEY-3); the AR payment display is being removed entirely (MONEY-1).
     const estimatedCostWinc = fileSize; // winston
     const estimatedCost = estimatedCostWinc / 1e12; // Convert to AR
     
@@ -49,20 +53,18 @@ export class CostCalculator {
           console.log('Recommending Turbo due to:', { isLargeFile, isCheaper, hasSufficientTurboBalance });
         }
       } else {
-        // Even if not initialized, show Turbo option with estimated cost
-        // This allows users to see the option and get Turbo Credits if needed
-        console.log('Turbo manager not initialized, using estimated cost...');
-        
-        // Rough estimate: Turbo is typically similar cost to AR but faster
-        // We'll set it to a slightly higher cost to be conservative
-        estimatedTurboCost = estimatedCost * 1.1; // 10% more than AR, already in AR units
-        console.log(`Turbo estimated cost (not initialized): ${estimatedTurboCost} AR`);
+        // No real quote available. Do NOT fabricate one — a synthetic
+        // `estimatedCost * 1.1` used to be displayed as if it were a real
+        // Turbo quote (MONEY-3). null means "estimate unavailable" and the
+        // UI must render it as such.
+        console.log('Turbo manager not initialized, no Turbo quote available');
+        estimatedTurboCost = null;
         hasSufficientTurboBalance = false; // Can't have balance if not initialized
       }
     } catch (turboError) {
       console.warn('Failed to get Turbo cost estimate:', turboError);
-      // Even on error, provide estimated cost so users see the option
-      estimatedTurboCost = estimatedCost * 1.1; // Conservative estimate, already in AR
+      // Quote fetch failed — report "unavailable" (null), never a made-up number
+      estimatedTurboCost = null;
       hasSufficientTurboBalance = false;
     }
 

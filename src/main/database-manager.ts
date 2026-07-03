@@ -661,12 +661,24 @@ export class DatabaseManager {
         if (err) {
           reject(err);
         } else {
+          // Normalize raw sqlite3 scalars to the PendingUpload TS shape at the
+          // DB boundary (MONEY-3): BOOLEAN columns come back as 0/1 integers
+          // and empty optional columns as NULL. Renderer cost display must
+          // never have to reason about raw DB scalars (a `0` truthy-passing
+          // `!== false` once classified no-quote files as 0-credit Turbo).
           const uploads = rows.map(row => ({
             ...row,
+            hasSufficientTurboBalance: !!row.hasSufficientTurboBalance,
+            estimatedTurboCost: row.estimatedTurboCost ?? null,
+            recommendedMethod: row.recommendedMethod ?? undefined,
+            conflictDetails: row.conflictDetails ?? undefined,
+            previousPath: row.previousPath ?? undefined,
+            arfsFileId: row.arfsFileId ?? undefined,
+            arfsFolderId: row.arfsFolderId ?? undefined,
             createdAt: new Date(row.createdAt),
             metadata: row.metadata ? JSON.parse(row.metadata) : undefined
           }));
-          
+
           // Sort uploads to ensure proper order for folder structure
           const sortedUploads = this.sortPendingUploadsForFolderStructure(uploads);
           resolve(sortedUploads);
