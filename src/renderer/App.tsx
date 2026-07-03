@@ -23,7 +23,7 @@ const App: React.FC = () => {
   const [uploads, setUploads] = useState<FileUpload[]>([]);
   const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
   const [isReturningUser, setIsReturningUser] = useState(false);
-  const [drives, setDrives] = useState<DriveInfoWithStatus[]>([]);
+  const [drives, setDrives] = useState<DriveInfoWithStatus[] | null>(null);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [selectedPrivateDrive, setSelectedPrivateDrive] = useState<DriveInfo | null>(null);
   const [showPrivateDriveUnlock, setShowPrivateDriveUnlock] = useState(false);
@@ -142,10 +142,21 @@ const App: React.FC = () => {
         if (activeDrive && activeDrive.privacy === 'private') {
           const isUnlocked = await window.electronAPI.drive.isUnlocked(activeDrive.id);
           if (!isUnlocked) {
-            console.log('Primary drive is private and locked, showing welcome back screen');
-            setIsReturningUser(true);
-            setAppState('welcome-back');
-            return;
+            console.log('Primary drive is private and locked');
+            // For now, we'll try to use the session password to unlock it
+            // This is a temporary fix - ideally drive keys should be persisted securely
+            try {
+              // Try to unlock with a default password or prompt user
+              // For now, show welcome back screen
+              setIsReturningUser(true);
+              setAppState('welcome-back');
+              return;
+            } catch (error) {
+              console.error('Failed to auto-unlock drive:', error);
+              setIsReturningUser(true);
+              setAppState('welcome-back');
+              return;
+            }
           }
         }
       }
@@ -298,52 +309,12 @@ const App: React.FC = () => {
     setIsReturningUser(true);
     setAppState('welcome-back');
     
-    // Load critical data (drives) and basic profile in parallel
+    // Load critical data (profile and wallet only, let WelcomeBackScreen load drives)
     try {
-      const [wallet, profile, driveListResult] = await Promise.all([
+      const [wallet, profile] = await Promise.all([
         window.electronAPI.wallet.getInfo(),
-        window.electronAPI.profile.getActive(),
-        window.electronAPI.drive.listWithStatus()
+        window.electronAPI.profile.getActive()
       ]);
-      
-      console.log('[handleWalletImported] Raw drive list result:', driveListResult);
-      
-      // Extract drives from the result
-      let driveList = [];
-      if (driveListResult) {
-        // Handle both wrapped and unwrapped responses
-        if (driveListResult.success && driveListResult.data) {
-          // Wrapped response from IPC handler
-          driveList = driveListResult.data;
-        } else if (Array.isArray(driveListResult)) {
-          // Direct array response
-          driveList = driveListResult;
-        } else if (!driveListResult.success) {
-          console.error('[handleWalletImported] Failed to list drives:', driveListResult.error);
-        }
-      }
-      
-      // If still no drives, try fallback
-      if (!driveList || driveList.length === 0) {
-        try {
-          console.log('[handleWalletImported] Trying fallback to regular drive.list()');
-          const fallbackDrives = await window.electronAPI.drive.list();
-          console.log('[handleWalletImported] Fallback drives:', fallbackDrives);
-          if (fallbackDrives) {
-            // Handle both wrapped and unwrapped responses for fallback too
-            if (fallbackDrives.success && fallbackDrives.data) {
-              driveList = fallbackDrives.data;
-            } else if (Array.isArray(fallbackDrives)) {
-              driveList = fallbackDrives;
-            }
-          }
-        } catch (fallbackError) {
-          console.error('[handleWalletImported] Fallback also failed:', fallbackError);
-        }
-      }
-      
-      console.log('[handleWalletImported] Final drive list:', driveList);
-      console.log('[handleWalletImported] Drive count:', driveList.length);
       
       if (wallet) {
         setWalletInfo(wallet);
@@ -357,16 +328,8 @@ const App: React.FC = () => {
         loadArnsProfileInBackground(profile);
       }
       
-      // Pass ALL drives to the component - let it handle filtering
-      setDrives(driveList || []);
-      
-      // If no drives at all, navigate to drive setup
-      if (!driveList || driveList.length === 0) {
-        console.log('[handleWalletImported] No drives found, navigating to drive-setup');
-        setAppState('drive-setup');
-      } else {
-        console.log('[handleWalletImported] Found drives, staying on welcome-back screen');
-      }
+      // Don't load drives here - let WelcomeBackScreen handle it to show loading state
+      // The WelcomeBackScreen will check if drives exist and navigate accordingly
     } catch (error) {
       console.error('[handleWalletImported] Error during initial load:', error);
       toast.error('Failed to load data');
@@ -536,7 +499,7 @@ const App: React.FC = () => {
           
           // Update the drives list with the decrypted drive info
           setDrives(prevDrives => 
-            prevDrives.map(d => d.id === updatedDrive.id ? (updatedDrive as DriveInfoWithStatus) : d)
+            prevDrives ? prevDrives.map(d => d.id === updatedDrive.id ? (updatedDrive as DriveInfoWithStatus) : d) : []
           );
           
           // Update the selected drive with decrypted info
@@ -651,7 +614,7 @@ const App: React.FC = () => {
         return (
           <WelcomeBackScreen
             currentProfile={currentProfile}
-            initialDrives={drives}
+            initialDrives={drives === null ? undefined : drives}
             onDriveSelected={handleDriveSelectedFromWelcomeBack}
             onCreateNewDrive={() => {
               setIsReturningUser(true);

@@ -467,19 +467,21 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               Export Metadata
             </button>
 
-            <button 
-              className="button outline large"
-              onClick={() => setShowManifestModal(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-                justifyContent: 'center'
-              }}
-            >
-              <FileJson size={16} />
-              Create Manifest
-            </button>
+            {selectedDrive.privacy === 'public' && (
+              <button 
+                className="button outline large"
+                onClick={() => setShowManifestModal(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  justifyContent: 'center'
+                }}
+              >
+                <FileJson size={16} />
+                Create Manifest
+              </button>
+            )}
           </div>
         </div>
       </div>

@@ -28,6 +28,7 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
   const [drivesLoading, setDrivesLoading] = useState(!initialDrives);
   const [profileLoading, setProfileLoading] = useState(!currentProfile);
   const [error, setError] = useState<string | null>(null);
+  const [loadingDots, setLoadingDots] = useState('');
 
   useEffect(() => {
     if (!initialDrives) {
@@ -81,9 +82,36 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
       // Show ALL drives (both public and private)
       setDrives(driveList || []);
       
-      // Pre-select the most recent drive if there's only one
-      if (driveList.length === 1) {
+      // Check if we should auto-navigate
+      if (driveList.length === 0) {
+        // No drives - automatically go to create drive
+        console.log('No drives found, auto-navigating to create drive');
+        onCreateNewDrive();
+        return;
+      } else if (driveList.length === 1) {
+        // Only one drive - auto-select and continue
+        console.log('Only one drive found, auto-selecting:', driveList[0].name);
         setSelectedDriveId(driveList[0].id);
+        // Automatically proceed after a brief delay to show the drive
+        setTimeout(() => {
+          onDriveSelected(driveList[0]);
+        }, 500);
+        return;
+      }
+      
+      // Multiple drives - check for last active drive
+      try {
+        const activeDriveInfo = await window.electronAPI.drive.getActive();
+        if (activeDriveInfo && activeDriveInfo.driveId) {
+          // Pre-select the last active drive if it exists in the list
+          const driveExists = driveList.some(d => d.id === activeDriveInfo.driveId);
+          if (driveExists) {
+            console.log('Pre-selecting last active drive:', activeDriveInfo.driveId);
+            setSelectedDriveId(activeDriveInfo.driveId);
+          }
+        }
+      } catch (error) {
+        console.log('Could not get last active drive:', error);
       }
     } catch (err) {
       console.error('Failed to load drives:', err);
@@ -139,6 +167,18 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
       }
     }
   }, [currentProfile, profileLoading, onProfileLoaded]);
+
+  // Effect for animated loading dots
+  useEffect(() => {
+    if (drivesLoading) {
+      const interval = setInterval(() => {
+        setLoadingDots(prev => prev.length >= 3 ? '' : prev + '.');
+      }, 500);
+      return () => clearInterval(interval);
+    } else {
+      setLoadingDots('');
+    }
+  }, [drivesLoading]);
 
   return (
     <div style={{
@@ -209,7 +249,7 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
             </h2>
             <p style={{ fontSize: '18px', color: 'var(--gray-600)', lineHeight: '1.6', animation: 'fadeIn 0.5s ease-in' }}>
               {drivesLoading 
-                ? 'Loading your drives...'
+                ? `Finding your drives${loadingDots}`
                 : drives.length > 0 
                   ? `Great news! You already have ${drives.length} Drive${drives.length !== 1 ? 's' : ''} ready to sync.`
                   : 'No drives found. Create a new drive to get started.'

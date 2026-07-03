@@ -72,12 +72,16 @@ const api = {
     // Private drive operations
     createPrivate: (name: string, password: string) =>
       ipcRenderer.invoke('drive:create-private', name, password),
-    unlock: (driveId: string, password: string) =>
-      ipcRenderer.invoke('drive:unlock', driveId, password),
+    unlock: (driveId: string, password: string, persistKey?: boolean) =>
+      ipcRenderer.invoke('drive:unlock', driveId, password, persistKey),
     lock: (driveId: string) =>
       ipcRenderer.invoke('drive:lock', driveId),
     isUnlocked: (driveId: string) =>
       ipcRenderer.invoke('drive:isUnlocked', driveId),
+    isPersisted: (driveId: string) =>
+      ipcRenderer.invoke('drive:isPersisted', driveId),
+    setPersistence: (driveId: string, persist: boolean) =>
+      ipcRenderer.invoke('drive:setPersistence', driveId, persist),
     listWithStatus: () =>
       ipcRenderer.invoke('drive:listWithStatus'),
   },

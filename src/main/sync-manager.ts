@@ -357,11 +357,20 @@ export class SyncManager {
   async switchDrive(newDriveId: string, newRootFolderId: string): Promise<boolean> {
     console.log(`Switching from drive ${this.driveId} to ${newDriveId}`);
     
+    // Store the sync folder path before clearing state
+    const currentSyncFolder = this.syncFolderPath;
+    
     // Stop current sync gracefully
     await this.stopSync();
     
     // Clear all state from previous drive
     await this.clearAllDriveState();
+    
+    // Ensure sync folder is preserved (it should already be set from main.ts, but be safe)
+    if (!this.syncFolderPath && currentSyncFolder) {
+      console.log('Restoring sync folder path after drive switch:', currentSyncFolder);
+      this.syncFolderPath = currentSyncFolder;
+    }
     
     // Start sync with new drive
     return this.startSync(newDriveId, newRootFolderId);

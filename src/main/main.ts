@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import * as crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { SecureWalletManager } from './wallet-manager-secure';
 import { configManager } from './config-manager';
@@ -805,14 +806,39 @@ class ArDriveApp {
       }
     }));
 
-    ipcMain.handle('drive:unlock', safeIpcHandler(async (_, driveId: string, password: string) => {
+    ipcMain.handle('drive:unlock', safeIpcHandler(async (_, driveId: string, password: string, persistKey?: boolean) => {
       try {
         const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
         const validatedPassword = InputValidator.validatePassword(password, 'password');
         
-        const success = await this.walletManager.unlockPrivateDrive(validatedDriveId, validatedPassword);
+        // Get session password for encryption if user wants to persist
+        let sessionPassword: string | undefined;
+        if (persistKey) {
+          // Get session password from wallet manager's encrypted storage
+          // For now, we'll derive it from the profile password
+          const sessionPwd = await this.walletManager.getSessionPassword();
+          if (sessionPwd) {
+            sessionPassword = sessionPwd;
+          } else {
+            console.warn('Cannot persist drive key without session password');
+            persistKey = false;
+          }
+        }
+        
+        // Unlock with persistence option
+        const success = await driveKeyManager.unlockDrive(
+          validatedDriveId,
+          validatedPassword,
+          persistKey || false,
+          sessionPassword
+        );
         
         if (success) {
+          // Store persistence preference in database
+          if (persistKey !== undefined) {
+            await databaseManager.setDriveKeyPersistence(validatedDriveId, persistKey || false);
+          }
+          
           // Update the ArDrive instance in sync manager with the new private key data
           const arDrive = this.walletManager.getArDrive();
           if (arDrive) {
@@ -820,6 +846,9 @@ class ArDriveApp {
             this.syncManager.setArDrive(arDrive, privateKeyData);
             console.log('Updated sync manager with refreshed ArDrive instance after unlock');
           }
+          
+          // Recreate ArDrive instance with updated private keys
+          await this.walletManager.recreateArDriveWithPrivateKeys();
           
           // Small delay to ensure drive key is fully propagated
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -869,6 +898,33 @@ class ArDriveApp {
         return isUnlocked;
       } catch (error) {
         console.error('Failed to check drive unlock status:', error);
+        return false;
+      }
+    }));
+
+    // Check if a drive's key is persisted
+    ipcMain.handle('drive:isPersisted', safeIpcHandler(async (_, driveId: string) => {
+      try {
+        const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+        return driveKeyManager.isPersisted(validatedDriveId);
+      } catch (error) {
+        console.error('Failed to check drive persistence:', error);
+        return false;
+      }
+    }));
+
+    // Update drive key persistence preference
+    ipcMain.handle('drive:setPersistence', safeIpcHandler(async (_, driveId: string, persist: boolean) => {
+      try {
+        const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+        
+        const sessionPassword = await this.walletManager.getSessionPassword();
+        await driveKeyManager.updatePersistencePreference(validatedDriveId, persist, sessionPassword || undefined);
+        await databaseManager.setDriveKeyPersistence(validatedDriveId, persist);
+        
+        return true;
+      } catch (error) {
+        console.error('Failed to update drive persistence:', error);
         return false;
       }
     }));
@@ -1000,11 +1056,9 @@ class ArDriveApp {
         console.error('Drive mapping not found for driveId:', validatedDriveId);
         console.error('Available drive IDs:', driveMappings.map((m: any) => m.driveId));
         
-        // Return empty array for now - the drive exists but mapping is temporarily missing
+        // Return empty array for unmapped drives - this is valid when a drive exists but hasn't been added to this device yet
         console.log('Drive exists but mapping is missing, returning empty array');
         return [];
-        
-        throw new Error(`Drive mapping not found for drive ID: ${validatedDriveId}`);
       }
       
       // Check if metadata was recently synced
@@ -1324,27 +1378,17 @@ class ArDriveApp {
       const drives = await this.walletManager.listDrives();
       const drive = drives.find(d => d.rootFolderId === validatedFolderId || d.id === validatedFolderId);
       
-      // List all files in the folder to check count
-      let entities;
+      // Manifests are only supported for public drives
       if (drive && drive.privacy === 'private') {
-        const driveKey = driveKeyManager.getDriveKey(drive.id);
-        if (!driveKey) {
-          throw new Error('Private drive is locked');
-        }
-        
-        entities = await arDrive.listPrivateFolder({
-          folderId: new EntityID(validatedFolderId),
-          driveKey: driveKey,
-          maxDepth: Number.MAX_SAFE_INTEGER,
-          includeRoot: false
-        });
-      } else {
-        entities = await arDrive.listPublicFolder({
-          folderId: new EntityID(validatedFolderId),
-          maxDepth: Number.MAX_SAFE_INTEGER,
-          includeRoot: false
-        });
+        throw new Error('Manifests are not supported for private drives');
       }
+      
+      // List all files in the folder to check count
+      const entities = await arDrive.listPublicFolder({
+        folderId: new EntityID(validatedFolderId),
+        maxDepth: Number.MAX_SAFE_INTEGER,
+        includeRoot: false
+      });
       
       // Filter to only files (not folders)
       const files = entities.filter(e => e.entityType === 'file');
@@ -1668,12 +1712,28 @@ class ArDriveApp {
         throw new Error(`Sync folder "${syncFolder}" does not exist or is not accessible`);
       }
       
+      // Set the sync folder for the new drive BEFORE switching
+      this.syncManager.setSyncFolder(syncFolder);
+      
       // Switch the drive in sync manager
       const success = await this.syncManager.switchDrive(validatedDriveId, targetDrive.rootFolderId);
       
       if (success) {
         // Update active drive in config
         await configManager.setActiveDrive(validatedDriveId, driveMapping.id);
+        
+        // Update active drive mapping in database
+        await databaseManager.setActiveDriveMapping(driveMapping.id);
+        
+        // Optional: Lock other private drives to free memory (keeping only active drive unlocked)
+        // This is a security best practice to minimize keys in memory
+        const allDrives = await this.walletManager.listDrives();
+        for (const drive of allDrives) {
+          if (drive.id !== validatedDriveId && drive.privacy === 'private' && driveKeyManager.isUnlocked(drive.id)) {
+            console.log(`Locking inactive private drive: ${drive.name}`);
+            driveKeyManager.lockDrive(drive.id);
+          }
+        }
       }
       
       return { success, driveInfo: targetDrive };
@@ -2784,6 +2844,22 @@ class ArDriveApp {
     // Drive mappings handlers
     ipcMain.handle('drive-mappings:add', safeIpcHandler(async (_, driveMapping: any) => {
       console.log('Adding drive mapping:', driveMapping);
+      
+      // Generate ID if not provided (using same pattern as rest of codebase)
+      if (!driveMapping.id) {
+        driveMapping.id = crypto.randomUUID();
+      }
+      
+      // Create the local folder if it doesn't exist
+      const folderPath = driveMapping.localFolderPath;
+      try {
+        await fs.mkdir(folderPath, { recursive: true });
+        console.log('Created sync folder:', folderPath);
+      } catch (error) {
+        console.error('Failed to create sync folder:', error);
+        throw new Error(`Failed to create sync folder at ${folderPath}`);
+      }
+      
       await databaseManager.addDriveMapping(driveMapping);
       return true;
     }));

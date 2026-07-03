@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check, Plus, HardDrive, Lock, Globe } from 'lucide-react';
+import { ChevronDown, Check, Plus, HardDrive, Lock, Globe, Trash2 } from 'lucide-react';
 import { DriveInfo, DriveInfoWithStatus } from '../../types';
 import { PrivateDriveUnlockModal } from './PrivateDriveUnlockModal';
 
@@ -10,6 +10,7 @@ interface DriveSelectorProps {
   onDriveSelect: (driveId: string) => void;
   onCreateDrive: () => void;
   onAddExistingDrive: () => void;
+  onRemoveDrive?: (driveId: string) => void;
 }
 
 export const DriveSelector: React.FC<DriveSelectorProps> = ({
@@ -18,7 +19,8 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
   isLoading,
   onDriveSelect,
   onCreateDrive,
-  onAddExistingDrive
+  onAddExistingDrive,
+  onRemoveDrive
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -57,11 +59,11 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
     setIsOpen(false);
   };
 
-  const handleUnlockSuccess = async (password: string): Promise<boolean> => {
+  const handleUnlockSuccess = async (password: string, persistKey?: boolean): Promise<boolean> => {
     if (!selectedLockedDrive) return false;
 
     try {
-      const success = await window.electronAPI.drive.unlock(selectedLockedDrive.id, password);
+      const success = await window.electronAPI.drive.unlock(selectedLockedDrive.id, password, persistKey);
       if (success) {
         onDriveSelect(selectedLockedDrive.id);
         setShowUnlockModal(false);
@@ -98,13 +100,15 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
           fontWeight: 500,
           color: 'var(--gray-900)',
           transition: 'all 0.2s ease',
-          minWidth: '200px',
+          minWidth: '260px',
           justifyContent: 'space-between'
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <HardDrive size={16} />
-          <span>{isLoading ? 'Loading...' : (currentDrive?.name || 'Select Drive')}</span>
+          <span className="drive-selector-name">
+            {isLoading ? 'Loading...' : (currentDrive?.name || 'Select Drive')}
+          </span>
         </div>
         <ChevronDown 
           size={16} 
@@ -135,56 +139,98 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
           }}
         >
           {drives.map((drive) => (
-            <button
+            <div
               key={drive.id}
-              className="drive-option"
-              onClick={() => handleDriveClick(drive)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 'var(--space-2)',
-                width: '100%',
-                padding: 'var(--space-3)',
-                backgroundColor: currentDrive?.id === drive.id ? 'var(--ardrive-primary-50)' : 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '14px',
-                color: 'var(--gray-900)',
-                transition: 'background-color 0.2s ease',
-                textAlign: 'left'
-              }}
-              onMouseEnter={(e) => {
-                if (currentDrive?.id !== drive.id) {
-                  e.currentTarget.style.backgroundColor = 'var(--gray-50)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (currentDrive?.id !== drive.id) {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }
+                position: 'relative'
               }}
             >
-              {currentDrive?.id === drive.id && (
-                <Check size={16} style={{ color: 'var(--ardrive-primary)' }} />
-              )}
-              {currentDrive?.id !== drive.id && (
-                <div style={{ width: '16px' }} />
-              )}
-              <HardDrive size={16} />
-              <span style={{ flex: 1 }}>
-                {drive.name}
-                {drive.privacy === 'private' && drive.isLocked && drive.emojiFingerprint && (
-                  <span style={{ marginLeft: '8px', fontSize: '12px' }}>
-                    {drive.emojiFingerprint}
-                  </span>
+              <button
+                className="drive-option"
+                onClick={() => handleDriveClick(drive)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  flex: 1,
+                  padding: 'var(--space-3)',
+                  paddingRight: onRemoveDrive ? '40px' : 'var(--space-3)',
+                  backgroundColor: currentDrive?.id === drive.id ? 'var(--ardrive-primary-50)' : 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  color: 'var(--gray-900)',
+                  transition: 'background-color 0.2s ease',
+                  textAlign: 'left'
+                }}
+                onMouseEnter={(e) => {
+                  if (currentDrive?.id !== drive.id) {
+                    e.currentTarget.style.backgroundColor = 'var(--gray-50)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (currentDrive?.id !== drive.id) {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }
+                }}
+              >
+                {currentDrive?.id === drive.id && (
+                  <Check size={16} style={{ color: 'var(--ardrive-primary)' }} />
                 )}
-              </span>
-              {drive.privacy === 'private' ? (
-                <Lock size={14} style={{ opacity: drive.isLocked ? 0.8 : 0.6, color: drive.isLocked ? 'var(--warning-600)' : 'var(--gray-500)' }} />
-              ) : (
-                <Globe size={14} style={{ opacity: 0.6 }} />
+                {currentDrive?.id !== drive.id && (
+                  <div style={{ width: '16px' }} />
+                )}
+                <HardDrive size={16} />
+                <span style={{ flex: 1 }}>
+                  {drive.name}
+                  {drive.privacy === 'private' && drive.isLocked && drive.emojiFingerprint && (
+                    <span style={{ marginLeft: '8px', fontSize: '12px' }}>
+                      {drive.emojiFingerprint}
+                    </span>
+                  )}
+                </span>
+                {drive.privacy === 'private' ? (
+                  <Lock size={14} style={{ opacity: drive.isLocked ? 0.8 : 0.6, color: drive.isLocked ? 'var(--warning-600)' : 'var(--gray-500)' }} />
+                ) : (
+                  <Globe size={14} style={{ opacity: 0.6 }} />
+                )}
+              </button>
+              {onRemoveDrive && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.confirm(`Are you sure you want to remove "${drive.name}" from this device? This will not delete the drive from Arweave.`)) {
+                      onRemoveDrive(drive.id);
+                      setIsOpen(false);
+                    }
+                  }}
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    padding: '4px',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--gray-500)',
+                    transition: 'color 0.2s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = 'var(--error-600)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = 'var(--gray-500)';
+                  }}
+                  title="Remove drive from this device"
+                >
+                  <Trash2 size={14} />
+                </button>
               )}
-            </button>
+            </div>
           ))}
           
           <div style={{ borderTop: '1px solid var(--gray-200)', marginTop: '4px', paddingTop: '4px' }}>

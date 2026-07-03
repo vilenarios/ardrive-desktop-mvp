@@ -190,7 +190,20 @@ export class SecureWalletManager {
         
         // Initialize Drive Key Manager for private drive support
         driveKeyManager.setWallet(walletJson);
+        driveKeyManager.setProfile(this.currentProfileId!);
         console.log('Drive key manager initialized');
+        
+        // Load persisted drive keys if available
+        try {
+          const loadedCount = await driveKeyManager.loadPersistedKeys(password);
+          if (loadedCount > 0) {
+            console.log(`Restored ${loadedCount} persisted drive keys`);
+            // Recreate ArDrive with loaded keys
+            await this.recreateArDriveWithPrivateKeys();
+          }
+        } catch (error) {
+          console.error('Failed to load persisted drive keys:', error);
+        }
         
         // Initialize Turbo
         try {
@@ -314,7 +327,20 @@ export class SecureWalletManager {
         
         // Initialize Drive Key Manager for private drive support
         driveKeyManager.setWallet(walletJson);
+        driveKeyManager.setProfile(this.currentProfileId!);
         console.log('Drive key manager initialized');
+        
+        // Load persisted drive keys if available
+        try {
+          const loadedCount = await driveKeyManager.loadPersistedKeys(password);
+          if (loadedCount > 0) {
+            console.log(`Restored ${loadedCount} persisted drive keys`);
+            // Recreate ArDrive with loaded keys
+            await this.recreateArDriveWithPrivateKeys();
+          }
+        } catch (error) {
+          console.error('Failed to load persisted drive keys:', error);
+        }
         
         // Initialize Turbo
         try {
@@ -417,6 +443,25 @@ export class SecureWalletManager {
             turboUrl: new URL('https://upload.ardrive.io')
           }
         });
+        
+        console.log('ArDrive initialized successfully');
+        
+        // Initialize Drive Key Manager for private drive support
+        driveKeyManager.setWallet(walletJson);
+        driveKeyManager.setProfile(this.currentProfileId!);
+        console.log('Drive key manager initialized');
+        
+        // Load persisted drive keys if available
+        try {
+          const loadedCount = await driveKeyManager.loadPersistedKeys(password);
+          if (loadedCount > 0) {
+            console.log(`Restored ${loadedCount} persisted drive keys`);
+            // Recreate ArDrive with loaded keys
+            await this.recreateArDriveWithPrivateKeys();
+          }
+        } catch (error) {
+          console.error('Failed to load persisted drive keys:', error);
+        }
         
         // Initialize Turbo with the same wallet
         try {
@@ -1026,7 +1071,7 @@ export class SecureWalletManager {
     }
   }
   
-  private async getSessionPassword(): Promise<string | null> {
+  async getSessionPassword(): Promise<string | null> {
     try {
       // Get the keychain account identifier for current profile
       if (!this.currentProfileId) {
@@ -1207,7 +1252,7 @@ export class SecureWalletManager {
    * Recreate the ArDrive instance with current private key data
    * This is needed when private drives are unlocked/locked
    */
-  private async recreateArDriveWithPrivateKeys(): Promise<void> {
+  async recreateArDriveWithPrivateKeys(): Promise<void> {
     if (!this.wallet || !this.walletJson) {
       console.error('Cannot recreate ArDrive - wallet not loaded');
       return;

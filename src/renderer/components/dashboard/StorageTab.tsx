@@ -862,7 +862,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                         </button>
                         
                         <div className="action-menu" style={{ display: openMenuId === item.id ? 'block' : 'none' }}>
-                          {item.type === 'file' && item.dataTxId && (
+                          {item.type === 'file' && item.dataTxId && !item.fileKey && (
                             <button 
                               className="action-menu-item"
                               onClick={async (e) => {
@@ -955,9 +955,11 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                             onClick={async (e) => {
                               e.stopPropagation();
                               // Copy share link to clipboard
-                              const shareUrl = item.dataTxId 
-                                ? `https://arweave.net/${item.dataTxId}`
-                                : item.ardriveUrl || '';
+                              // For private files, use ArDrive URL with file key
+                              // For public files, prefer direct Arweave link for better performance
+                              const shareUrl = item.fileKey 
+                                ? item.ardriveUrl // Private file - must use ArDrive URL with key
+                                : (item.dataTxId ? `https://arweave.net/${item.dataTxId}` : item.ardriveUrl) || '';
                               if (shareUrl) {
                                 await navigator.clipboard.writeText(shareUrl);
                                 // Show toast notification
@@ -986,7 +988,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                       display: 'flex',
                       gap: '4px'
                     }}>
-                      {item.dataTxId && (
+                      {item.dataTxId && !item.fileKey && (
                         <button 
                           className="action-button"
                           title="Preview on Arweave"
@@ -1304,7 +1306,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
               </div>
               
               <div className="modal-actions">
-                {selectedItemDetails.dataTxId && (
+                {selectedItemDetails.dataTxId && !selectedItemDetails.fileKey && (
                   <button 
                     className="button small"
                     onClick={async () => {

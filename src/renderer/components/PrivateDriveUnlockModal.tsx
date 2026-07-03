@@ -5,7 +5,7 @@ import { DriveInfoWithStatus } from '../../types';
 interface PrivateDriveUnlockModalProps {
   drive: DriveInfoWithStatus;
   isOpen: boolean;
-  onUnlock: (password: string) => Promise<boolean>;
+  onUnlock: (password: string, persistKey?: boolean) => Promise<boolean>;
   onCancel: () => void;
 }
 
@@ -17,6 +17,7 @@ export const PrivateDriveUnlockModal: React.FC<PrivateDriveUnlockModalProps> = (
 }) => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [persistKey, setPersistKey] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,9 +28,10 @@ export const PrivateDriveUnlockModal: React.FC<PrivateDriveUnlockModalProps> = (
     setError(null);
     
     try {
-      const success = await onUnlock(password);
+      const success = await onUnlock(password, persistKey);
       if (success) {
         setPassword('');
+        setPersistKey(false);
         // Modal will be closed by parent component
       } else {
         setError('Invalid password. Please check your password and try again.');
@@ -256,19 +258,70 @@ export const PrivateDriveUnlockModal: React.FC<PrivateDriveUnlockModalProps> = (
             </div>
           </div>
           
-          {/* Security Note */}
+          {/* Remember Password Checkbox */}
           <div style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 'var(--space-2)',
+            marginBottom: 'var(--space-4)',
             padding: 'var(--space-3)',
             backgroundColor: 'var(--gray-50)',
             borderRadius: 'var(--radius-md)',
-            marginBottom: error ? 'var(--space-4)' : 'var(--space-5)',
-            fontSize: '13px',
-            color: 'var(--gray-600)',
-            lineHeight: '1.5',
             border: '1px solid var(--gray-200)'
           }}>
-            <strong>Security:</strong> Your password is kept in memory for this session only and will be cleared when you logout.
+            <input
+              type="checkbox"
+              id="persist-key"
+              checked={persistKey}
+              onChange={(e) => setPersistKey(e.target.checked)}
+              disabled={loading}
+              style={{
+                marginTop: '2px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                width: '16px',
+                height: '16px',
+                accentColor: 'var(--ardrive-primary)'
+              }}
+            />
+            <label 
+              htmlFor="persist-key"
+              style={{
+                fontSize: '14px',
+                color: 'var(--gray-700)',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                userSelect: 'none',
+                lineHeight: '1.5'
+              }}
+            >
+              <div style={{ fontWeight: '500', marginBottom: '4px' }}>
+                Remember this drive password
+              </div>
+              <div style={{
+                fontSize: '12px',
+                color: 'var(--gray-500)',
+                lineHeight: '1.4'
+              }}>
+                Your drive password will be securely stored on this device. 
+                You won't need to enter it again after logging in.
+              </div>
+            </label>
           </div>
+          
+          {/* Security Note */}
+          {!persistKey && (
+            <div style={{
+              padding: 'var(--space-3)',
+              backgroundColor: 'var(--gray-50)',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: error ? 'var(--space-4)' : 'var(--space-5)',
+              fontSize: '13px',
+              color: 'var(--gray-600)',
+              lineHeight: '1.5',
+              border: '1px solid var(--gray-200)'
+            }}>
+              <strong>Security:</strong> Your password is kept in memory for this session only and will be cleared when you logout.
+            </div>
+          )}
           
           {/* Error Message */}
           {error && (

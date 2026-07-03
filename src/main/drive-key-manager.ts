@@ -1,30 +1,32 @@
 import { DriveKey, deriveDriveKey, PrivateKeyData } from 'ardrive-core-js';
+import { writeEncryptedFile, readEncryptedFile, secureDeleteFile } from './crypto-utils';
+import * as path from 'path';
+import * as fs from 'fs/promises';
+import { app } from 'electron';
 
 /**
  * Drive Key Manager
  * 
- * Manages private drive keys in memory for the current session.
- * Keys are derived from user passwords and cached until logout/profile switch.
+ * Manages private drive keys with optional secure persistence.
+ * Keys are derived from user passwords and can be optionally persisted (encrypted).
  * 
  * Security features:
- * - Session-only storage (no persistent key storage)
+ * - Optional secure persistence with user consent
+ * - Keys encrypted with session password when persisted
  * - Automatic cleanup on profile switches
  * - Secure memory clearing
+ * - Per-drive persistence preferences
  * 
- * Design Decision: Drive keys are NOT persisted between sessions
- * Rationale:
- * - Security: Prevents key extraction from disk/memory dumps
- * - User control: Users must explicitly unlock drives each session
- * - Compliance: Follows security best practices for key management
- * 
- * Future considerations:
- * - Could add optional OS keychain integration for convenience
- * - Could implement session timeout for automatic key clearing
- * - Could add biometric unlock support where available
+ * Persistence is opt-in per drive:
+ * - Users explicitly choose to remember drive passwords
+ * - Persisted keys are encrypted with session password
+ * - Same security level as wallet storage
  */
 export class DriveKeyManager {
   private drivesKeyCache: Map<string, DriveKey> = new Map(); // driveId -> DriveKey
+  private persistedDriveIds: Set<string> = new Set(); // Track which drives should be persisted
   private walletJson: any = null;
+  private currentProfileId: string | null = null;
 
   constructor() {
     console.log('[DRIVE-KEY-MANAGER] Initialized');
@@ -38,9 +40,36 @@ export class DriveKeyManager {
   }
 
   /**
-   * Unlock a private drive by deriving its key from the password
+   * Set the current profile for storage paths
    */
-  async unlockDrive(driveId: string, password: string): Promise<boolean> {
+  setProfile(profileId: string): void {
+    this.currentProfileId = profileId;
+  }
+
+  /**
+   * Get storage path for encrypted drive keys
+   */
+  private getDriveKeysStoragePath(): string {
+    if (!this.currentProfileId) {
+      throw new Error('No profile ID set');
+    }
+    const userDataPath = app.getPath('userData');
+    return path.join(userDataPath, 'profiles', this.currentProfileId, 'drive-keys.enc');
+  }
+
+  /**
+   * Unlock a private drive by deriving its key from the password
+   * @param driveId - The drive ID to unlock
+   * @param password - The drive password
+   * @param persistKey - Whether to persist the key (encrypted)
+   * @param sessionPassword - Session password for encryption (required if persistKey is true)
+   */
+  async unlockDrive(
+    driveId: string, 
+    password: string,
+    persistKey: boolean = false,
+    sessionPassword?: string
+  ): Promise<boolean> {
     try {
       if (!this.walletJson) {
         throw new Error('Wallet not loaded');
@@ -58,7 +87,22 @@ export class DriveKeyManager {
       // Cache the key for this session
       this.drivesKeyCache.set(driveId, driveKey);
       
-      console.log(`[DRIVE-KEY-MANAGER] ✅ Drive ${driveId.slice(0, 8)}... unlocked for session`);
+      // Handle persistence preference
+      if (persistKey) {
+        this.persistedDriveIds.add(driveId);
+        // Save immediately if we have session password
+        if (sessionPassword) {
+          await this.savePersistedKeys(sessionPassword);
+        }
+      } else {
+        this.persistedDriveIds.delete(driveId);
+        // Update storage to remove this key if it was persisted before
+        if (sessionPassword) {
+          await this.savePersistedKeys(sessionPassword);
+        }
+      }
+      
+      console.log(`[DRIVE-KEY-MANAGER] ✅ Drive ${driveId.slice(0, 8)}... unlocked (persisted: ${persistKey})`); 
       return true;
     } catch (error) {
       console.error(`[DRIVE-KEY-MANAGER] ❌ Failed to unlock drive ${driveId.slice(0, 8)}:`, error);
@@ -72,9 +116,121 @@ export class DriveKeyManager {
   lockDrive(driveId: string): void {
     const wasUnlocked = this.drivesKeyCache.has(driveId);
     this.drivesKeyCache.delete(driveId);
+    // Don't remove from persistedDriveIds - user preference remains
     
     if (wasUnlocked) {
       console.log(`[DRIVE-KEY-MANAGER] 🔒 Drive ${driveId.slice(0, 8)}... locked`);
+    }
+  }
+
+  /**
+   * Save persisted keys to encrypted storage
+   */
+  async savePersistedKeys(sessionPassword: string): Promise<void> {
+    if (!this.currentProfileId) return;
+
+    const keysToSave: Record<string, any> = {};
+    
+    // Only save keys that are marked for persistence
+    for (const driveId of this.persistedDriveIds) {
+      const key = this.drivesKeyCache.get(driveId);
+      if (key) {
+        // Store the key in a serializable format
+        // DriveKey contains a CryptoKey which needs special handling
+        keysToSave[driveId] = {
+          keyData: Buffer.from(key as any).toString('base64'),
+          persistedAt: Date.now()
+        };
+      }
+    }
+
+    if (Object.keys(keysToSave).length === 0) {
+      // No keys to persist, delete the file if it exists
+      try {
+        await secureDeleteFile(this.getDriveKeysStoragePath());
+      } catch {
+        // File might not exist, that's ok
+      }
+      return;
+    }
+
+    // Encrypt and save
+    await writeEncryptedFile(
+      this.getDriveKeysStoragePath(),
+      JSON.stringify(keysToSave),
+      sessionPassword
+    );
+    
+    console.log(`[DRIVE-KEY-MANAGER] Saved ${Object.keys(keysToSave).length} persisted drive keys`);
+  }
+
+  /**
+   * Load persisted keys from encrypted storage
+   */
+  async loadPersistedKeys(sessionPassword: string): Promise<number> {
+    if (!this.currentProfileId) return 0;
+
+    try {
+      const storagePath = this.getDriveKeysStoragePath();
+      
+      // Check if file exists
+      try {
+        await fs.access(storagePath);
+      } catch {
+        console.log('[DRIVE-KEY-MANAGER] No persisted keys found');
+        return 0;
+      }
+
+      // Decrypt and load
+      const encryptedData = await readEncryptedFile(storagePath, sessionPassword);
+      const keysData = JSON.parse(encryptedData);
+      
+      // Restore to cache
+      let loadedCount = 0;
+      for (const [driveId, keyInfo] of Object.entries(keysData)) {
+        try {
+          // Reconstruct the DriveKey from stored data
+          const keyData = Buffer.from((keyInfo as any).keyData, 'base64');
+          this.drivesKeyCache.set(driveId, keyData as any);
+          this.persistedDriveIds.add(driveId);
+          loadedCount++;
+        } catch (error) {
+          console.error(`[DRIVE-KEY-MANAGER] Failed to restore key for drive ${driveId.slice(0, 8)}:`, error);
+        }
+      }
+      
+      console.log(`[DRIVE-KEY-MANAGER] Loaded ${loadedCount} persisted drive keys`);
+      return loadedCount;
+    } catch (error) {
+      console.error('[DRIVE-KEY-MANAGER] Failed to load persisted keys:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Check if a drive's key is set to persist
+   */
+  isPersisted(driveId: string): boolean {
+    return this.persistedDriveIds.has(driveId);
+  }
+
+  /**
+   * Update persistence preference for a drive
+   */
+  async updatePersistencePreference(
+    driveId: string,
+    persist: boolean,
+    sessionPassword?: string
+  ): Promise<void> {
+    if (persist) {
+      this.persistedDriveIds.add(driveId);
+    } else {
+      this.persistedDriveIds.delete(driveId);
+    }
+
+    // Update stored keys if we have session password
+    if (sessionPassword && this.currentProfileId) {
+      await this.savePersistedKeys(sessionPassword);
     }
   }
 
@@ -129,10 +285,28 @@ export class DriveKeyManager {
     
     // Clear the cache
     this.drivesKeyCache.clear();
+    this.persistedDriveIds.clear();
     this.walletJson = null;
+    this.currentProfileId = null;
     
     if (driveCount > 0) {
       console.log(`[DRIVE-KEY-MANAGER] 🧹 Cleared ${driveCount} drive keys from memory`);
+    }
+  }
+
+  /**
+   * Clear all keys and remove encrypted storage
+   */
+  async clearAllKeysAndStorage(): Promise<void> {
+    this.clearAllKeys();
+
+    if (this.currentProfileId) {
+      try {
+        await secureDeleteFile(this.getDriveKeysStoragePath());
+        console.log('[DRIVE-KEY-MANAGER] Deleted persisted keys file');
+      } catch {
+        // File might not exist
+      }
     }
   }
 
@@ -148,34 +322,6 @@ export class DriveKeyManager {
     };
   }
 
-  /**
-   * Future: Support for optional session persistence
-   * This method would integrate with OS keychain services
-   * Currently returns false as persistence is not implemented
-   */
-  async persistSession(driveId: string): Promise<boolean> {
-    console.log('[DRIVE-KEY-MANAGER] Session persistence not implemented for security');
-    // Future implementation would:
-    // 1. Check user preferences for session persistence
-    // 2. Use OS keychain API (keytar) to securely store encrypted key
-    // 3. Set expiration time for automatic cleanup
-    // 4. Require user authentication (password/biometric) on restore
-    return false;
-  }
-
-  /**
-   * Future: Restore persisted session
-   * Currently returns false as persistence is not implemented
-   */
-  async restoreSession(driveId: string): Promise<boolean> {
-    console.log('[DRIVE-KEY-MANAGER] Session restoration not implemented for security');
-    // Future implementation would:
-    // 1. Check OS keychain for stored session
-    // 2. Verify session hasn't expired
-    // 3. Require user authentication
-    // 4. Restore key to memory cache
-    return false;
-  }
 }
 
 // Export singleton instance

@@ -259,6 +259,14 @@ export class DatabaseManager {
             total_files INTEGER,
             sync_version INTEGER DEFAULT 1
           );
+
+          -- Drive key persistence preferences
+          CREATE TABLE IF NOT EXISTS drive_key_preferences (
+            drive_id TEXT PRIMARY KEY,
+            persist_key BOOLEAN DEFAULT 0,
+            created_at INTEGER DEFAULT (strftime('%s', 'now')),
+            updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+          );
           
           -- Schema version tracking
           CREATE TABLE IF NOT EXISTS schema_version (
@@ -1616,6 +1624,57 @@ export class DatabaseManager {
     });
   }
 
+  // Drive key persistence preferences methods
+  async setDriveKeyPersistence(driveId: string, persist: boolean): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        INSERT INTO drive_key_preferences (drive_id, persist_key, updated_at)
+        VALUES (?, ?, strftime('%s', 'now'))
+        ON CONFLICT(drive_id) DO UPDATE SET
+          persist_key = excluded.persist_key,
+          updated_at = excluded.updated_at
+      `;
+      
+      this.db!.run(sql, [driveId, persist ? 1 : 0], (err) => {
+        if (err) {
+          console.error('Failed to set drive key persistence:', err);
+          reject(err);
+        } else {
+          console.log(`Drive key persistence set for ${driveId}: ${persist}`);
+          resolve();
+        }
+      });
+    });
+  }
+
+  async getDriveKeyPersistence(driveId: string): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      const sql = `SELECT persist_key FROM drive_key_preferences WHERE drive_id = ?`;
+      
+      this.db!.get(sql, [driveId], (err, row: any) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row ? row.persist_key === 1 : false);
+        }
+      });
+    });
+  }
+
+  async getAllPersistedDriveIds(): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      const sql = `SELECT drive_id FROM drive_key_preferences WHERE persist_key = 1`;
+      
+      this.db!.all(sql, [], (err, rows: any[]) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows.map(row => row.drive_id));
+        }
+      });
+    });
+  }
+
   async updateMetadataSyncTimestamp(mappingId: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const sql = `UPDATE drive_mappings SET lastMetadataSyncAt = CURRENT_TIMESTAMP WHERE id = ?`;
@@ -1627,6 +1686,35 @@ export class DatabaseManager {
           console.log(`Updated metadata sync timestamp for mapping ${mappingId}`);
           resolve();
         }
+      });
+    });
+  }
+
+  async setActiveDriveMapping(mappingId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.db!.serialize(() => {
+        // First, deactivate all mappings for the current profile
+        this.db!.run('UPDATE drive_mappings SET isActive = 0', (err) => {
+          if (err) {
+            console.error('Failed to deactivate drive mappings:', err);
+            return reject(err);
+          }
+          
+          // Then activate the selected one
+          this.db!.run(
+            'UPDATE drive_mappings SET isActive = 1, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
+            [mappingId],
+            (err) => {
+              if (err) {
+                console.error('Failed to activate drive mapping:', err);
+                reject(err);
+              } else {
+                console.log(`Activated drive mapping ${mappingId}`);
+                resolve();
+              }
+            }
+          );
+        });
       });
     });
   }

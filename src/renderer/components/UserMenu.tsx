@@ -123,10 +123,10 @@ const UserMenu: React.FC<UserMenuProps> = ({
   return (
     <div className="user-menu" ref={dropdownRef}>
       <button 
-        className="user-menu-trigger"
+        className="user-menu-trigger user-menu-button"
         onClick={() => setIsOpen(!isOpen)}
       >
-        <div className="user-avatar">
+        <div className="user-avatar user-menu-avatar">
           {currentProfile.avatarUrl ? (
             <img 
               src={currentProfile.avatarUrl} 

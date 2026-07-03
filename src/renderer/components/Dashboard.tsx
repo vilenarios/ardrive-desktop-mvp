@@ -16,6 +16,7 @@ import Settings from './Settings';
 import { DriveSelector } from './DriveSelector';
 import { CreateDriveModal } from './CreateDriveModal';
 import { AddExistingDriveModal } from './AddExistingDriveModal';
+import '../styles/dashboard-header.css';
 import { 
   Pause, 
   RefreshCw, 
@@ -369,11 +370,16 @@ const Dashboard: React.FC<DashboardProps> = ({
         setIsDrivesLoading(true);
         const mappedDrives = await window.electronAPI.drive.getMapped();
         // Get drives with status info for private drive support
-        const drivesWithStatus = await window.electronAPI.drive.listWithStatus();
+        const drivesWithStatusResponse = await window.electronAPI.drive.listWithStatus();
+        
+        // Extract the drives array from the response
+        const drivesWithStatus = drivesWithStatusResponse?.data || [];
         
         // Merge mapped drives with status info
         const mergedDrives = mappedDrives.map((mappedDrive: any) => {
-          const driveWithStatus = drivesWithStatus.find((d: DriveInfoWithStatus) => d.id === mappedDrive.id);
+          const driveWithStatus = Array.isArray(drivesWithStatus)
+            ? drivesWithStatus.find((d: DriveInfoWithStatus) => d.id === mappedDrive.id)
+            : null;
           return {
             ...mappedDrive,
             isLocked: driveWithStatus?.isLocked ?? false,
@@ -404,7 +410,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   // Drive switching handler
-  const handleDriveSwitch = async (driveId: string) => {
+  const handleDriveSwitch = async (driveId: string, skipConfirmation = false) => {
     if (driveId === drive?.id || isSwitchingDrive) return;
     
     // Find the target drive for better confirmation message
@@ -414,13 +420,15 @@ const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
     
-    // Always show confirmation for drive switching
-    const confirmMessage = pendingUploads.length > 0 
-      ? `Switch to "${targetDrive.name}"?\n\nYou have ${pendingUploads.length} pending uploads that will be cancelled.`
-      : `Switch to "${targetDrive.name}"?\n\nThis will change your active drive and sync folder.`;
-    
-    const confirmed = window.confirm(confirmMessage);
-    if (!confirmed) return;
+    // Show confirmation unless explicitly skipped (e.g., when just added a drive)
+    if (!skipConfirmation) {
+      const confirmMessage = pendingUploads.length > 0 
+        ? `Switch to "${targetDrive.name}"?\n\nYou have ${pendingUploads.length} pending uploads that will be cancelled.`
+        : `Switch to "${targetDrive.name}"?\n\nThis will change your active drive and sync folder.`;
+      
+      const confirmed = window.confirm(confirmMessage);
+      if (!confirmed) return;
+    }
     
     try {
       setIsSwitchingDrive(true);
@@ -436,11 +444,23 @@ const Dashboard: React.FC<DashboardProps> = ({
           window.location.reload();
         }, 1000); // Brief delay to show success message
       } else {
-        throw new Error('Failed to switch drive');
+        throw new Error(result.error || 'Failed to switch drive');
       }
     } catch (error) {
       console.error('Failed to switch drive:', error);
-      toast?.error(`Failed to switch to "${targetDrive.name}". Please try again.`);
+      // Show the actual error message if available
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Unknown error occurred';
+      
+      // Provide more helpful error messages
+      if (errorMessage.includes('does not exist')) {
+        toast?.error(`Cannot switch to "${targetDrive.name}": Sync folder not found. The drive may need to be re-added.`);
+      } else if (errorMessage.includes('locked')) {
+        toast?.error(`Cannot switch to "${targetDrive.name}": Drive is locked. Please unlock it first.`);
+      } else {
+        toast?.error(`Failed to switch to "${targetDrive.name}": ${errorMessage}`);
+      }
       setIsSwitchingDrive(false);
     }
   };
@@ -453,6 +473,57 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Add existing drive handler
   const handleAddExistingDrive = () => {
     setShowAddExistingDriveModal(true);
+  };
+
+  // Remove drive handler
+  const handleRemoveDrive = async (driveId: string) => {
+    try {
+      // Get the drive mappings to find the one to remove
+      const mappings = await window.electronAPI.driveMappings.list();
+      const mappingToRemove = mappings.find((m: any) => m.driveId === driveId);
+      
+      if (!mappingToRemove) {
+        toast?.error('Drive mapping not found');
+        return;
+      }
+
+      // Remove the drive mapping
+      await window.electronAPI.driveMappings.remove(mappingToRemove.id);
+      
+      // Refresh the drives list
+      const updatedMappedDrives = await window.electronAPI.drive.getMapped();
+      const drivesWithStatusResponse = await window.electronAPI.drive.listWithStatus();
+      const drivesWithStatus = drivesWithStatusResponse?.data || [];
+      
+      const mergedDrives = updatedMappedDrives.map((mappedDrive: any) => {
+        const driveWithStatus = Array.isArray(drivesWithStatus)
+          ? drivesWithStatus.find((d: DriveInfoWithStatus) => d.id === mappedDrive.id)
+          : null;
+        return {
+          ...mappedDrive,
+          isLocked: driveWithStatus?.isLocked ?? false,
+          emojiFingerprint: driveWithStatus?.emojiFingerprint
+        };
+      });
+      
+      setDrives(mergedDrives);
+      
+      // If we removed the current drive, switch to another one or clear selection
+      if (selectedDrive?.id === driveId) {
+        if (mergedDrives.length > 0) {
+          await handleDriveSwitch(mergedDrives[0].id);
+        } else {
+          // No more drives, clear the selection
+          // The parent component will handle this through onDriveDeleted
+          onDriveDeleted();
+        }
+      }
+      
+      toast?.success('Drive removed from this device');
+    } catch (error) {
+      console.error('Failed to remove drive:', error);
+      toast?.error('Failed to remove drive');
+    }
   };
 
   // Handle drive created
@@ -487,11 +558,16 @@ const Dashboard: React.FC<DashboardProps> = ({
     try {
       // Refresh drives list with status info
       const mappedDrives = await window.electronAPI.drive.getMapped();
-      const drivesWithStatus = await window.electronAPI.drive.listWithStatus();
+      const drivesWithStatusResponse = await window.electronAPI.drive.listWithStatus();
+      
+      // Extract the drives array from the response
+      const drivesWithStatus = drivesWithStatusResponse?.data || [];
       
       // Merge mapped drives with status info
       const mergedDrives = mappedDrives.map((mappedDrive: any) => {
-        const driveWithStatus = drivesWithStatus.find((d: DriveInfoWithStatus) => d.id === mappedDrive.id);
+        const driveWithStatus = Array.isArray(drivesWithStatus) 
+          ? drivesWithStatus.find((d: DriveInfoWithStatus) => d.id === mappedDrive.id)
+          : null;
         return {
           ...mappedDrive,
           isLocked: driveWithStatus?.isLocked ?? false,
@@ -506,7 +582,8 @@ const Dashboard: React.FC<DashboardProps> = ({
       // Optionally switch to the newly added drive
       const shouldSwitch = window.confirm(`Would you like to switch to "${addedDrive.name}" now?`);
       if (shouldSwitch) {
-        await handleDriveSwitch(addedDrive.id);
+        // Pass true to skip the second confirmation dialog
+        await handleDriveSwitch(addedDrive.id, true);
       }
     } catch (error) {
       console.error('Failed to refresh drives after adding:', error);
@@ -721,33 +798,36 @@ const Dashboard: React.FC<DashboardProps> = ({
         existingDriveIds={drives.map(d => d.id)}
       />
 
-      {/* Unified Header */}
-      <div style={{
-        backgroundColor: 'white',
-        borderBottom: '1px solid var(--gray-200)',
-        padding: 'var(--space-4) var(--space-6)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 'var(--space-6)'
-      }}>
-        {/* Left: Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', minWidth: '200px' }}>
-          <img 
-            src="ArDrive-Logo-Wordmark-Dark.png" 
-            alt="ArDrive" 
-            style={{ height: '32px' }} 
-          />
+      {/* Unified Responsive Header */}
+      <div className="dashboard-header">
+        {/* Mobile: Two-row layout */}
+        <div className="dashboard-header-top">
+          <div className="dashboard-header-logo">
+            <img 
+              src="ArDrive-Logo-Wordmark-Dark.png" 
+              alt="ArDrive" 
+              className="dashboard-header-logo-image"
+            />
+          </div>
+          
+          <div className="dashboard-header-right">
+            <UserMenu
+              currentProfile={currentProfile}
+              walletBalance={walletInfo.balance}
+              turboBalance={walletInfo.turboBalance}
+              onShowSettings={() => setShowSettings(!showSettings)}
+              onShowTurboManager={() => setShowTurboManager(true)}
+              onShowWalletExport={() => setShowWalletExport(true)}
+              onLogout={onLogout}
+              onSwitchProfile={handleSwitchProfile}
+              onAddProfile={handleAddProfile}
+              profileCount={profileCount}
+            />
+          </div>
         </div>
         
-        {/* Center: Drive Selector + Sync */}
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 'var(--space-3)',
-          flex: 1,
-          justifyContent: 'center'
-        }}>
+        {/* Mobile: Second row / Desktop: Center section */}
+        <div className="dashboard-header-bottom dashboard-header-center">
           <DriveSelector
             currentDrive={selectedDrive}
             drives={drives}
@@ -755,46 +835,22 @@ const Dashboard: React.FC<DashboardProps> = ({
             onDriveSelect={handleDriveSwitch}
             onCreateDrive={handleCreateDrive}
             onAddExistingDrive={handleAddExistingDrive}
+            onRemoveDrive={handleRemoveDrive}
           />
           
           {/* Sync Button */}
           <button
             onClick={handleSync}
             disabled={isSyncing}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)',
-              padding: 'var(--space-2) var(--space-4)',
-              backgroundColor: isSyncing ? 'var(--gray-100)' : 'var(--ardrive-primary)',
-              color: isSyncing ? 'var(--gray-600)' : 'white',
-              border: 'none',
-              borderRadius: 'var(--radius-md)',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: isSyncing ? 'not-allowed' : 'pointer',
-              transition: 'all 0.2s ease'
-            }}
+            className="sync-button"
+            aria-label={isSyncing ? 'Syncing files' : 'Sync files with Arweave'}
+            title={isSyncing ? 'Syncing...' : 'Sync'}
           >
             <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
-            {isSyncing ? 'Syncing...' : 'Sync'}
+            <span className="sync-button-text">
+              {isSyncing ? 'Syncing...' : 'Sync'}
+            </span>
           </button>
-        </div>
-        
-        {/* Right: User Menu */}
-        <div style={{ minWidth: '200px', display: 'flex', justifyContent: 'flex-end' }}>
-          <UserMenu
-            currentProfile={currentProfile}
-            walletBalance={walletInfo.balance}
-            turboBalance={walletInfo.turboBalance}
-            onShowSettings={() => setShowSettings(!showSettings)}
-            onShowTurboManager={() => setShowTurboManager(true)}
-            onShowWalletExport={() => setShowWalletExport(true)}
-            onLogout={onLogout}
-            onSwitchProfile={handleSwitchProfile}
-            onAddProfile={handleAddProfile}
-            profileCount={profileCount}
-          />
         </div>
       </div>
 
