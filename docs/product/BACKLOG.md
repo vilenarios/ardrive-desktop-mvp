@@ -226,9 +226,10 @@ Also (same gate): wallet-import flows re-point the DB without stopping sync (wal
 ### PRIV-0 · P0 · Phase 1 · `wont-fix`
 **Feature-flag private drives off for beta.** Obsolete: D-010 (2026-07-03) put private drives IN the beta — they stay enabled and get fixed (PRIV-1..7 rephased onto the critical path) instead of hidden.
 
-### PRIV-1 · P0 · Phase 2 · `in-progress`
+### PRIV-1 · P0 · Phase 2 · `done`
 **Implement private download decryption.** Evidence: §3.1 (raw ciphertext written to sync folder). Upstream ardrive-core-js APIs may be extended if needed (D-016).
 Acceptance: round-trip UAT — upload to private drive, delete locally, re-download → plaintext bytes hash-equal the original.
+Done 2026-07-03 (b9cb77d + 4c3973d + isolation hardening, qa-gate PASS static — decrypt chain source-verified into ardrive-core (AES-GCM StreamDecrypt, authTag enforced), real-fs pipeline probes adopted as download-manager-private-realfs.test.ts; privacy decided before the manifest-name heuristic after a round-1 FAIL): private files decrypt to plaintext on disk; locked drives fail loudly. Residual behind (static): live funded round-trip → INFRA-9 UAT. Open QA notes: progress-0 flush race on sub-second downloads; per-download getDriveMappings query (perf); core sets mtime to on-chain lastModifiedDate on the private route — watch SYNC-1 edit-detection interplay.
 
 ### PRIV-2 · P0 · Phase 2 · `done`
 **Verify drive passwords with trial decryption.** Evidence: §3.2 (HKDF never fails; garbage keys cached).
