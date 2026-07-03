@@ -86,7 +86,7 @@ Fix: either commit wallet only after confirmation, or drop the placebo checkbox 
 Acceptance: UI offers no AR payment choice; DB `uploadMethod` matches actual execution; no AR-denominated balance gate on approval.
 QA findings 2026-07-03 to resolve here: define what APPROVAL means for insufficient-Turbo-balance rows (currently routes to the 'ar' rail whose cost is undisplayed — MONEY-3 left the quote visible with an "Insufficient balance" hint, but approve still submits 'ar'); sync-manager.ts:3392 hardcodes synthetic `estimatedTurboCost: 0.000001` for metadata ops (renderer masks it as "Free"; make the stored value honest); sync-manager.ts:1973 `|| undefined` would coerce a legitimate zero quote; dead `totalArCost` accumulation and dead `calculateTurboCredits` (turbo-utils) can go.
 
-### MONEY-2 · P0 · Phase 2 · `todo`
+### MONEY-2 · P0 · Phase 2 · `in-progress`
 **Make cancel abort and retry safe.** Evidence: §1.2.
 Fix: AbortController through UploadQueueManager → uploadFile; `uploads:cancel` aborts in-flight work before marking failed; `uploads:retry` refuses items not in a terminal state; completion handler must not resurrect cancelled records.
 Acceptance: cancel during upload halts network activity and the file is not charged; retry of an in-flight upload is rejected; no path yields two charges for one file.
