@@ -363,10 +363,11 @@ Acceptance: a thrown error in main produces an inspectable report with app versi
 **Repo hygiene.** Evidence: §6.10. Delete 8 dead components + 2 unreachable (≈5k lines, list in AUDIT §5.9); delete unreferenced scripts (build-installers/build-simple/test-build/quick-test-*/build-windows-simple) and `scripts/manual-tests/`; drop patch-package or add a patch; move `@types/*` to devDependencies. QA finding 2026-07-03 (MONEY-5 gate): the dead legacy UploadApprovalQueue.tsx still contains a complete conflict-resolution modal (13 refs) and `ConflictResolution` in src/types/index.ts:149 survives only to serve it — delete together. SYNC-2 gate adds: sync-manager's private downloadMissingFiles/downloadMissingFilesWithProgress/downloadIndividualFile (:3056-:3190) are unreachable ungated synced-writers — delete to keep the writer sweep trivially clean.
 Note 2026-07-02: root reorganization done — `nul` deleted; vendored docs → `docs/vendor/`; images → `docs/branding/`; stale plans → `docs/archive/`; workflow docs → `docs/developer/`; `test-scripts/` → `scripts/manual-tests/`. Remaining: dead-component/script deletion (needs Phil's confirmation) and dependency moves.
 
-### INFRA-7 · P1 · Phase 4 · `todo`
+### INFRA-7 · P1 · Phase 4 · `done` (branch fix/INFRA-7-db-migrations)
 **Database migration framework.** Evidence: §6.11 ("no migrations needed", schemaVersion=3). Released apps cannot recreate tables.
 Fix: versioned migration runner keyed on `currentSchemaVersion`; baseline v3; every future schema change ships a migration.
 Acceptance: opening a v3 profile DB with a v4 app migrates data losslessly (test with fixture DB).
+Done 2026-07-03 (45b1b2e + adopted QA probe, qa-gate PASS — real-engine adversarial fixture across all 12 tables; baseline semantically identical to a483d94's DDL at engine level, 37 objects): PRAGMA user_version runner, per-migration transactions with stamp-in-txn rollback, downgrade refusal (file-hash-identical), single schema source (createTables + 453 lines of dead legacy code deleted), v4 status index live in query plans. Migration-author rules documented in migrations.ts (no BEGIN/COMMIT inside migrations; versions stay integer literals — PRAGMA interpolation is guarded but literal-only by convention). Future v5 candidates: drop inert schema_version table; stop creating the legacy fallback ardrive.db for profile-only installs. Native node-sqlite3 driver validation → INFRA-12 tier 2.
 
 ### INFRA-8 · P2 · Track D · `todo`
 **Dependency debt**: sqlite3 → better-sqlite3 (optional), remove ts-jest/@types/jest, retire crypto-js (pair SEC-10). Evidence: §6.6.
@@ -387,6 +388,7 @@ Note 2026-07-02: superseded-doc banners and README phantom links already fixed i
 ### INFRA-12 · P1 · Phase 2 (pulled forward per D-021) · `todo`
 **E2E/UI test harness.** Per D-006 amendment ("unit, integration and UI"): stand up Playwright (or WebdriverIO) driving the built Electron app with a disposable test profile; smoke flows first — onboarding (import test wallet), drive create/select, file drop → approval queue appears, settings. Wire into CI as a gated job (headless via xvfb on Linux runner or windows-latest).
 Acceptance: one command runs the UI smoke suite against a packaged build; CI runs it on every PR; failures produce screenshots.
+Tier-2 addition (INFRA-7 QA finding, 2026-07-03): include a packaged-app migration smoke — open a copied v3 fixture profile DB, expect v4 stamp + intact rows — to validate the real native sqlite3 driver path (unverifiable on the arm64 WSL dev machine).
 
 ### INFRA-13 · P2 · Track D · `todo`
 **Exhaustive field mapping + validation for drive-mapping updates.** QA finding 2026-07-03 (UX-2 gate): `updateDriveMapping` silently drops `driveId`/`drivePrivacy`/`rootFolderId`/`lastMetadataSyncAt` (fields in `Partial<DriveSyncMapping>` with no SQL branch — the same silent-no-op family as UX-2's bug), and the generic `drive-mappings:update` IPC handler (main.ts:~2814) forwards unvalidated `updates: any`. Latent today (all callers pass only mapped fields — verified), but a trap for Track A/C work.

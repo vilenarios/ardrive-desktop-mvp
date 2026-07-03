@@ -3,12 +3,12 @@ import * as path from 'path';
 import { app } from 'electron';
 import { FileUpload, PendingUpload, FileDownload, DriveSyncMapping, DriveSyncStatus } from '../types';
 import { profileManager } from './profile-manager';
+import { MIGRATIONS, CURRENT_SCHEMA_VERSION, Migration } from './migrations';
 import * as crypto from 'crypto';
 
 export class DatabaseManager {
   private db: sqlite3.Database | null = null;
   private currentProfileId: string | null = null;
-  private readonly currentSchemaVersion = 3; // Incremented for file size fix
 
   constructor() {
     // Database path will be determined dynamically based on active profile
@@ -46,8 +46,19 @@ export class DatabaseManager {
           reject(err);
           return;
         }
-        
-        this.createTables().then(resolve).catch(reject);
+
+        // Migrations must complete before the database is considered ready.
+        // Fail closed: on any migration error, close the handle so no query
+        // can run against a database in an unknown/newer schema state.
+        this.runMigrations().then(resolve).catch((migrationError) => {
+          const failedDb = this.db;
+          this.db = null;
+          if (failedDb) {
+            failedDb.close(() => reject(migrationError));
+          } else {
+            reject(migrationError);
+          }
+        });
       });
     });
     
@@ -117,468 +128,101 @@ export class DatabaseManager {
     return { uploadsReset: uploadsReset + pendingUploadsReset, downloadsReset, metadataReset };
   }
 
-  private async createTables(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // Create tables directly - no migrations needed
-      
-      const sql = `
-          -- Drive mappings for multi-drive support
-          CREATE TABLE IF NOT EXISTS drive_mappings (
-            id TEXT PRIMARY KEY,
-            driveId TEXT NOT NULL,
-            driveName TEXT NOT NULL,
-            drivePrivacy TEXT NOT NULL CHECK (drivePrivacy IN ('public', 'private')),
-            localFolderPath TEXT NOT NULL,
-            rootFolderId TEXT NOT NULL,
-            isActive BOOLEAN DEFAULT 1,
-            lastSyncTime DATETIME,
-            lastMetadataSyncAt DATETIME,
-            excludePatterns TEXT, -- JSON array of patterns
-            maxFileSize INTEGER,
-            syncDirection TEXT DEFAULT 'bidirectional' CHECK (syncDirection IN ('bidirectional', 'upload-only', 'download-only')),
-            uploadPriority INTEGER DEFAULT 0,
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(driveId, localFolderPath)
-          );
-          
-          CREATE TABLE IF NOT EXISTS uploads (
-            id TEXT PRIMARY KEY,
-            mappingId TEXT, -- NEW: Reference to drive_mappings
-            driveId TEXT,   -- Legacy support
-            localPath TEXT NOT NULL,
-            fileName TEXT NOT NULL,
-            fileSize INTEGER NOT NULL,
-            status TEXT NOT NULL,
-            progress REAL DEFAULT 0,
-            uploadMethod TEXT,
-            transactionId TEXT,
-            dataTxId TEXT,
-            metadataTxId TEXT,
-            fileId TEXT,
-            error TEXT,
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-            completedAt DATETIME,
-            FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
-          );
-        
-          -- Drive metadata cache for permaweb view
-          CREATE TABLE IF NOT EXISTS drive_metadata_cache (
-            id TEXT PRIMARY KEY,
-            mappingId TEXT NOT NULL,
-            fileId TEXT NOT NULL UNIQUE,
-            parentFolderId TEXT,
-            name TEXT NOT NULL,
-            path TEXT NOT NULL,
-            type TEXT CHECK (type IN ('file', 'folder')),
-            size INTEGER,
-            lastModifiedDate INTEGER,
-            dataTxId TEXT,
-            metadataTxId TEXT,
-            contentType TEXT,
-            fileHash TEXT,
-            lastSyncedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-            localPath TEXT,
-            localFileExists BOOLEAN DEFAULT 0,
-            syncStatus TEXT DEFAULT 'pending' CHECK (syncStatus IN ('synced', 'pending', 'downloading', 'queued', 'cloud_only', 'error')),
-            syncPreference TEXT DEFAULT 'auto' CHECK (syncPreference IN ('auto', 'cloud_only')),
-            downloadPriority INTEGER DEFAULT 0,
-            lastError TEXT,
-            FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
-          );
-          
-          CREATE INDEX IF NOT EXISTS idx_metadata_mapping ON drive_metadata_cache(mappingId);
-          CREATE INDEX IF NOT EXISTS idx_metadata_parent ON drive_metadata_cache(parentFolderId);
-          CREATE INDEX IF NOT EXISTS idx_metadata_path ON drive_metadata_cache(path);
-          CREATE INDEX IF NOT EXISTS idx_metadata_fileId ON drive_metadata_cache(fileId);
-        
-          CREATE TABLE IF NOT EXISTS pending_uploads (
-            id TEXT PRIMARY KEY,
-            mappingId TEXT, -- NEW: Reference to drive_mappings
-            driveId TEXT,   -- Legacy support
-            localPath TEXT NOT NULL,
-            fileName TEXT NOT NULL,
-            fileSize INTEGER NOT NULL,
-            estimatedCost REAL NOT NULL,
-            estimatedTurboCost REAL,
-            recommendedMethod TEXT,
-            hasSufficientTurboBalance BOOLEAN,
-            conflictType TEXT DEFAULT 'none',
-            conflictDetails TEXT,
-            status TEXT DEFAULT 'awaiting_approval',
-            operationType TEXT DEFAULT 'upload',
-            previousPath TEXT,
-            arfsFileId TEXT,
-            arfsFolderId TEXT,
-            metadata TEXT, -- JSON string for extensible metadata
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
-          );
-        
-          CREATE TABLE IF NOT EXISTS processed_files (
-            fileHash TEXT,
-            mappingId TEXT, -- NEW: Reference to drive_mappings
-            driveId TEXT,   -- Legacy support
-            fileName TEXT NOT NULL,
-            fileSize INTEGER NOT NULL,
-            localPath TEXT NOT NULL,
-            source TEXT NOT NULL,
-            arweaveId TEXT,
-            processedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (fileHash, mappingId),
-            FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
-          );
-        
-          -- File version tracking
-          CREATE TABLE IF NOT EXISTS file_versions (
-            id TEXT PRIMARY KEY,
-            mappingId TEXT, -- NEW: Reference to drive_mappings
-            driveId TEXT,   -- Legacy support
-            fileHash TEXT NOT NULL,
-            fileName TEXT NOT NULL,
-            filePath TEXT NOT NULL,
-            relativePath TEXT NOT NULL,
-            fileSize INTEGER NOT NULL,
-            arweaveId TEXT,
-            turboId TEXT,
-            version INTEGER NOT NULL,
-            parentVersion TEXT,
-            changeType TEXT NOT NULL,
-            uploadMethod TEXT,
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-            isLatest BOOLEAN DEFAULT 1,
-            FOREIGN KEY (parentVersion) REFERENCES file_versions(id),
-            FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
-          );
-        
-          -- File operation history
-          CREATE TABLE IF NOT EXISTS file_operations (
-            id TEXT PRIMARY KEY,
-            mappingId TEXT, -- NEW: Reference to drive_mappings
-            driveId TEXT,   -- Legacy support
-            fileHash TEXT NOT NULL,
-            operation TEXT NOT NULL,
-            fromPath TEXT,
-            toPath TEXT,
-            metadata TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
-          );
-        
-          -- Folder structure tracking
-          CREATE TABLE IF NOT EXISTS folder_structure (
-            id TEXT PRIMARY KEY,
-            mappingId TEXT, -- NEW: Reference to drive_mappings
-            driveId TEXT,   -- Legacy support
-            folderPath TEXT NOT NULL,
-            relativePath TEXT NOT NULL,
-            parentPath TEXT,
-            arfsFolderId TEXT,
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-            isDeleted BOOLEAN DEFAULT 0,
-            UNIQUE(folderPath, mappingId),
-            FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
-          );
-          
-          -- Folder operations tracking
-          CREATE TABLE IF NOT EXISTS folder_operations (
-            id TEXT PRIMARY KEY,
-            mappingId TEXT,
-            operationType TEXT NOT NULL CHECK (operationType IN ('rename', 'move', 'rename_and_move', 'delete')),
-            oldPath TEXT NOT NULL,
-            newPath TEXT,
-            arfsFolderId TEXT,
-            status TEXT NOT NULL CHECK (status IN ('pending', 'in_progress', 'completed', 'failed')),
-            error TEXT,
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-            completedAt DATETIME,
-            FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
-          );
-        
-          -- Downloads tracking
-          CREATE TABLE IF NOT EXISTS downloads (
-            id TEXT PRIMARY KEY,
-            mappingId TEXT, -- NEW: Reference to drive_mappings
-            driveId TEXT,   -- Legacy support
-            fileName TEXT NOT NULL,
-            localPath TEXT NOT NULL,
-            fileSize INTEGER NOT NULL,
-            fileId TEXT NOT NULL,
-            dataTxId TEXT,
-            metadataTxId TEXT,
-            status TEXT NOT NULL,
-            progress REAL DEFAULT 0,
-            priority INTEGER DEFAULT 0,
-            isCancelled BOOLEAN DEFAULT 0,
-            error TEXT,
-            downloadedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-            completedAt DATETIME,
-            FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
-          );
-          
-          -- Drive sync state tracking for incremental sync
-          CREATE TABLE IF NOT EXISTS drive_sync_state (
-            drive_id TEXT PRIMARY KEY,
-            last_sync_time TEXT,
-            last_full_scan TEXT,
-            total_files INTEGER,
-            sync_version INTEGER DEFAULT 1
-          );
-          
-          -- Schema version tracking
-          CREATE TABLE IF NOT EXISTS schema_version (
-            version INTEGER PRIMARY KEY,
-            applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
-          );
-        
-          -- Indexes for performance
-          CREATE INDEX IF NOT EXISTS idx_drive_mappings_active ON drive_mappings(isActive);
-          CREATE INDEX IF NOT EXISTS idx_drive_mappings_drive_id ON drive_mappings(driveId);
-          CREATE INDEX IF NOT EXISTS idx_uploads_mapping ON uploads(mappingId);
-          CREATE INDEX IF NOT EXISTS idx_uploads_status ON uploads(status);
-          CREATE INDEX IF NOT EXISTS idx_uploads_created ON uploads(createdAt);
-          CREATE INDEX IF NOT EXISTS idx_pending_uploads_mapping ON pending_uploads(mappingId);
-          CREATE INDEX IF NOT EXISTS idx_pending_uploads_status ON pending_uploads(status);
-          CREATE INDEX IF NOT EXISTS idx_processed_files_mapping ON processed_files(mappingId);
-          CREATE INDEX IF NOT EXISTS idx_processed_files_hash ON processed_files(fileHash);
-          CREATE INDEX IF NOT EXISTS idx_processed_files_source ON processed_files(source);
-          CREATE INDEX IF NOT EXISTS idx_file_versions_mapping ON file_versions(mappingId);
-          CREATE INDEX IF NOT EXISTS idx_file_versions_path ON file_versions(filePath);
-          CREATE INDEX IF NOT EXISTS idx_file_versions_latest ON file_versions(isLatest);
-          CREATE INDEX IF NOT EXISTS idx_file_versions_hash ON file_versions(fileHash);
-          CREATE INDEX IF NOT EXISTS idx_file_operations_mapping ON file_operations(mappingId);
-          CREATE INDEX IF NOT EXISTS idx_file_operations_hash ON file_operations(fileHash);
-          CREATE INDEX IF NOT EXISTS idx_folder_structure_mapping ON folder_structure(mappingId);
-          CREATE INDEX IF NOT EXISTS idx_folder_structure_path ON folder_structure(folderPath);
-          CREATE INDEX IF NOT EXISTS idx_downloads_mapping ON downloads(mappingId);
-          CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
-          CREATE INDEX IF NOT EXISTS idx_downloads_file_id ON downloads(fileId);
-      `;
+  /**
+   * Versioned schema migration runner (INFRA-7).
+   *
+   * The schema version lives in SQLite's `PRAGMA user_version` (stored in
+   * the database file header). Every migration in migrations.ts with a
+   * version greater than the database's current version runs in order, each
+   * inside its own IMMEDIATE transaction; the version stamp is written
+   * inside that same transaction, so a failed migration rolls back
+   * completely and leaves the database at its prior version (fail closed —
+   * never a half-migrated database).
+   *
+   * A database stamped NEWER than this build supports is refused without
+   * being touched: writing to it could corrupt data created by a newer app.
+   *
+   * @param migrations overridable for tests; production uses MIGRATIONS.
+   */
+  private async runMigrations(migrations: readonly Migration[] = MIGRATIONS): Promise<void> {
+    // Sanity-check the migration list itself: strictly ascending versions.
+    for (let i = 1; i < migrations.length; i++) {
+      if (migrations[i].version <= migrations[i - 1].version) {
+        throw new Error(
+          `Migration list is not strictly ascending at index ${i} (v${migrations[i].version})`
+        );
+      }
+    }
 
-      this.db!.exec(sql, (err) => {
+    const currentVersion = await this.getSchemaVersion();
+    const targetVersion = migrations.length > 0
+      ? migrations[migrations.length - 1].version
+      : CURRENT_SCHEMA_VERSION;
+
+    if (currentVersion > targetVersion) {
+      throw new Error(
+        `This database uses schema version ${currentVersion}, but this version of ArDrive Desktop only supports up to version ${targetVersion}. ` +
+        'It was likely created by a newer version of the app. Please update ArDrive Desktop to open this profile.'
+      );
+    }
+
+    for (const migration of migrations) {
+      if (migration.version <= currentVersion) {
+        continue;
+      }
+      await this.applyMigration(migration);
+    }
+  }
+
+  /** Reads the schema version from the SQLite header (0 = fresh or legacy pre-framework DB). */
+  private async getSchemaVersion(): Promise<number> {
+    return new Promise((resolve, reject) => {
+      this.db!.get('PRAGMA user_version', (err, row: { user_version?: number } | undefined) => {
         if (err) {
           reject(err);
         } else {
-          resolve();
+          resolve(row?.user_version ?? 0);
         }
-      });
-    });
-  }
-  
-  private async runMigrations(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // First, check if schema_version table exists
-      this.db!.get(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'",
-        async (err, row) => {
-          if (err) {
-            reject(err);
-            return;
-          }
-          
-          let currentVersion = 0;
-          
-          if (row) {
-            // Get current schema version
-            this.db!.get(
-              "SELECT MAX(version) as version FROM schema_version",
-              async (err, versionRow: any) => {
-                if (err) {
-                  reject(err);
-                  return;
-                }
-                currentVersion = versionRow?.version || 0;
-                await this.applyMigrations(currentVersion, resolve, reject);
-              }
-            );
-          } else {
-            // No schema_version table means this is either a new database or pre-migration
-            // Check if any tables exist to determine if this is a legacy database
-            this.db!.get(
-              "SELECT name FROM sqlite_master WHERE type='table' AND name='uploads'",
-              async (err, uploadsRow) => {
-                if (err) {
-                  reject(err);
-                  return;
-                }
-                
-                if (uploadsRow) {
-                  // Legacy database exists, start from version 1
-                  currentVersion = 1;
-                }
-                
-                await this.applyMigrations(currentVersion, resolve, reject);
-              }
-            );
-          }
-        }
-      );
-    });
-  }
-  
-  private async applyMigrations(currentVersion: number, resolve: () => void, reject: (error: any) => void): Promise<void> {
-    try {
-      if (currentVersion < 2) {
-        await this.migrateTo2();
-        
-        // Create schema_version table if it doesn't exist before recording
-        this.db!.run("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at DATETIME DEFAULT CURRENT_TIMESTAMP)", (createErr) => {
-          if (createErr) {
-            console.error('Failed to create schema_version table:', createErr);
-            reject(createErr);
-            return;
-          }
-          
-          // Now record the migration
-          this.db!.run("INSERT INTO schema_version (version) VALUES (2)", async (insertErr) => {
-            if (insertErr) {
-              console.error('Failed to record migration to version 2:', insertErr);
-              // Don't reject here - migration was successful even if recording failed
-            } else {
-              console.log('Migration to version 2 recorded successfully');
-            }
-            
-            // Check if we need migration to version 3
-            if (currentVersion < 3) {
-              await this.migrateTo3();
-              this.db!.run("INSERT INTO schema_version (version) VALUES (3)", (err) => {
-                if (err) {
-                  console.error('Failed to record migration to version 3:', err);
-                } else {
-                  console.log('Migration to version 3 recorded successfully');
-                }
-                resolve();
-              });
-            } else {
-              resolve();
-            }
-          });
-        });
-      } else if (currentVersion < 3) {
-        await this.migrateTo3();
-        this.db!.run("INSERT INTO schema_version (version) VALUES (3)", (err) => {
-          if (err) {
-            console.error('Failed to record migration to version 3:', err);
-          } else {
-            console.log('Migration to version 3 recorded successfully');
-          }
-          resolve();
-        });
-      } else {
-        resolve();
-      }
-    } catch (error) {
-      reject(error);
-    }
-  }
-  
-  private async migrateTo2(): Promise<void> {
-    // Migration to add multi-drive support
-    return new Promise((resolve, reject) => {
-      console.log('DatabaseManager - Migrating to schema version 2 (multi-drive support)');
-      
-      // First check which tables exist
-      const checkTablesQuery = `
-        SELECT name FROM sqlite_master 
-        WHERE type='table' AND name IN ('uploads', 'pending_uploads', 'processed_files', 'file_versions', 'file_operations', 'folder_structure', 'downloads')
-      `;
-      
-      this.db!.all(checkTablesQuery, (err, existingTables: any[]) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        
-        const tableNames = existingTables.map(row => row.name);
-        console.log('Existing tables for migration:', tableNames);
-        
-        const migrations: string[] = [];
-        
-        // Only add migrations for tables that exist
-        if (tableNames.includes('uploads')) {
-          migrations.push(
-            "ALTER TABLE uploads ADD COLUMN mappingId TEXT",
-            "ALTER TABLE uploads ADD COLUMN uploadMethod TEXT",
-            "ALTER TABLE uploads ADD COLUMN fileId TEXT"
-          );
-        }
-        
-        if (tableNames.includes('pending_uploads')) {
-          migrations.push("ALTER TABLE pending_uploads ADD COLUMN mappingId TEXT");
-        }
-        
-        if (tableNames.includes('processed_files')) {
-          migrations.push("ALTER TABLE processed_files ADD COLUMN mappingId TEXT");
-        }
-        
-        if (tableNames.includes('file_versions')) {
-          migrations.push("ALTER TABLE file_versions ADD COLUMN mappingId TEXT");
-        }
-        
-        if (tableNames.includes('file_operations')) {
-          migrations.push("ALTER TABLE file_operations ADD COLUMN mappingId TEXT");
-        }
-        
-        if (tableNames.includes('folder_structure')) {
-          migrations.push("ALTER TABLE folder_structure ADD COLUMN mappingId TEXT");
-        }
-        
-        if (tableNames.includes('downloads')) {
-          migrations.push("ALTER TABLE downloads ADD COLUMN mappingId TEXT");
-        }
-        
-        if (migrations.length === 0) {
-          console.log('No migrations needed - tables will be created with new schema');
-          resolve();
-          return;
-        }
-        
-        // Execute migrations one by one
-        let completed = 0;
-        const total = migrations.length;
-        
-        migrations.forEach((migration, index) => {
-          this.db!.run(migration, (err) => {
-            // Ignore errors for columns that may already exist
-            if (err && !err.message.includes('duplicate column name')) {
-              console.error(`Migration ${index + 1} failed:`, err);
-            } else if (!err) {
-              console.log(`Migration ${index + 1} completed successfully`);
-            }
-            
-            completed++;
-            if (completed === total) {
-              console.log('DatabaseManager - Schema migration to version 2 completed');
-              resolve();
-            }
-          });
-        });
       });
     });
   }
 
-  private async migrateTo3(): Promise<void> {
-    // Migration to add lastMetadataSyncAt column for sync coordination
-    return new Promise((resolve, reject) => {
-      console.log('DatabaseManager - Migrating to schema version 3 (metadata sync timestamp)');
-      
-      // Add lastMetadataSyncAt column to drive_mappings if it doesn't exist
-      this.db!.run(
-        "ALTER TABLE drive_mappings ADD COLUMN lastMetadataSyncAt DATETIME",
-        (err) => {
-          if (err && err.message.includes('duplicate column name')) {
-            console.log('lastMetadataSyncAt column already exists');
-            resolve();
-          } else if (err) {
-            console.error('Failed to add lastMetadataSyncAt column:', err);
-            reject(err);
-          } else {
-            console.log('Successfully added lastMetadataSyncAt column');
-            resolve();
-          }
-        }
+  /** Applies one migration atomically: BEGIN IMMEDIATE → sql → version stamp → COMMIT, ROLLBACK on any failure. */
+  private async applyMigration(migration: Migration): Promise<void> {
+    if (!Number.isInteger(migration.version) || migration.version <= 0) {
+      throw new Error(`Invalid migration version: ${migration.version}`);
+    }
+
+    const db = this.db!;
+    const exec = (sql: string) =>
+      new Promise<void>((resolve, reject) => {
+        db.exec(sql, (err) => (err ? reject(err) : resolve()));
+      });
+
+    console.log(
+      `DatabaseManager - applying schema migration v${migration.version} (${migration.description})`
+    );
+
+    await exec('BEGIN IMMEDIATE');
+    try {
+      await exec(migration.sql);
+      // Stamped inside the transaction: user_version lives in the database
+      // header, so ROLLBACK reverts it together with the schema changes.
+      await exec(`PRAGMA user_version = ${migration.version}`);
+      await exec('COMMIT');
+      console.log(`DatabaseManager - schema migrated to v${migration.version}`);
+    } catch (error) {
+      await exec('ROLLBACK').catch((rollbackError) => {
+        console.error(
+          'DatabaseManager - ROLLBACK after failed migration also failed:',
+          rollbackError
+        );
+      });
+      throw new Error(
+        `Database migration to schema v${migration.version} (${migration.description}) failed and was rolled back: ` +
+        `${error instanceof Error ? error.message : String(error)}`
       );
-    });
+    }
   }
 
   async addUpload(upload: Omit<FileUpload, 'createdAt'>): Promise<void> {
