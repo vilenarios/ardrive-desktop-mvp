@@ -493,6 +493,7 @@ const App: React.FC = () => {
 
   const handleDriveDeleted = async () => {
     // Drive was deleted, need to set up a new one
+    toast.info('Drive removed — choose or create a new drive');
     setDrive(null);
     setAppState('drive-setup');
   };
@@ -696,6 +697,7 @@ const App: React.FC = () => {
             syncStatus={syncStatus}
             syncProgress={syncProgress}
             uploads={uploads}
+            toast={toast}
             onLogout={handleLogout}
             onDriveDeleted={handleDriveDeleted}
             onSyncProgressClear={() => setSyncProgress(null)}
