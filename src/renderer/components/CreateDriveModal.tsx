@@ -97,10 +97,22 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
       setIsCreating(true);
       setError(null);
 
-      // Create the drive
-      const drive = drivePrivacy === 'private' 
+      // Create the drive.
+      // PRIV-3: drive:create-private returns a {success, data, error} envelope
+      // while drive:create still returns the raw drive (UX-3 unifies the
+      // shapes). The old code read `.id` off the wrapper, so every private
+      // creation reported failure AFTER the user had already paid on-chain.
+      const rawResult = drivePrivacy === 'private' 
         ? await window.electronAPI.drive.createPrivate(driveName.trim(), password)
         : await window.electronAPI.drive.create(driveName.trim(), drivePrivacy);
+      
+      let drive: any = rawResult;
+      if (rawResult && typeof rawResult === 'object' && 'success' in rawResult) {
+        if (!(rawResult as any).success) {
+          throw new Error((rawResult as any).error || 'Failed to create drive. Please try again.');
+        }
+        drive = (rawResult as any).data;
+      }
       
       if (!drive || !drive.id) {
         throw new Error('Failed to create drive. Please try again.');
@@ -113,6 +125,11 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
 
       // Create the drive mapping
       const driveMapping = {
+        // qa-gate finding: without an id the PRIMARY KEY is NULL and every
+        // later updateDriveMapping/removeDriveMapping silently no-ops
+        // (Settings folder change, rename). Same convention as
+        // DriveAndSyncSetup: drive id doubles as the mapping id.
+        id: drive.id,
         driveId: drive.id,
         driveName: drive.name,
         drivePrivacy: drive.privacy || drivePrivacy,

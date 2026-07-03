@@ -2796,6 +2796,14 @@ class ArDriveApp {
     // Drive mappings handlers
     ipcMain.handle('drive-mappings:add', safeIpcHandler(async (_, driveMapping: any) => {
       console.log('Adding drive mapping:', driveMapping);
+      
+      // PRIV-3: a mapping without its local folder leaves sync dead on
+      // arrival — create the folder alongside the mapping.
+      if (driveMapping?.localFolderPath) {
+        const validatedFolderPath = InputValidator.validateFilePath(driveMapping.localFolderPath, 'localFolderPath');
+        await fs.mkdir(validatedFolderPath, { recursive: true });
+      }
+      
       await databaseManager.addDriveMapping(driveMapping);
       return true;
     }));

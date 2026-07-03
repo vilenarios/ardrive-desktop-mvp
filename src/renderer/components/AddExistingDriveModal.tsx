@@ -69,6 +69,9 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
 
       // Create the drive mapping
       const driveMapping = {
+        // qa-gate finding (PRIV-3): id must be set or the mapping row's
+        // PRIMARY KEY is NULL and updates/removals silently no-op.
+        id: selectedDrive.id,
         driveId: selectedDrive.id,
         driveName: selectedDrive.name,
         drivePrivacy: selectedDrive.privacy || 'private',
