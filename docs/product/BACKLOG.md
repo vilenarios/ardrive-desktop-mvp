@@ -30,7 +30,7 @@ Note 2026-07-03: done — merged from `fix/SEC-2-env-gate` (f14755d) after qa-ga
 **Stop sync on logout and profile switch.** Evidence: §4.9 (no stopSync in `wallet:logout`/`profiles:switch`; sync-manager holds own ArDrive ref; startSync early-returns when monitoring).
 Fix: `await syncManager.stopSync()` + clear its ArDrive/drive state in both paths; make `startSync` re-target when drive/folder differ.
 Acceptance: after logout, no chokidar watcher is active and syncManager holds no wallet-bearing object; switching profiles then starting sync watches the new profile's folder/drive.
-Note 2026-07-03: done — merged from `fix/SEC-3-sync-logout` (0ed4d21 + QA-finding 23a3126) after qa-gate PASS (static — Electron IPC dispatch only; sever/re-target behavior exercised with real chokidar probes). stopAndClearAllState() wired into wallet:logout, wallet:clear-stored, profiles:switch (same-profile no-op via new raw getActiveProfileId()); startSync re-targets on drive/folder change. Known interplay: progress emission after stop→start stays dead until SYNC-4.
+Note 2026-07-03: done — merged from `fix/SEC-3-sync-logout` (0ed4d21 + QA-finding 23a3126) after qa-gate PASS (static — Electron IPC dispatch only; sever/re-target behavior exercised with real chokidar probes). stopAndClearAllState() wired into wallet:logout, wallet:clear-stored, profiles:switch (same-profile no-op via new raw getActiveProfileId()); startSync re-targets on drive/folder change. Known interplay: progress emission after stop→start stays dead until SYNC-4 (resolved 2026-07-03 — SYNC-4 merged).
 
 ### SEC-4 · P1 · Phase 3 · `todo`
 **Keychain password storage: consent + lifecycle.** Evidence: §4.2.
@@ -172,6 +172,7 @@ Acceptance: dropping an oversized file shows a visible "too large" entry; a mult
 **Kill the folder-vs-drive divergence.** Evidence: §2.8 (`sync:start` watches `config.syncFolder` while syncing the active mapping's drive; `drive:switchTo` never updates config).
 Fix: single source of truth = active drive mapping's `localFolderPath`; migrate `config.syncFolder` readers (OverviewTab, StorageTab, Settings, modals' base-folder heuristics).
 Acceptance: after switching drives, the watched folder, UI-displayed folder, and upload target always agree.
+QA finding 2026-07-03 (SYNC-4 gate): tray "Resume Sync" (main.ts:383) restarts drives[0], not the active mapping — same divergence family; fix here.
 
 ### SYNC-8 · P1 · Track C · `deferred`
 **Remote change polling.** Evidence: §2.13 (no periodic remote sync while monitoring; `sync:manual` is download-only misnomer). Beta ships "remote changes appear on manual sync / restart" — document it. Efficient polling wants CORE-2 (incremental listing upstream) — full-listing polls are wasteful on large drives.
