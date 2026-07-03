@@ -41,6 +41,7 @@ Three roles, one loop. This doc is the contract between them.
 - **Secrets**: no key material/passwords/seeds in code, logs, tests, fixtures, or reports. QA greps for this every gate.
 - **Git**: agents never push or merge. Branch-per-item; PM keeps main green; merges are Phil's (default). Phil can delegate ("auto-merge QA-passed P2s") — record that as a DECISIONS entry when given.
 - **Regression floor**: the full test suite runs at every gate; any regression anywhere fails the gate regardless of the item under review. Every merged P0/P1 grows the suite, so the floor rises as we go.
+- **Post-merge full suite is mandatory whenever any CODE commit landed on main after the gated branch's base** (docs-only deltas may skip it). A branch's gate proves the branch, not the combination — semantic conflicts auto-merge textually and break behaviorally (proven 2026-07-03: SYNC-3 + INFRA-7 both green individually, red combined). If red: hotfix branch immediately, priority over all lanes; the merger's session owns the reconciliation.
 - **User data**: no agent touches real profile data under `userData/`. UAT uses disposable test profiles.
 
 ## Multi-session coordination
