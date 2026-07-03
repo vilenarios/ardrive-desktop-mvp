@@ -14,10 +14,11 @@ Working an item: set `in-progress`, implement, verify per the acceptance criteri
 
 ## SEC — Security & data safety
 
-### SEC-1 · P0 · Phase 1 · `todo`
+### SEC-1 · P0 · Phase 1 · `done`
 **Stop logging the private-drive key on creation.** Evidence: AUDIT §6.5 (wallet-manager-secure.ts:1179; same pattern :625).
 Fix: remove/redact the `JSON.stringify(result)` logs; route through secure-logger.
 Acceptance: creating a private drive emits no key material to stdout/logs; grep for `JSON.stringify(result` in wallet-manager-secure.ts is clean.
+Done 2026-07-03 (8172c3f, qa-gate PASS — dynamically exercised + mutation-checked): all raw ArFSResult logging replaced with whitelist `summarizeArFSResult()` (new src/main/utils/arfs-result-summary.ts); includes two self-found leaks in sync-manager upload paths beyond the audited sites; sentinel leak-test covers URL-encoded and raw-bytes vectors (115+1 green).
 
 ### SEC-2 · P0 · Phase 1 · `in-progress`
 **Gate `system:get-env` behind dev mode.** Evidence: §6.4 (main.ts:2891-2898).

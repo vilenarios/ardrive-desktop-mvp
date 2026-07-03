@@ -15,6 +15,7 @@ import { DownloadManager } from './sync/DownloadManager';
 import { FolderOperationDetector, OperationDetection } from './sync/FolderOperationDetector';
 import { FileOperationDetector } from './sync/FileOperationDetector';
 import { driveKeyManager } from './drive-key-manager';
+import { summarizeArFSResult } from './utils/arfs-result-summary';
 
 interface SyncProgress {
   phase?: string;
@@ -2280,7 +2281,9 @@ export class SyncManager {
       // Upload file using ArDrive Core's recommended API
       const result = await this.arDrive!.uploadAllEntities(uploadOptions);
 
-      console.log('ArDrive Core upload result:', result);
+      // SEC-1: never log the raw ArFSResult — for private uploads,
+      // created[].key carries the drive/file key. Log a key-free summary.
+      console.log('ArDrive Core upload result:', summarizeArFSResult(result));
       
       // Process the upload result
       await this.processUploadResult(upload, result);
@@ -2336,7 +2339,8 @@ export class SyncManager {
             const retryResult = await this.arDrive!.uploadAllEntities(retryOptions);
             
             // If retry succeeded, process the result
-            console.log('Retry successful:', retryResult);
+            // SEC-1: key-free summary only (raw ArFSResult can carry keys)
+            console.log('Retry successful:', summarizeArFSResult(retryResult));
             return this.processUploadResult(upload, retryResult);
             
           } catch (retryError) {
