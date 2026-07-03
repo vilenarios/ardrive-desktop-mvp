@@ -146,10 +146,11 @@ Acceptance: killing the network mid-download leaves the row `failed` with retry 
 Fix: on DB init, reset rows stuck in `uploading`→`pending`(re-approval-safe) and `downloading`/`queued`→`pending`; rehydrate queues from DB; add CHECK constraints on status columns (needs INFRA-7 migrations).
 Acceptance: kill -9 during an upload+download; relaunch resumes/requeues both; nothing remains stuck.
 
-### SYNC-4 · P0 · Phase 2 · `in-progress`
+### SYNC-4 · P0 · Phase 2 · `done`
 **Fix stop→start lifecycle.** Evidence: §2.6 (destroyed DownloadManager/SyncProgressTracker never rebuilt).
 Fix: recreate (or make restartable) the tracker and download manager on start; drive switch must not leave progress reporting dead.
 Acceptance: stop sync → start sync → upload/download progress still reaches the UI.
+Done 2026-07-03 (f005afc, qa-gate PASS static — download chain driven end-to-end post-restart incl. the throttled path; upload half static-verified): ensureStarted() heals tracker + download manager after any stop/switch/logout; tray pause/resume path healed; discharges SEC-3's interplay note. Minor QA notes: 100%-emissions while destroyed possible (cosmetic); failed startSync leaves no-op intervals until next stop.
 
 ### SYNC-5 · P0 · Phase 2 · `todo`
 **Deletes propagate as ArFS hide — Dropbox-smooth.** Evidence: §2.4. Per D-011 (supersedes the disclose-only plan): local file/folder deletion → ArFS hide operation, through the approval queue like other metadata ops; wire the dead detection cache into consumption; implement the `hide`/`unhide` branch that currently throws (sync-manager.ts:3249-3253); private-drive hide paths too (upstream ardrive-core-js work allowed per D-016); honest permanence messaging in UI ("hidden, not erased — permanent storage cannot delete").
