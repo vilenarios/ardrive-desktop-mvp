@@ -40,7 +40,6 @@
       "Bash(npm audit:*)",
       "Bash(npm ls:*)",
       "Bash(npm outdated)",
-      "Bash(npx jest:*)",
       "Bash(awk:*)",
       "Bash(python:*)",
       "Bash(set WIN_CSC_LINK=none)",

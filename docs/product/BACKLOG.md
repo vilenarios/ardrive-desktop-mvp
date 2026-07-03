@@ -307,8 +307,8 @@ Fix: resolve the `ecc library invalid` import failure (mock/alias the transitive
 Acceptance: `npx vitest --run` green locally and in CI; ≥1 real behavioral test per P0 fix shipped in Phases 1–3.
 
 ### INFRA-3 · P0 · Phase 4 · `todo`
-**Gate CI on quality.** Evidence: §6.7 (no typecheck/lint step; tests continue-on-error; no Linux job).
-Acceptance: typecheck + lint + tests are required steps; Linux build job added or Linux support explicitly dropped from docs.
+**Gate CI on quality.** Evidence: §6.7 (no typecheck/lint step; tests continue-on-error; no Linux job). QA finding 2026-07-03: `npm run typecheck` never checks `tests/` (tsconfig include is `src/**/*`) — add a tests-covering typecheck (e.g. `tsconfig.tests.json`) to the gate, and make the CI test step an explicit `vitest --run`.
+Acceptance: typecheck (src + tests) + lint + tests are required steps; Linux build job added or Linux support explicitly dropped from docs.
 
 ### INFRA-4 · P1 · Phase 4 · `todo`
 **Auto-update for beta iteration.** Evidence: §6.9. electron-updater + GitHub Releases `publish` config; unsigned-update caveats documented for beta (per D-004).
