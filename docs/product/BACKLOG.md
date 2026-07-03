@@ -180,10 +180,11 @@ ESCALATION 2026-07-03 (worktree session, scope discovery): NO version of ardrive
 **HARD DEPENDENCY: SYNC-10 must land first** — current whole-file-in-memory hashing (×3 per event) is fatal at 2 GiB.
 Acceptance: dropping an oversized file shows a visible "too large" entry; a multi-GB file uploaded via web downloads successfully with flat memory.
 
-### SYNC-7 · P0 · Phase 2 · `in-progress`
+### SYNC-7 · P0 · Phase 2 · `done`
 **Kill the folder-vs-drive divergence.** Evidence: §2.8 (`sync:start` watches `config.syncFolder` while syncing the active mapping's drive; `drive:switchTo` never updates config).
 Fix: single source of truth = active drive mapping's `localFolderPath`; migrate `config.syncFolder` readers (OverviewTab, StorageTab, Settings, modals' base-folder heuristics).
 Acceptance: after switching drives, the watched folder, UI-displayed folder, and upload target always agree.
+Done 2026-07-03 (branch fix/SYNC-7-folder-truth incl. f56176b tray fix, qa-gate FAIL→fix→PASS static): active mapping is the source of truth; config.syncFolder healed as a mirror at switch/start; tray Resume restarts the ACTIVE mapping (integer-boolean safe), not drives[0]; PRIV-5 interference probed clean (locked-drive switch cannot lie, recovers fully).
 QA finding 2026-07-03 (SYNC-4 gate): tray "Resume Sync" (main.ts:383) restarts drives[0], not the active mapping — same divergence family; fix here.
 
 ### SYNC-8 · P1 · Track C · `deferred`
@@ -194,6 +195,7 @@ QA finding 2026-07-03 (SYNC-4 gate): tray "Resume Sync" (main.ts:383) restarts d
 Fix: surface metadata-sync failures (no silent "continuing anyway"); watcher error → user-visible sync error state; startSync failure at boot retries with backoff or shows actionable state. Beta gateway minimum per D-012: no single-gateway hard dependency — `turbo-gateway.com` primary with simple failover (full Wayfinder routing = SYNC-15).
 Acceptance: pulling the network cable yields a visible degraded-sync state, not a silent healthy-looking app.
 QA finding 2026-07-03 (SYNC-2 gate): `isPermanentError` substring-matches messages that now embed user paths — a filename containing "404"/"file not found" misclassifies as permanent; harden to error codes/classes.
+QA findings 2026-07-03 (SYNC-7 gate, filed by PM after routing-claim audit found them missing): (a) no-profile heal edge — the config-mirror heal path when no profile is active needs a guard; (b) boot mirror fragility — boot-time folder resolution still trusts the config mirror before the mapping heal runs; harden boot to resolve from the mapping directly.
 
 ### SYNC-10 · P1 · Phase 2 · `todo`
 **Perf: streaming hash + indexed lookups.** Evidence: §2.12 (whole-file reads ×3 per event; full-table `getProcessedFiles` per event). Promoted from Track C per D-014 — hard prerequisite for the 2 GiB upload cap (SYNC-6).
@@ -313,7 +315,7 @@ Acceptance: a failed sync shows the error and the modal is dismissible; no infin
 Acceptance: copied links resolve; files without a dataTxId offer no raw-gateway link.
 
 ### UX-11 · P2 · Track D · `todo`
-**Small-wiring batch**: rename doesn't refresh drive name (OverviewTab); DownloadQueueTab retry/pause/resume props never passed + not drive-filtered; UserMenu turbo refresh doesn't update displayed balance; `App.tsx:291` sets active drive to `drivesList[0]` on any drive:update; Permaweb copy-link feedback console-only; StorageTab `parentFolderId: ''` TODO; TurboCreditsManager shares one `loading` flag between mount-time balance load and checkout — Pay button can re-enable while a checkout session is pending (implementer finding 2026-07-03); WalletExport `handleCopy` schedules an unmanaged 30s clipboard-clear setTimeout that survives unmount and can blank unrelated clipboard content (QA finding 2026-07-03); Settings' displayed folder is local state seeded once from config — won't reflect external changes while open (QA finding, UX-2 gate). Evidence: §5.6, §5.8.
+**Small-wiring batch**: CreateDriveModal setActive-without-switch divergence — creating a drive sets it active without running the switch heal, so folder/mapping can diverge until next real switch (QA finding 2026-07-03, SYNC-7 gate, filed by PM); rename doesn't refresh drive name (OverviewTab); DownloadQueueTab retry/pause/resume props never passed + not drive-filtered; UserMenu turbo refresh doesn't update displayed balance; `App.tsx:291` sets active drive to `drivesList[0]` on any drive:update; Permaweb copy-link feedback console-only; StorageTab `parentFolderId: ''` TODO; TurboCreditsManager shares one `loading` flag between mount-time balance load and checkout — Pay button can re-enable while a checkout session is pending (implementer finding 2026-07-03); WalletExport `handleCopy` schedules an unmanaged 30s clipboard-clear setTimeout that survives unmount and can blank unrelated clipboard content (QA finding 2026-07-03); Settings' displayed folder is local state seeded once from config — won't reflect external changes while open (QA finding, UX-2 gate). Evidence: §5.6, §5.8.
 
 ### UX-12 · P2 · Track D · `todo`
 **Move wallet keygen off the main process** (worker thread) + real progress. Evidence: §4.4.
