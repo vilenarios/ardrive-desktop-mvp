@@ -415,9 +415,10 @@ Acceptance: every updatable field maps (compile-time-checked map or exhaustive s
 
 Handled by the `designer` agent. Token-driven, light+dark, mirrors ardrive-web's `ardrive_ui` + the public site. DESIGN-1→2 are the sequential foundation; DESIGN-3+ fan out in parallel. Design flows through the loop (designer → qa-gate for correctness/no-regression/token-purity/contrast → Phil aesthetic sign-off via INFRA-12 screenshots).
 
-### DESIGN-1 · P1 · Design · `todo`
+### DESIGN-1 · P1 · Design · `done`
 **Extract the ArDrive design system → docs/product/DESIGN-SYSTEM.md.** Foundation for everything else. Distill tokens (color palette light+dark, typography scale, spacing, radii, shadows, motion) and component patterns from ardrive-web `packages/ardrive_ui` + `lib/theme/{colors,theme}.dart` + the public site (https://ardriveapp.github.io/public-site/). Opus-tier (taste + synthesis).
 Acceptance: DESIGN-SYSTEM.md defines a complete, implementable token set (both themes) + component-pattern specs, cited to ardrive-web/public-site sources.
+Done 2026-07-03 (D-024, Phil signed off): DESIGN-SYSTEM.md landed — full light+dark token set, type scale, components, application map, DESIGN-2 impl plan. 5 aesthetic calls resolved: replace off-brand palette; two-red split; darken hover; lighter dark ladder; **system fallback font stack (no Wavehaus bundling)**.
 
 ### DESIGN-2 · P1 · Design · `todo`
 **Desktop theme/token foundation.** Implement the DESIGN-1 tokens as a CSS-variable theme layer in the renderer + a light/dark ThemeProvider; migrate the scattered hardcoded colors in src/renderer/styles/* to tokens. Prereq for all restyling. DEPENDS: DESIGN-1.

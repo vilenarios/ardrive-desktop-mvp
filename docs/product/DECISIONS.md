@@ -125,3 +125,13 @@ Phil: "spin up a designer agent … a beautifully styled app that is familiar, s
 - **Parallelism**: runs concurrently with functional Phase-2 work. Lane rule: a DESIGN item and a functional item touching the SAME component serialize (styling/markup vs logic usually separable, but not always).
 - **Beta bar**: DESIGN-1/2 (foundation) targeted for beta; per-surface polish (DESIGN-3+) rolls through beta → GA.
 
+## D-024 · Design system signed off; system fallback font stack (no Wavehaus bundling) · CONFIRMED · 2026-07-03
+
+Phil reviewed DESIGN-1 (docs/product/DESIGN-SYSTEM.md) and made the 5 aesthetic calls:
+1. Replace the current off-brand palette (accidental Tailwind + Apple fonts) wholesale — YES.
+2. Two brand reds kept: `--brand #D31721` (buttons/CTA) + `--accent #FE0230` (logo / accent top-bar) — matches the public site.
+3. Light-mode brand hover **darkens** (`--brand-hover #B8141C`), deviating from ardrive_ui's literal lighten.
+4. Dark theme uses the lighter, public-site-aligned ladder (`--surface #121212`, cards `#1E1E1E`), not near-black.
+5. **Font: system fallback stack — Wavehaus NOT bundled** (proprietary; not clearing desktop licensing). Optional future: a free OFL geometric sans (Manrope/Inter) as a drop-in brand upgrade.
+DESIGN-2 implements the CSS-variable token layer + ThemeProvider from this doc.
+
