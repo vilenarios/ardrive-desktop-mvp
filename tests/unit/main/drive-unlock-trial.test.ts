@@ -97,8 +97,11 @@ describe('unlockPrivateDrive trial decryption (PRIV-2)', () => {
   });
 
   it('rejects a wrong password and caches nothing', async () => {
-    // ardrive-core-js surfaces wrong keys as decryption failures
-    mockGetPrivateDrive.mockRejectedValue(new Error('Error decrypting drive metadata'));
+    // The REAL error Node's GCM throws on a wrong key, propagated raw by
+    // ardrive-core-js (qa-gate captured it empirically)
+    mockGetPrivateDrive.mockRejectedValue(
+      new Error('Unsupported state or unable to authenticate data')
+    );
 
     const result = await walletManager.unlockPrivateDrive(DRIVE_ID, 'wrong-password');
 
@@ -124,6 +127,21 @@ describe('unlockPrivateDrive trial decryption (PRIV-2)', () => {
 
   it('does not report a network failure as an invalid password', async () => {
     mockGetPrivateDrive.mockRejectedValue(new Error('connect ETIMEDOUT 1.2.3.4:443'));
+
+    const result = await walletManager.unlockPrivateDrive(DRIVE_ID, 'correct-password');
+
+    expect(result.success).toBe(false);
+    expect(result.error).not.toMatch(/Invalid password/);
+    expect(result.error).toMatch(/Could not verify/);
+    expect(driveKeyManager.cacheKey).not.toHaveBeenCalled();
+  });
+
+  it('does not report a gateway 502 as an invalid password', async () => {
+    // Real gateway error string (contains "Bad Gateway", which the first
+    // keyword-based classifier wrongly matched as a password failure)
+    mockGetPrivateDrive.mockRejectedValue(
+      new Error('Request to gateway has failed: (Status: 502) Bad Gateway')
+    );
 
     const result = await walletManager.unlockPrivateDrive(DRIVE_ID, 'correct-password');
 

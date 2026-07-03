@@ -1206,9 +1206,17 @@ export class SecureWalletManager {
         await this.arDrive.getPrivateDrive({ driveId: EID(driveId), driveKey });
       } catch (trialError) {
         const message = trialError instanceof Error ? trialError.message : String(trialError);
-        // Decryption/auth failures mean a wrong password; anything else
-        // (network, gateway) must not masquerade as "invalid password".
-        if (/decrypt|cipher|auth|tag|bad|invalid/i.test(message)) {
+        // Only the known decrypt/auth failure strings mean a wrong password
+        // (Node GCM: "Unsupported state or unable to authenticate data";
+        // ardrive-core drive builder: "Invalid drive state" / decrypt errors).
+        // Anything else (gateway 5xx, network) must NOT masquerade as
+        // "invalid password" — qa-gate probe: a 502's "Bad Gateway" matched
+        // the previous keyword regex.
+        const isDecryptionFailure =
+          /unsupported state or unable to authenticate data/i.test(message) ||
+          /invalid drive state/i.test(message) ||
+          /error decrypting/i.test(message);
+        if (isDecryptionFailure) {
           console.log(`❌ Trial decryption failed for drive ${driveId.slice(0, 8)}... — wrong password`);
           return { success: false, error: 'Invalid password. Please check your password and try again.' };
         }
