@@ -28,6 +28,10 @@ import TurboComingSoonTab from './turbo/TurboComingSoonTab';
 interface TurboCreditsManagerProps {
   walletInfo: WalletInfo;
   onClose: () => void;
+  // MONEY-6: return-value-based wallet refresh supplied by App via Dashboard;
+  // called on payment completion so App's walletInfo updates even though its
+  // wallet-info-updated event listener may already be dead (UX-4 clobber).
+  onWalletRefresh?: () => void | Promise<void>;
 }
 
 interface TurboBalance {
@@ -42,7 +46,7 @@ interface FiatEstimate {
   winc: string;
 }
 
-const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, onClose }) => {
+const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, onClose, onWalletRefresh }) => {
   const [balance, setBalance] = useState<TurboBalance | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +105,11 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
       console.log('Payment completed, refreshing balance...');
       setSuccessMessage('Payment successful! Your Turbo Credits balance is being updated...');
       setTimeout(() => setSuccessMessage(null), 5000);
-      
+
+      // MONEY-6: also push the fresh balance up to App by return value —
+      // App's wallet-info-updated listener cannot be relied on (UX-4).
+      onWalletRefresh?.();
+
       // Refresh balance after a short delay
       setTimeout(() => {
         loadTurboBalance();

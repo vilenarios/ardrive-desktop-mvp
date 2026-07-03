@@ -277,6 +277,7 @@ Also (PRIV-2 qa-gate findings 2026-07-03): the specific unlock error plumbed thr
 ### UX-4 · P1 · Phase 3 · `todo`
 **Redesign preload event subscriptions.** Evidence: §5.4 (removeAllListeners clobbering family + StorageTab leak + App's uncleaned registrations).
 Fix: preload `on*` methods return an unsubscribe function bound to the specific wrapped listener; components clean up their own; delete `remove*Listener` global-nuke helpers.
+MONEY-6 QA finding 2026-07-03: D1 concrete instance — first TurboCreditsManager close kills App's wallet-info-updated listener for the session (all consumers dead); interim mitigation shipped in MONEY-6 (return-value refresh on manager close); root fix remains this item.
 Acceptance: visiting Turbo screen / Permaweb tab / upload queue no longer kills sibling listeners (regression test: balance updates still arrive after opening+closing Turbo manager).
 
 ### UX-5 · P1 · Phase 3 · `todo`

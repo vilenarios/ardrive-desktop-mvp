@@ -46,6 +46,26 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // MONEY-6: pull-based wallet refresh using the IPC RETURN VALUE, not the
+  // wallet-info-updated event. The event path is dead after the first
+  // TurboCreditsManager unmount (its cleanup calls the preload's global
+  // removeAllListeners('wallet-info-updated'), killing this component's
+  // listener for the session — UX-4 owns the root fix). Dashboard calls this
+  // when the Turbo manager closes so blocked queue rows see the post-top-up
+  // balance.
+  const refreshWalletInfo = async () => {
+    try {
+      const freshWalletInfo = await window.electronAPI.wallet.getInfo(true);
+      // Guard: never clear walletInfo on a null/failed fetch — App only
+      // renders the dashboard while walletInfo is set.
+      if (freshWalletInfo) {
+        setWalletInfo(freshWalletInfo);
+      }
+    } catch (error) {
+      console.error('Failed to refresh wallet info:', error);
+    }
+  };
+
   const initializeApp = async () => {
     console.log('🔴 [RENDERER] initializeApp called at:', new Date().toISOString());
     try {
@@ -701,6 +721,7 @@ const App: React.FC = () => {
             onLogout={handleLogout}
             onDriveDeleted={handleDriveDeleted}
             onSyncProgressClear={() => setSyncProgress(null)}
+            onRefreshWalletInfo={refreshWalletInfo}
             onRefreshUploads={async () => {
               try {
                 const uploadData = await window.electronAPI.files.getUploads();
