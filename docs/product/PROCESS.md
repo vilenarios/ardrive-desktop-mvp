@@ -48,6 +48,7 @@ Three roles, one loop. This doc is the contract between them.
 - **BACKLOG.md is the claim ledger.** Any session (PM-driven or a parallel session Phil runs) claims an item by committing its status flip to `in-progress`. Before dispatching, the PM checks item status and recent `git log` for claims. Never double-claim.
 - **File-overlap rule extends across sessions**: an item whose files overlap a claimed item waits (main.ts remains the biggest serialization point).
 - **Direct instructions from Phil to any agent win** over that agent's standing rails; the agent notes the instruction in its report and the PM reconciles the record afterward. Route follow-ups on *finished* items through the PM to keep one writer per checkout.
+- **Orphaned verdicts route to the PM.** If a QA gate (or implementer) finishes and its requesting session is unreachable, its report lands with the main conversation; the PM adjudicates, makes any required records, and closes the item out. A QA PASS conditioned on an unrecorded decision is not merge-ready until the PM records that decision (this happened on UX-1 — the gate was right to insist).
 
 ## Escalation to Phil (PM must stop and ask)
 
