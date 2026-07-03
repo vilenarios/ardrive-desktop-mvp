@@ -607,6 +607,27 @@ describe('SyncManager', () => {
       expect(vi.mocked(chokidar.watch)).not.toHaveBeenCalled();
     });
 
+    it('manual sync on a locked engine target fails loudly too (no empty-wipe)', async () => {
+      // qa-gate finding: sync:manual could still empty-wipe a locked drive
+      // that was already the engine's nominal target
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      syncManager['driveId'] = testDriveId;
+      syncManager['rootFolderId'] = testRootFolderId;
+
+      await expect(syncManager.forceDownloadExistingFiles())
+        .rejects.toThrow(/Secret Drive.*locked — unlock it to sync/);
+    });
+
+    it('a failed locked start leaves no nominal drive target', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+
+      await expect(syncManager.startSync(testDriveId, testRootFolderId)).rejects.toThrow(/locked/);
+
+      // qa-gate finding: the lingering target enabled later manual empty-wipes
+      expect(syncManager['driveId']).toBeNull();
+      expect(syncManager['rootFolderId']).toBeNull();
+    });
+
     it('syncs an unlocked private drive normally', async () => {
       mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
       driveKeyManager.cacheKey(testDriveId, { keyData: Buffer.from('k') } as any);
