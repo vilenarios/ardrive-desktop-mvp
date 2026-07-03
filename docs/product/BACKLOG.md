@@ -222,7 +222,7 @@ Acceptance: round-trip UAT — upload to private drive, delete locally, re-downl
 Acceptance: wrong password → `success: false`, nothing cached; correct password → decrypted drive name renders.
 Note 2026-07-03: done — merged from `fix/PRIV-2-trial-decrypt` (053385e + QA-finding 094f093) after qa-gate PASS (static — GUI render of the decrypted name verified at handler/component level). deriveKey/cacheKey split; unlockPrivateDrive trial-decrypts the drive entity before caching (only real decrypt/auth error strings classify as wrong password — gateway errors report a verification failure); DriveSelector envelope-as-boolean bug fixed (§5.3.6).
 
-### PRIV-3 · P0 · Phase 2 · `todo`
+### PRIV-3 · P0 · Phase 2 · `in-progress`
 **Fix private-drive create UX.** Evidence: §3.3 (user pays, UI says failed, no mapping). Root cause is UX-3's envelope mismatch — fix both handler shape and modal expectations together; create mapping + sync folder on success.
 
 ### PRIV-4 · P0 · Phase 3 · `todo`
