@@ -114,7 +114,7 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ github.ref_name || format('v0.0.{0}-test', github.run_number) }}
-        name: ${{ github.ref_name || format('Test Build #{0}', github.run_number) }}
+        name: "${{ github.ref_name || format('Test Build {0}', github.run_number) }}"
         draft: ${{ github.event.inputs.build_type == 'test' }}
         prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         generate_release_notes: true
