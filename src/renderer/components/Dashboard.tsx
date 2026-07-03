@@ -568,7 +568,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const handleApproveUpload = async (uploadId: string, uploadMethod?: 'ar' | 'turbo', metadata?: any) => {
+  // Turbo-only (D-010): 'turbo' is the only upload method the queue submits
+  const handleApproveUpload = async (uploadId: string, uploadMethod?: 'turbo', metadata?: any) => {
     try {
       // TODO: Handle metadata parameter when API supports it
       await window.electronAPI.uploads.approve(uploadId, uploadMethod);
@@ -916,6 +917,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     onRefreshBalance={handleRefreshBalance}
                     onRefreshPendingUploads={loadPendingUploads}
                     onRefreshUploads={onRefreshUploads}
+                    onTopUpCredits={() => setShowTurboManager(true)}
                     walletInfo={walletInfo}
                   />
                 ) : (

@@ -63,7 +63,10 @@ export interface FileUpload {
   fileSize: number;
   status: 'pending' | 'uploading' | 'completed' | 'failed';
   progress: number;
-  uploadMethod?: 'ar' | 'turbo';  // Method used for upload
+  // Payment rail recorded at approval. New records are always 'turbo'
+  // (Turbo-only beta, D-010/MONEY-1); 'ar' remains in the type only because
+  // historical DB rows written before MONEY-1 may carry it.
+  uploadMethod?: 'ar' | 'turbo';
   dataTxId?: string;      // ArFS Data Transaction ID (actual file content)
   metadataTxId?: string;  // ArFS Metadata Transaction ID (file info)
   transactionId?: string; // Legacy field for backward compatibility
@@ -128,7 +131,10 @@ export interface PendingUpload {
   mimeType?: string;            // MIME type of the file
   estimatedCost: number; // in AR tokens
   estimatedTurboCost?: number | null; // in Turbo Credits (AR equivalent); null = no real quote available ("estimate unavailable", MONEY-3)
-  recommendedMethod?: 'ar' | 'turbo'; // Recommended upload method
+  // Legacy recommendation stamped at detection time (CostCalculator). The
+  // approve path no longer reads it — uploads are Turbo-only (D-010/MONEY-1).
+  // Kept because historical DB rows carry it and sync-manager still writes it.
+  recommendedMethod?: 'ar' | 'turbo';
   hasSufficientTurboBalance?: boolean; // Whether user has enough Turbo Credits
   conflictType?: 'none' | 'duplicate' | 'filename_conflict' | 'content_conflict';
   conflictDetails?: string;

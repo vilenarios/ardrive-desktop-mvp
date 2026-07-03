@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  RotateCcw, AlertTriangle, CheckCircle2, Upload, X, Zap, 
-  ChevronDown, ChevronRight, Wallet, Loader2, RefreshCw, 
+import {
+  RotateCcw, AlertTriangle, CheckCircle2, Upload, X, Zap,
+  ChevronDown, Wallet, Loader2, RefreshCw,
   Folder, FileText, Edit3, Move, Eye, EyeOff, Trash2,
   Info, DollarSign, CreditCard, ArrowRight
 } from 'lucide-react';
@@ -16,13 +16,19 @@ import StatusPill, { UploadStatus } from './common/StatusPill';
 
 interface UploadApprovalQueueModernProps {
   pendingUploads: PendingUpload[];
-  onApproveUpload: (uploadId: string, uploadMethod?: 'ar' | 'turbo', metadata?: CustomMetadata) => void;
+  // Uploads execute via Turbo only (D-010) — 'turbo' is the only method the
+  // queue ever submits. The parameter survives so the IPC argument stays
+  // explicit and assertable.
+  onApproveUpload: (uploadId: string, uploadMethod?: 'turbo', metadata?: CustomMetadata) => void;
   onRejectUpload: (uploadId: string) => void;
   onApproveAll: () => void;
   onRejectAll: () => void;
   onRefreshBalance?: () => void;
   onRefreshPendingUploads?: () => void;
   onRefreshUploads?: () => void;
+  // Opens the Turbo Credits manager (top-up). Optional: without it the
+  // insufficient-balance reason renders as plain text.
+  onTopUpCredits?: () => void;
   walletInfo?: {
     balance: string;
     turboBalance?: string;
@@ -49,6 +55,7 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
   onRefreshPendingUploads,
   onRefreshUploads,
   onRefreshBalance,
+  onTopUpCredits,
   walletInfo
 }) => {
   const [selectedUploads, setSelectedUploads] = useState<Set<string>>(new Set());
@@ -59,10 +66,10 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
   const [showTemplateManager, setShowTemplateManager] = useState(false);
   const [metadataTemplates, setMetadataTemplates] = useState<MetadataTemplate[]>([]);
   
-  // Progressive disclosure state
-  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'auto' | 'ar' | 'turbo'>('auto');
-  
+  // Visible reason after Approve & Upload skips rows the Turbo balance
+  // cannot cover (MONEY-1)
+  const [balanceSkippedCount, setBalanceSkippedCount] = useState(0);
+
   // Track uploading state for files
   const [uploadingFiles, setUploadingFiles] = useState<Map<string, { progress: number; status: UploadStatus; error?: string }>>(new Map());
   const [processingFiles, setProcessingFiles] = useState<Set<string>>(new Set());
@@ -133,18 +140,19 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
     };
   }, [pendingUploads, onRejectUpload, onRefreshBalance]);
 
-  // Calculate upload cost breakdown
+  // Calculate upload cost breakdown. Everything is paid via Turbo (D-010) —
+  // files either have a real Turbo quote, are free-tier, or have no quote
+  // ("estimate unavailable"). There is no AR cost to total.
   const getUploadCostBreakdown = () => {
     let freeFiles = 0;
     let turboFiles = 0;
-    let arFiles = 0;
+    let unquotedFiles = 0;
     let totalTurboCredits = 0;
-    let totalArCost = 0;
     let metadataOnlyOps = 0;
-    
+
     pendingUploads.forEach(upload => {
       if (upload.conflictType !== 'none') return;
-      
+
       // Check if this is a metadata-only operation
       if (upload.operationType && ['move', 'rename', 'hide', 'unhide', 'delete'].includes(upload.operationType)) {
         metadataOnlyOps++;
@@ -160,17 +168,15 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
         totalTurboCredits += upload.estimatedTurboCost;
       } else {
         // Genuinely no quote — cost unknown, disclosed as unavailable
-        arFiles++;
-        totalArCost += upload.estimatedCost;
+        unquotedFiles++;
       }
     });
-    
+
     return {
       freeFiles,
       turboFiles,
-      arFiles,
+      unquotedFiles,
       totalTurboCredits,
-      totalArCost,
       metadataOnlyOps
     };
   };
@@ -181,20 +187,26 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
   const handleApproveUpload = async (uploadId: string) => {
     const upload = pendingUploads.find(u => u.id === uploadId);
     if (upload && !processingFiles.has(uploadId)) {
+      if (isBlockedForBalance(upload)) {
+        // Blocked (MONEY-1): the quote is real and the balance cannot cover
+        // it. The row shows "Insufficient balance — top up Turbo Credits";
+        // nothing is submitted.
+        return;
+      }
+
       setProcessingFiles(prev => new Set(prev).add(uploadId));
-      
+
       setUploadingFiles(prev => {
         const newMap = new Map(prev);
         newMap.set(uploadId, { progress: 0, status: 'uploading' });
         return newMap;
       });
-      
+
       try {
-        const uploadMethod = getFileUploadMethod(upload);
-        const method = uploadMethod.method === 'ar' ? 'ar' : 'turbo';
         const metadata = fileMetadata.get(uploadId);
-        
-        await onApproveUpload(uploadId, method, metadata);
+
+        // Uploads execute via Turbo only (D-010) — always submit 'turbo'
+        await onApproveUpload(uploadId, 'turbo', metadata);
         
         if (isTurboFree(upload.fileSize)) {
           for (let progress = 0; progress <= 100; progress += 20) {
@@ -304,34 +316,55 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
     return uploadState?.progress || 0;
   };
   
+  // Every upload is a Turbo upload (D-010 Turbo-only) — there is no AR
+  // payment method. A row is either free-tier, quoted (with or without the
+  // balance to cover it), or unquoted ("estimate unavailable").
   const getFileUploadMethod = (
     upload: PendingUpload
-  ): { method: 'turbo-free' | 'turbo' | 'ar'; cost: string; insufficientBalance?: boolean } => {
+  ): { method: 'turbo-free' | 'turbo'; cost: string; hasQuote: boolean; insufficientBalance?: boolean } => {
     if (upload.operationType && ['move', 'rename', 'hide', 'unhide', 'delete'].includes(upload.operationType)) {
       // Metadata-only operations are tiny (<1KB) and free with Turbo
-      return { method: 'turbo-free', cost: 'Free' };
+      return { method: 'turbo-free', cost: 'Free', hasQuote: true };
     }
     if (isTurboFree(upload.fileSize)) {
-      return { method: 'turbo-free', cost: 'Free' };
+      return { method: 'turbo-free', cost: 'Free', hasQuote: true };
     } else if (upload.estimatedTurboCost != null) {
       // Real Turbo quote from the payment service — always shown. If the
       // balance can't cover it, say so rather than hiding the real number.
       // (Truthy check: rows arrive DB-shaped over IPC with booleans as 0/1.)
       if (upload.hasSufficientTurboBalance) {
-        return { method: 'turbo', cost: `${upload.estimatedTurboCost.toFixed(4)} Credits` };
+        return { method: 'turbo', cost: `${upload.estimatedTurboCost.toFixed(4)} Credits`, hasQuote: true };
       }
+      // Known cost the balance cannot cover — approval of this row is
+      // blocked until the user tops up (MONEY-1).
       return {
-        method: 'ar',
+        method: 'turbo',
         cost: `${upload.estimatedTurboCost.toFixed(4)} Credits`,
+        hasQuote: true,
         insufficientBalance: true
       };
     } else {
       // No real quote (Turbo unavailable). The internal AR figure is a
       // placeholder, not network pricing — never display it as a price
       // (MONEY-3).
-      return { method: 'ar', cost: 'Estimate unavailable' };
+      return { method: 'turbo', cost: 'Estimate unavailable', hasQuote: false };
     }
   };
+
+  // MONEY-1 approval semantics: a row whose real Turbo quote exceeds the
+  // available balance cannot be approved — it is skipped with a visible
+  // reason instead of being silently rerouted to a payment rail that does
+  // not exist. Free-tier and unquoted rows stay approvable.
+  const isBlockedForBalance = (upload: PendingUpload): boolean =>
+    !!getFileUploadMethod(upload).insufficientBalance;
+
+  const approvableUploads = pendingUploads.filter(
+    u => u.conflictType === 'none' && !isBlockedForBalance(u)
+  );
+  const blockedForBalanceCount = pendingUploads.filter(
+    u => u.conflictType === 'none' && isBlockedForBalance(u)
+  ).length;
+  const approveAllDisabled = approvableUploads.length === 0;
 
   const getOperationDescription = (upload: PendingUpload): string => {
     switch (upload.operationType) {
@@ -449,9 +482,9 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
               ) : breakdown.turboFiles > 0 ? (
                 <>
                   <span>{breakdown.totalTurboCredits.toFixed(4)} Credits</span>
-                  {breakdown.arFiles > 0 && (
+                  {breakdown.unquotedFiles > 0 && (
                     <div style={{ fontSize: '11px', color: 'var(--gray-500)', marginTop: '2px' }}>
-                      + {breakdown.arFiles} {breakdown.arFiles === 1 ? 'file' : 'files'}: estimate unavailable
+                      + {breakdown.unquotedFiles} {breakdown.unquotedFiles === 1 ? 'file' : 'files'}: estimate unavailable
                     </div>
                   )}
                 </>
@@ -604,12 +637,31 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
               }}>
                 {uploadMethod.method === 'turbo-free' ? (
                   <span style={{ color: 'var(--success-600)', fontWeight: '500' }}>FREE</span>
-                ) : uploadMethod.method === 'turbo' || uploadMethod.insufficientBalance ? (
+                ) : uploadMethod.hasQuote ? (
                   <div>
                     <div style={{ fontWeight: '500' }}>{uploadMethod.cost}</div>
                     {uploadMethod.insufficientBalance && (
                       <div style={{ fontSize: '11px', color: 'var(--warning-600)' }}>
                         Insufficient balance
+                        {onTopUpCredits && (
+                          <>
+                            {' — '}
+                            <button
+                              onClick={onTopUpCredits}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                padding: 0,
+                                fontSize: '11px',
+                                color: 'var(--ardrive-primary)',
+                                textDecoration: 'underline',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              top up Turbo Credits
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -703,50 +755,40 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
         })}
       </div>
 
-      {/* Advanced Options */}
-      {showAdvancedOptions && (
+      {/* Skipped-for-balance notice (MONEY-1): rows with a real quote the
+          Turbo balance cannot cover are never submitted — say so visibly */}
+      {balanceSkippedCount > 0 && (
         <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-2)',
           padding: 'var(--space-3)',
-          backgroundColor: 'var(--gray-50)',
+          backgroundColor: 'var(--warning-50)',
           borderRadius: 'var(--radius-md)',
           marginBottom: 'var(--space-4)',
-          border: '1px solid var(--gray-200)'
+          fontSize: '14px',
+          color: 'var(--warning-700)'
         }}>
-          <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: 'var(--space-2)' }}>
-            Payment Method
-          </div>
-          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-              <input 
-                type="radio" 
-                name="payment" 
-                value="auto"
-                checked={selectedPaymentMethod === 'auto'}
-                onChange={() => setSelectedPaymentMethod('auto')}
-              />
-              <span style={{ fontSize: '13px' }}>Auto (Best price)</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-              <input 
-                type="radio" 
-                name="payment" 
-                value="turbo"
-                checked={selectedPaymentMethod === 'turbo'}
-                onChange={() => setSelectedPaymentMethod('turbo')}
-              />
-              <span style={{ fontSize: '13px' }}>Turbo Only</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-              <input 
-                type="radio" 
-                name="payment" 
-                value="ar"
-                checked={selectedPaymentMethod === 'ar'}
-                onChange={() => setSelectedPaymentMethod('ar')}
-              />
-              <span style={{ fontSize: '13px' }}>AR Only</span>
-            </label>
-          </div>
+          <AlertTriangle size={16} />
+          <span>
+            {balanceSkippedCount} {balanceSkippedCount === 1 ? 'file' : 'files'} skipped — insufficient Turbo Credits.
+          </span>
+          {onTopUpCredits && (
+            <button
+              onClick={onTopUpCredits}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                fontSize: '14px',
+                color: 'var(--ardrive-primary)',
+                textDecoration: 'underline',
+                cursor: 'pointer'
+              }}
+            >
+              Top up Turbo Credits
+            </button>
+          )}
         </div>
       )}
 
@@ -789,37 +831,6 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
               Retry Failed
             </button>
           )}
-          
-          <button
-            onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: '6px 8px',
-              cursor: 'pointer',
-              color: 'var(--gray-500)',
-              fontSize: '13px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              borderRadius: 'var(--radius-sm)',
-              transition: 'all 0.2s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--gray-100)';
-              e.currentTarget.style.color = 'var(--gray-700)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.color = 'var(--gray-500)';
-            }}
-          >
-            <ChevronRight size={14} style={{ 
-              transform: showAdvancedOptions ? 'rotate(90deg)' : 'none',
-              transition: 'transform 0.2s ease' 
-            }} />
-            More Settings
-          </button>
         </div>
         
         {/* Right side */}
@@ -847,21 +858,27 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
             Clear All
           </button>
           
-          <button 
+          <button
             className="interactive-hover"
             onClick={async () => {
               try {
-                const uploadsToProcess = pendingUploads.filter(u => u.conflictType === 'none');
-                
+                // Rows with a real quote the balance cannot cover are
+                // SKIPPED with a visible reason (MONEY-1) — never submitted
+                if (blockedForBalanceCount > 0) {
+                  setBalanceSkippedCount(blockedForBalanceCount);
+                }
+
+                const uploadsToProcess = approvableUploads;
+
                 if (uploadsToProcess.length === 0) {
-                  console.warn('No files to upload', 'All files have conflicts that need to be resolved');
+                  console.warn('No files to upload', 'All files are blocked by conflicts or insufficient Turbo Credits');
                   return;
                 }
-                
+
                 console.log(`Starting upload of ${uploadsToProcess.length} ${uploadsToProcess.length === 1 ? 'file' : 'files'}`);
-                
+
                 await onApproveAll();
-                
+
                 for (const upload of uploadsToProcess) {
                   if (!processingFiles.has(upload.id)) {
                     await new Promise(resolve => setTimeout(resolve, 100));
@@ -872,43 +889,45 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
                 console.error('Failed to approve all uploads:', error);
               }
             }}
-            disabled={conflictCount > 0 && conflictCount === pendingUploads.length}
-            style={{ 
+            disabled={approveAllDisabled}
+            style={{
               padding: '10px 24px',
-              backgroundColor: conflictCount > 0 && conflictCount === pendingUploads.length 
-                ? 'var(--gray-300)' 
+              backgroundColor: approveAllDisabled
+                ? 'var(--gray-300)'
                 : 'var(--ardrive-primary)',
               color: 'white',
               border: 'none',
               borderRadius: 'var(--radius-md)',
               fontSize: '14px',
               fontWeight: '500',
-              cursor: conflictCount > 0 && conflictCount === pendingUploads.length 
-                ? 'not-allowed' 
+              cursor: approveAllDisabled
+                ? 'not-allowed'
                 : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
               transition: 'all 0.2s ease',
-              opacity: conflictCount > 0 && conflictCount === pendingUploads.length ? 0.7 : 1
+              opacity: approveAllDisabled ? 0.7 : 1
             }}
             onMouseEnter={(e) => {
-              if (!(conflictCount > 0 && conflictCount === pendingUploads.length)) {
+              if (!approveAllDisabled) {
                 e.currentTarget.style.backgroundColor = 'var(--ardrive-primary-hover)';
                 e.currentTarget.style.transform = 'translateY(-1px)';
                 e.currentTarget.style.boxShadow = '0 4px 12px rgba(220, 38, 38, 0.2)';
               }
             }}
             onMouseLeave={(e) => {
-              if (!(conflictCount > 0 && conflictCount === pendingUploads.length)) {
+              if (!approveAllDisabled) {
                 e.currentTarget.style.backgroundColor = 'var(--ardrive-primary)';
                 e.currentTarget.style.transform = 'translateY(0)';
                 e.currentTarget.style.boxShadow = 'none';
               }
             }}
           >
-            {conflictCount > 0 && conflictCount === pendingUploads.length ? (
-              'Resolve conflicts first'
+            {approveAllDisabled ? (
+              conflictCount === pendingUploads.length
+                ? 'Resolve conflicts first'
+                : 'Insufficient Turbo Credits'
             ) : (
               <>
                 Approve & Upload

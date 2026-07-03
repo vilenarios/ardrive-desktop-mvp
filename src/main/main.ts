@@ -2067,7 +2067,7 @@ class ArDriveApp {
       return await databaseManager.getPendingUploads();
     });
 
-    ipcMain.handle('uploads:approve', async (_, uploadId: string, uploadMethod?: 'ar' | 'turbo') => {
+    ipcMain.handle('uploads:approve', async (_, uploadId: string) => {
       // Move from pending to actual upload queue
       const pendingUploads = await databaseManager.getPendingUploads();
       const pendingUpload = pendingUploads.find(u => u.id === uploadId);
@@ -2135,14 +2135,18 @@ class ArDriveApp {
         }
       }
       
-      // Regular upload handling
-      const selectedMethod = uploadMethod || pendingUpload.recommendedMethod || 'ar';
-      
-      // Validate Turbo balance if Turbo method is selected and file is not free
+      // Regular upload handling. Uploads execute via Turbo only (D-010,
+      // MONEY-1) — ardrive-core is configured with turboSettings at factory
+      // time, so 'turbo' is the only method that can actually run. The old
+      // 'ar' fallback recorded a payment rail that never existed.
+
+      // Validate Turbo balance unless the file is free-tier. Approval of a
+      // row whose known cost exceeds the balance is BLOCKED (throws) rather
+      // than letting a certain-to-charge-later upload through unfunded.
       const TURBO_FREE_SIZE_LIMIT = 100 * 1024; // 100KB
       const isFreeWithTurbo = pendingUpload.fileSize <= TURBO_FREE_SIZE_LIMIT;
-      
-      if (selectedMethod === 'turbo' && turboManager.isInitialized() && !isFreeWithTurbo) {
+
+      if (turboManager.isInitialized() && !isFreeWithTurbo) {
         try {
           const balance = await turboManager.getBalance();
           const turboCosts = await turboManager.getUploadCosts(pendingUpload.fileSize);
@@ -2170,7 +2174,7 @@ class ArDriveApp {
         fileSize: pendingUpload.fileSize,
         status: 'pending',
         progress: 0,
-        uploadMethod: selectedMethod,
+        uploadMethod: 'turbo', // truthful: execution is always Turbo (D-010)
         dataTxId: undefined,
         metadataTxId: undefined,
         transactionId: undefined,
@@ -2178,7 +2182,7 @@ class ArDriveApp {
         completedAt: undefined,
         createdAt: new Date()
       };
-      
+
       await databaseManager.addUpload(upload);
       await databaseManager.removePendingUpload(uploadId);
       
@@ -2195,23 +2199,23 @@ class ArDriveApp {
 
     ipcMain.handle('uploads:approve-all', async () => {
       const pendingUploads = await databaseManager.getPendingUploads();
-      
-      // Force refresh wallet balance before checking funds
-      console.log('Refreshing wallet balance before upload approval...');
+
+      // Uploads are signed with the wallet — require one to be loaded.
+      // NOTE: no AR-denominated balance gate here (MONEY-1): uploads execute
+      // via Turbo only (D-010), so AR balance is irrelevant to approval.
       const walletInfo = await this.walletManager.getWalletInfo();
-      
+
       if (!walletInfo) {
         throw new Error('Wallet not loaded');
       }
-      
+
       let approvedCount = 0;
       const errors: string[] = [];
       const TURBO_FREE_SIZE_LIMIT = 100 * 1024; // 100KB
-      
-      // Get current balances
-      const arBalance = parseFloat(walletInfo.balance) * 1e12; // Convert AR to winston
+
+      // Get current Turbo balance
       let turboBalanceWinc = 0;
-      
+
       if (turboManager.isInitialized()) {
         try {
           const turboBalance = await turboManager.getBalance();
@@ -2273,36 +2277,25 @@ class ArDriveApp {
             }
           }
           
-          // Determine which payment method to use
-          const selectedMethod = pendingUpload.recommendedMethod || 'ar';
+          // Turbo-only (D-010, MONEY-1): every upload executes via Turbo.
+          // Rows whose known Turbo cost exceeds the remaining balance are
+          // SKIPPED with a per-file reason in `errors` (surfaced to the
+          // user); free-tier rows and rows without a quote pass through.
           const isFreeWithTurbo = pendingUpload.fileSize <= TURBO_FREE_SIZE_LIMIT;
-          
-          // Validate balance for the selected method
-          if (selectedMethod === 'turbo') {
-            if (!isFreeWithTurbo && turboManager.isInitialized()) {
-              const turboCosts = await turboManager.getUploadCosts(pendingUpload.fileSize);
-              const requiredWinc = parseFloat(turboCosts.winc);
-              
-              if (turboBalanceWinc < requiredWinc) {
-                errors.push(`${pendingUpload.fileName}: Insufficient Turbo Credits (need ${(requiredWinc/1e12).toFixed(6)} Credits)`);
-                continue; // Skip this file
-              }
-              
-              // Deduct from running balance to check if we can afford all files
-              turboBalanceWinc -= requiredWinc;
-            }
-          } else {
-            // AR payment method
-            const estimatedCostWinc = pendingUpload.fileSize; // ~1 winston per byte
-            
-            if (arBalance < estimatedCostWinc) {
-              errors.push(`${pendingUpload.fileName}: Insufficient AR balance (need ${(estimatedCostWinc/1e12).toFixed(6)} AR)`);
+
+          if (!isFreeWithTurbo && turboManager.isInitialized()) {
+            const turboCosts = await turboManager.getUploadCosts(pendingUpload.fileSize);
+            const requiredWinc = parseFloat(turboCosts.winc);
+
+            if (turboBalanceWinc < requiredWinc) {
+              errors.push(`${pendingUpload.fileName}: Insufficient Turbo Credits (need ${(requiredWinc/1e12).toFixed(6)} Credits)`);
               continue; // Skip this file
             }
-            
-            // Note: We don't deduct from AR balance as it's not consumed until actual upload
+
+            // Deduct from running balance to check if we can afford all files
+            turboBalanceWinc -= requiredWinc;
           }
-          
+
           // Create upload entry
           const upload: FileUpload = {
             id: pendingUpload.id,
@@ -2312,7 +2305,7 @@ class ArDriveApp {
             fileSize: pendingUpload.fileSize,
             status: 'pending',
             progress: 0,
-            uploadMethod: selectedMethod,
+            uploadMethod: 'turbo', // truthful: execution is always Turbo (D-010)
             dataTxId: undefined,
             metadataTxId: undefined,
             transactionId: undefined,
