@@ -705,6 +705,7 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
                 {uploadStatus === 'failed' && (
                   <button
                     onClick={() => handleRetryUpload(upload.id)}
+                    title="Retry upload"
                     style={{
                       background: 'none',
                       border: 'none',

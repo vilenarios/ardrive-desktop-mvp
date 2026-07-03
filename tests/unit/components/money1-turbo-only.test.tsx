@@ -95,19 +95,27 @@ describe('MONEY-1: no AR payment choice anywhere in the queue', () => {
     expect(screen.getByText('AR Balance')).toBeInTheDocument();
   });
 
-  it('submits every approvable row as turbo — never ar (adversarial recommendedMethod)', async () => {
+  it('single approval submits as turbo — never ar (adversarial recommendedMethod)', async () => {
+    // MONEY-6 removed the batch per-file follow-up loop; the only remaining
+    // renderer path that submits an individual row is retry-of-failed, which
+    // hardcodes 'turbo' (batch enforcement lives in uploads:approve-all,
+    // which also hardcodes it). Drive that real path: mark the row failed
+    // via the captured upload:progress listener, then click Retry.
     const props = makeProps();
     const unquoted = dbShapedRow({ fileName: 'unquoted.bin' });
-    const free = dbShapedRow({ fileName: 'small.bin', fileSize: FILE_SIZE_50KB });
 
-    render(<UploadApprovalQueueModern {...props} pendingUploads={[unquoted, free] as any} />);
+    render(<UploadApprovalQueueModern {...props} pendingUploads={[unquoted] as any} />);
 
-    fireEvent.click(screen.getByText(/Approve & Upload/));
+    // The component registers an upload-progress listener on mount
+    const progressListener = (window as any).electronAPI.onUploadProgress.mock.calls[0][0];
+    await waitFor(() => expect(progressListener).toBeDefined());
+    progressListener({ uploadId: unquoted.id, progress: 0, status: 'failed', error: 'boom' });
 
-    await waitFor(() => expect(props.onApproveUpload).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    fireEvent.click(await screen.findByTitle('Retry upload'));
+
+    await waitFor(() => expect(props.onApproveUpload).toHaveBeenCalledTimes(1), { timeout: 3000 });
 
     expect(props.onApproveUpload).toHaveBeenCalledWith(unquoted.id, 'turbo', undefined);
-    expect(props.onApproveUpload).toHaveBeenCalledWith(free.id, 'turbo', undefined);
     for (const call of props.onApproveUpload.mock.calls) {
       expect(call[1]).toBe('turbo');
     }
@@ -176,10 +184,11 @@ describe('MONEY-1: insufficient-balance approval semantics', () => {
 
     fireEvent.click(screen.getByText(/Approve & Upload/));
 
-    await waitFor(() => expect(props.onApproveUpload).toHaveBeenCalledTimes(2), { timeout: 3000 });
-
-    // The blocked row was never submitted — by any path
-    expect(props.onApproveUpload).not.toHaveBeenCalledWith(poor.id, expect.anything(), expect.anything());
+    // MONEY-6: one approval action → exactly one approve-all; the old
+    // per-file follow-up loop (which pushed the blocked row through
+    // individually) is gone
+    await waitFor(() => expect(props.onApproveAll).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    expect(props.onApproveUpload).not.toHaveBeenCalled();
 
     // Visible skipped-count reason
     expect(screen.getByText(/1 file skipped — insufficient Turbo Credits/)).toBeInTheDocument();
@@ -196,9 +205,9 @@ describe('MONEY-1: insufficient-balance approval semantics', () => {
 
     fireEvent.click(button);
 
-    await waitFor(() => expect(props.onApproveUpload).toHaveBeenCalledTimes(1), { timeout: 3000 });
-    expect(props.onApproveUpload).toHaveBeenCalledWith(free.id, 'turbo', undefined);
-    expect(props.onApproveAll).toHaveBeenCalledTimes(1);
+    // MONEY-6: batch approval is one approve-all call, no per-file follow-up
+    await waitFor(() => expect(props.onApproveAll).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    expect(props.onApproveUpload).not.toHaveBeenCalled();
 
     // Nothing was skipped, so no skipped-count reason
     expect(screen.queryByText(/skipped — insufficient Turbo Credits/)).toBeNull();
