@@ -130,8 +130,8 @@ describe.skipIf(!DatabaseSync)('drive mapping folder persistence — real SQL (U
   beforeEach(async () => {
     dm = new DatabaseManager();
     (dm as any).db = createSqlite3Shim();
-    // Real production schema, via the manager's own DDL
-    await (dm as any).createTables();
+    // Real production schema, via the manager's own migration runner (INFRA-7)
+    await (dm as any).runMigrations();
 
     oldDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ux2-old-'));
     newDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ux2-new-'));
