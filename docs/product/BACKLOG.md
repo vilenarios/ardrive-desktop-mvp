@@ -123,7 +123,7 @@ Acceptance: only the checkout host can open; completing or closing the window al
 ### MONEY-8 · P2 · Track D · `todo`
 **AR→Credits conversion UX honesty + input bounds.** Evidence: §1.14 (instant "success" vs 5-15 min reality; validateTurboAmount 1e-12..1e6 shared USD/AR).
 
-### MONEY-9 · P1 · Phase 2 · `todo`
+### MONEY-9 · P1 · Phase 2 · `in-progress`
 **Serialize the upload queue properly.** Evidence: §1.9.
 Fix: reentrancy guard (or work-loop) in UploadQueueManager with a configurable concurrency (default 1–2); mutex folder creation to kill the duplicate-paid-folder race.
 Acceptance: concurrent uploads bounded; two files in one new folder create exactly one folder entity.
