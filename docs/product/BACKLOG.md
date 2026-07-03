@@ -301,10 +301,11 @@ Fix: un-gitignore + commit `package-lock.json`; commit `mvp-workflow.yml`; remov
 Acceptance: a manual workflow dispatch completes install on a clean runner.
 Note 2026-07-02: lockfile + workflow committed locally (commit 6299771). Remaining: push, run a dispatch to verify acceptance, and the docs-reconciliation half (with INFRA-11).
 
-### INFRA-2 · P0 · Phase 4 · `todo`
+### INFRA-2 · P0 · Phase 4 · `done`
 **Resurrect the test suite.** Evidence: §6.7, ground truth.
 Fix: resolve the `ecc library invalid` import failure (mock/alias the transitive @keplr-wallet chain in vitest setup); fix or rewrite the 8 failing ProfileSwitcher tests; migrate the 4 orphaned suites (database-manager, turbo-manager, version-manager, TurboCreditsManager) into `tests/` under Vitest; delete `jest.config.js` + jest-only devDeps; replace the `expect(true).toBe(true)` placeholders in the sync test.
 Acceptance: `npx vitest --run` green locally and in CI; ≥1 real behavioral test per P0 fix shipped in Phases 1–3.
+Note 2026-07-03: done — merged from `fix/INFRA-2-tests` (e4ed866 + QA-findings e2385e2) after qa-gate PASS (static). ecc fixed via node-env pragmas on main-process suites + @kyvejs/sdk alias stub; suites rewritten/migrated under `tests/unit/`; jest infra + placeholders deleted; `npx vitest --run` green locally (7 files, 110 passed, 1 win32 skip). The "green in CI" half is carried by INFRA-1 (first push/dispatch) + INFRA-3 (make `vitest --run` a required, gated CI step).
 
 ### INFRA-3 · P0 · Phase 4 · `todo`
 **Gate CI on quality.** Evidence: §6.7 (no typecheck/lint step; tests continue-on-error; no Linux job). QA finding 2026-07-03: `npm run typecheck` never checks `tests/` (tsconfig include is `src/**/*`) — add a tests-covering typecheck (e.g. `tsconfig.tests.json`) to the gate, and make the CI test step an explicit `vitest --run`.

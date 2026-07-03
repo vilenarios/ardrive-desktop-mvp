@@ -20,8 +20,16 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+    alias: [
+      // @ardrive/turbo-sdk -> @kyvejs/sdk -> @keplr-wallet/crypto -> bitcoinjs-lib
+      // calls initEccLib at import time, which fails under Vitest with
+      // "Error: ecc library invalid". No test uses KYVE, so stub the whole SDK
+      // (including deep imports like @kyvejs/sdk/dist/sdk.js).
+      {
+        find: /^@kyvejs\/sdk(\/.*)?$/,
+        replacement: path.resolve(__dirname, './tests/mocks/kyve-sdk-stub.ts'),
+      },
+      { find: '@', replacement: path.resolve(__dirname, './src') },
+    ],
   },
 });

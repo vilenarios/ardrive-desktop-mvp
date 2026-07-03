@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import ProfileSwitcher from '../../src/renderer/components/ProfileSwitcher';
 import { Profile } from '../../src/types';
@@ -25,17 +25,15 @@ describe('ProfileSwitcher Component', () => {
       id: 'profile-1',
       name: 'Test Profile 1',
       address: 'test-address-1',
-      avatarUrl: null,
-      arnsName: null,
-      createdAt: '2024-01-01T00:00:00Z'
+      createdAt: new Date('2024-01-01T00:00:00Z'),
+      lastUsedAt: new Date('2024-01-01T00:00:00Z')
     },
     {
-      id: 'profile-2', 
+      id: 'profile-2',
       name: 'Test Profile 2',
       address: 'test-address-2',
-      avatarUrl: null,
-      arnsName: null,
-      createdAt: '2024-01-02T00:00:00Z'
+      createdAt: new Date('2024-01-02T00:00:00Z'),
+      lastUsedAt: new Date('2024-01-02T00:00:00Z')
     }
   ];
 
@@ -51,194 +49,178 @@ describe('ProfileSwitcher Component', () => {
     mockElectronAPI.profiles.list.mockResolvedValue(mockProfiles);
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+  /** Opens the profile dropdown and returns a scoped query helper for it. */
+  const openDropdown = async () => {
+    fireEvent.click(screen.getByRole('button', { name: /Test Profile 1/ }));
+    const dropdown = document.querySelector('.profile-dropdown');
+    expect(dropdown).not.toBeNull();
+    return within(dropdown as HTMLElement);
+  };
 
-  it('should render current profile information', async () => {
+  /** Opens the dropdown and selects the non-current profile to trigger the password prompt. */
+  const openPasswordPrompt = async () => {
+    const dropdown = await openDropdown();
+    fireEvent.click(await dropdown.findByText('Test Profile 2'));
+    expect(
+      screen.getByText('Enter your password to unlock this profile')
+    ).toBeInTheDocument();
+  };
+
+  it('should render the current profile name and shortened address', () => {
     render(<ProfileSwitcher {...defaultProps} />);
-    
+
     expect(screen.getByText('Test Profile 1')).toBeInTheDocument();
-    expect(screen.getByText('test-ad...ss-1')).toBeInTheDocument();
+    // formatAddress: first 6 chars + '...' + last 4 chars
+    expect(screen.getByText('test-a...ss-1')).toBeInTheDocument();
   });
 
-  it('should load profiles on mount', async () => {
+  it('should load profiles on mount and list them in the dropdown', async () => {
     render(<ProfileSwitcher {...defaultProps} />);
-    
+
     await waitFor(() => {
       expect(mockElectronAPI.profiles.list).toHaveBeenCalled();
     });
+
+    const dropdown = await openDropdown();
+    expect(await dropdown.findByText('Test Profile 2')).toBeInTheDocument();
+    expect(dropdown.getByText('Add Profile')).toBeInTheDocument();
+    expect(dropdown.getByText('Manage Profiles')).toBeInTheDocument();
   });
 
-  it('should show password prompt when switching to different profile', async () => {
+  it('should show password prompt when switching to a different profile', async () => {
     render(<ProfileSwitcher {...defaultProps} />);
-    
-    // Open dropdown
-    fireEvent.click(screen.getByRole('button'));
-    
-    // Wait for profiles to load and click on different profile
-    await waitFor(() => {
-      const profile2Button = screen.getByText('Test Profile 2');
-      fireEvent.click(profile2Button);
-    });
-    
-    // Should show password modal
-    expect(screen.getByText('Switch Profile')).toBeInTheDocument();
-    expect(screen.getByText('Enter your password to unlock this profile')).toBeInTheDocument();
+
+    await openPasswordPrompt();
+
+    expect(screen.getByRole('heading', { name: 'Switch Profile' })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Enter password')).toBeInTheDocument();
+    // The switch only happens after a password is submitted
+    expect(mockElectronAPI.profiles.switch).not.toHaveBeenCalled();
   });
 
-  it('should not show password prompt when clicking current profile', async () => {
+  it('should not show password prompt when clicking the current profile', async () => {
     render(<ProfileSwitcher {...defaultProps} />);
-    
-    // Open dropdown
-    fireEvent.click(screen.getByRole('button'));
-    
-    // Click on current profile
-    await waitFor(() => {
-      const currentProfileButton = screen.getByText('Test Profile 1');
-      fireEvent.click(currentProfileButton);
-    });
-    
-    // Should close dropdown, not show password modal
-    expect(screen.queryByText('Switch Profile')).not.toBeInTheDocument();
+
+    const dropdown = await openDropdown();
+    fireEvent.click(await dropdown.findByText('Test Profile 1'));
+
+    // Dropdown closes without prompting for a password
+    expect(screen.queryByPlaceholderText('Enter password')).not.toBeInTheDocument();
+    expect(document.querySelector('.profile-dropdown')).toBeNull();
+    expect(defaultProps.onProfileSwitch).not.toHaveBeenCalled();
   });
 
   it('should handle successful profile switch', async () => {
     mockElectronAPI.profiles.switch.mockResolvedValue(true);
-    
+
     render(<ProfileSwitcher {...defaultProps} />);
-    
-    // Open dropdown and select different profile
-    fireEvent.click(screen.getByRole('button'));
-    
-    await waitFor(() => {
-      fireEvent.click(screen.getByText('Test Profile 2'));
+    await openPasswordPrompt();
+
+    fireEvent.change(screen.getByPlaceholderText('Enter password'), {
+      target: { value: 'test-password' }
     });
-    
-    // Enter password
-    const passwordInput = screen.getByPlaceholderText('Enter password');
-    fireEvent.change(passwordInput, { target: { value: 'test-password' } });
-    
-    // Submit
     fireEvent.click(screen.getByText('Unlock'));
-    
+
     await waitFor(() => {
       expect(mockElectronAPI.profiles.switch).toHaveBeenCalledWith('profile-2', 'test-password');
       expect(defaultProps.onProfileSwitch).toHaveBeenCalledWith('profile-2');
     });
+
+    // Modal closes after a successful switch
+    expect(screen.queryByPlaceholderText('Enter password')).not.toBeInTheDocument();
   });
 
-  it('should handle profile switch failure', async () => {
+  it('should show an error and keep the modal open on wrong password', async () => {
     mockElectronAPI.profiles.switch.mockResolvedValue(false);
-    
+
     render(<ProfileSwitcher {...defaultProps} />);
-    
-    // Open dropdown and select different profile
-    fireEvent.click(screen.getByRole('button'));
-    
-    await waitFor(() => {
-      fireEvent.click(screen.getByText('Test Profile 2'));
+    await openPasswordPrompt();
+
+    fireEvent.change(screen.getByPlaceholderText('Enter password'), {
+      target: { value: 'wrong-password' }
     });
-    
-    // Enter wrong password
-    const passwordInput = screen.getByPlaceholderText('Enter password');
-    fireEvent.change(passwordInput, { target: { value: 'wrong-password' } });
-    
-    // Submit
     fireEvent.click(screen.getByText('Unlock'));
-    
+
     await waitFor(() => {
       expect(screen.getByText('Invalid password')).toBeInTheDocument();
     });
+
+    // Modal stays open, parent is not notified
+    expect(screen.getByPlaceholderText('Enter password')).toBeInTheDocument();
+    expect(defaultProps.onProfileSwitch).not.toHaveBeenCalled();
   });
 
-  it('should handle network errors during profile switch', async () => {
+  it('should handle errors thrown during profile switch', async () => {
     mockElectronAPI.profiles.switch.mockRejectedValue(new Error('Network error'));
-    
+
     render(<ProfileSwitcher {...defaultProps} />);
-    
-    // Open dropdown and select different profile
-    fireEvent.click(screen.getByRole('button'));
-    
-    await waitFor(() => {
-      fireEvent.click(screen.getByText('Test Profile 2'));
+    await openPasswordPrompt();
+
+    fireEvent.change(screen.getByPlaceholderText('Enter password'), {
+      target: { value: 'test-password' }
     });
-    
-    // Enter password
-    const passwordInput = screen.getByPlaceholderText('Enter password');
-    fireEvent.change(passwordInput, { target: { value: 'test-password' } });
-    
-    // Submit
     fireEvent.click(screen.getByText('Unlock'));
-    
+
     await waitFor(() => {
       expect(screen.getByText('Failed to unlock profile')).toBeInTheDocument();
     });
+    expect(defaultProps.onProfileSwitch).not.toHaveBeenCalled();
   });
 
-  it('should prevent state updates after unmount', async () => {
-    // Delay the profiles.list call to simulate slow network
-    let resolveProfilesList: (profiles: Profile[]) => void;
-    const profilesListPromise = new Promise<Profile[]>((resolve) => {
-      resolveProfilesList = resolve;
-    });
-    mockElectronAPI.profiles.list.mockReturnValue(profilesListPromise);
-    
-    const { unmount } = render(<ProfileSwitcher {...defaultProps} />);
-    
-    // Unmount component before profiles load
-    unmount();
-    
-    // Resolve the promise after unmount
-    resolveProfilesList!(mockProfiles);
-    
-    // Wait a bit to ensure no state updates occur
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    // No assertions needed - this test passes if no React warnings are thrown
-  });
-
-  it('should close password modal when cancelled', async () => {
+  it('should close the password modal when cancelled', async () => {
     render(<ProfileSwitcher {...defaultProps} />);
-    
-    // Open dropdown and select different profile
-    fireEvent.click(screen.getByRole('button'));
-    
-    await waitFor(() => {
-      fireEvent.click(screen.getByText('Test Profile 2'));
-    });
-    
-    // Should show password modal
-    expect(screen.getByText('Switch Profile')).toBeInTheDocument();
-    
-    // Click cancel
+    await openPasswordPrompt();
+
     fireEvent.click(screen.getByText('Cancel'));
-    
-    // Modal should be closed
-    expect(screen.queryByText('Switch Profile')).not.toBeInTheDocument();
+
+    expect(screen.queryByPlaceholderText('Enter password')).not.toBeInTheDocument();
+    expect(mockElectronAPI.profiles.switch).not.toHaveBeenCalled();
   });
 
-  it('should handle keyboard navigation in password modal', async () => {
-    mockElectronAPI.profiles.switch.mockResolvedValue(true);
-    
+  it('should disable the unlock button until a password is entered', async () => {
     render(<ProfileSwitcher {...defaultProps} />);
-    
-    // Open dropdown and select different profile
-    fireEvent.click(screen.getByRole('button'));
-    
-    await waitFor(() => {
-      fireEvent.click(screen.getByText('Test Profile 2'));
+    await openPasswordPrompt();
+
+    const unlockButton = screen.getByText('Unlock').closest('button') as HTMLButtonElement;
+    expect(unlockButton).toBeDisabled();
+
+    fireEvent.change(screen.getByPlaceholderText('Enter password'), {
+      target: { value: 'test-password' }
     });
-    
-    // Enter password
+
+    expect(unlockButton).not.toBeDisabled();
+  });
+
+  it('should submit the password with the Enter key', async () => {
+    mockElectronAPI.profiles.switch.mockResolvedValue(true);
+
+    render(<ProfileSwitcher {...defaultProps} />);
+    await openPasswordPrompt();
+
     const passwordInput = screen.getByPlaceholderText('Enter password');
     fireEvent.change(passwordInput, { target: { value: 'test-password' } });
-    
-    // Press Enter
-    fireEvent.keyPress(passwordInput, { key: 'Enter', code: 'Enter' });
-    
+    // charCode is required for React's synthetic keyPress event to fire
+    fireEvent.keyPress(passwordInput, { key: 'Enter', code: 'Enter', charCode: 13 });
+
     await waitFor(() => {
       expect(mockElectronAPI.profiles.switch).toHaveBeenCalledWith('profile-2', 'test-password');
     });
   });
+
+  it('should invoke the add-profile action from the dropdown', async () => {
+    render(<ProfileSwitcher {...defaultProps} />);
+
+    const dropdown = await openDropdown();
+    fireEvent.click(dropdown.getByText('Add Profile'));
+
+    expect(defaultProps.onAddProfile).toHaveBeenCalled();
+    // Dropdown closes after selecting an action
+    expect(document.querySelector('.profile-dropdown')).toBeNull();
+  });
+
+  // NOTE: a "should prevent state updates after unmount" test was removed here.
+  // The component guards setState via isMountedRef, but React 18 makes
+  // post-unmount setState a silent no-op (the unmounted-component warning was
+  // removed), so no assertion could detect a regression — the test could not
+  // meaningfully fail.
 });
