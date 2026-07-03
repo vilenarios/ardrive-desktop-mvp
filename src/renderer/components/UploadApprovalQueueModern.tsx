@@ -9,7 +9,6 @@ import { PendingUpload, ConflictResolution } from '../../types';
 import { CustomMetadata, MetadataTemplate, FileWithMetadata, MetadataEditContext } from '../../types/metadata';
 import { isTurboFree, formatFileSize } from '../utils/turbo-utils';
 import { getMimeTypeFromExtension } from '../utils/mime-utils';
-import { getArPriceInUSD, formatArToUSD, formatTurboCreditsToUSD } from '../utils/ar-price-utils';
 import MetadataEditor from './MetadataEditor';
 import MetadataTemplateManager from './MetadataTemplateManager';
 import { InfoButton } from './common/InfoButton';
@@ -56,9 +55,7 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
 }) => {
   const [selectedUploads, setSelectedUploads] = useState<Set<string>>(new Set());
   const [showConflictResolution, setShowConflictResolution] = useState<string | null>(null);
-  const [arPriceUSD, setArPriceUSD] = useState<number>(0);
-  const [loadingPrice, setLoadingPrice] = useState(true);
-  
+
   // Metadata state
   const [fileMetadata, setFileMetadata] = useState<Map<string, CustomMetadata>>(new Map());
   const [showMetadataEditor, setShowMetadataEditor] = useState<MetadataEditContext | null>(null);
@@ -73,27 +70,6 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
   const [uploadingFiles, setUploadingFiles] = useState<Map<string, { progress: number; status: UploadStatus; error?: string }>>(new Map());
   const [processingFiles, setProcessingFiles] = useState<Set<string>>(new Set());
   const [completedUploads, setCompletedUploads] = useState<Set<string>>(new Set());
-
-  // Fetch AR price on mount
-  useEffect(() => {
-    const fetchArPrice = async () => {
-      try {
-        setLoadingPrice(true);
-        const price = await getArPriceInUSD();
-        setArPriceUSD(price);
-      } catch (error) {
-        console.error('Failed to fetch AR price:', error);
-        setArPriceUSD(6.50); // Fallback price
-      } finally {
-        setLoadingPrice(false);
-      }
-    };
-    
-    fetchArPrice();
-    // Refresh price every 5 minutes
-    const interval = setInterval(fetchArPrice, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Setup upload progress event listeners
   useEffect(() => {
@@ -199,22 +175,7 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
   };
   
   const breakdown = getUploadCostBreakdown();
-  const totalCostUSD = formatArToUSD(breakdown.totalArCost, arPriceUSD);
-  const totalTurboCostUSD = formatTurboCreditsToUSD(breakdown.totalTurboCredits, arPriceUSD);
   const conflictCount = pendingUploads.filter(u => u.conflictType !== 'none').length;
-
-  const formatArCost = (ar: number | null | undefined): string => {
-    if (ar == null) return 'N/A';
-    if (ar === 0) return '0.000000 AR';
-    return `${ar.toFixed(6)} AR`;
-  };
-
-  const formatTurboCost = (credits: number | null | undefined, fileSize: number): string => {
-    if (credits == null) return 'N/A';
-    if (isTurboFree(fileSize)) return 'FREE';
-    if (credits === 0) return '0 Credits';
-    return `${credits.toFixed(6)} Credits`;
-  };
 
   const handleApproveUpload = async (uploadId: string) => {
     const upload = pendingUploads.find(u => u.id === uploadId);
@@ -343,12 +304,20 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
   };
   
   const getFileUploadMethod = (upload: PendingUpload): { method: 'turbo-free' | 'turbo' | 'ar'; cost: string } => {
+    if (upload.operationType && ['move', 'rename', 'hide', 'unhide', 'delete'].includes(upload.operationType)) {
+      // Metadata-only operations are tiny (<1KB) and free with Turbo
+      return { method: 'turbo-free', cost: 'Free' };
+    }
     if (isTurboFree(upload.fileSize)) {
       return { method: 'turbo-free', cost: 'Free' };
-    } else if (upload.hasSufficientTurboBalance !== false && upload.estimatedTurboCost !== undefined) {
+    } else if (upload.hasSufficientTurboBalance !== false && upload.estimatedTurboCost != null) {
+      // Real Turbo quote from the payment service
       return { method: 'turbo', cost: `${upload.estimatedTurboCost.toFixed(4)} Credits` };
     } else {
-      return { method: 'ar', cost: formatArCost(upload.estimatedCost) };
+      // No real quote (Turbo unavailable/insufficient credits). The internal
+      // AR figure is a placeholder, not network pricing — never display it
+      // as a price (MONEY-3).
+      return { method: 'ar', cost: 'Estimate unavailable' };
     }
   };
 
@@ -434,15 +403,6 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
                 <div style={{ fontSize: '12px', color: 'var(--gray-500)' }}>AR Balance</div>
                 <div style={{ fontWeight: '600', fontSize: '14px' }}>
                   {walletInfo ? parseFloat(walletInfo.balance).toFixed(4) : '0.0000'} AR
-                  {!loadingPrice && (
-                    <span style={{ 
-                      color: 'var(--gray-500)', 
-                      fontSize: '12px',
-                      marginLeft: '4px'
-                    }}>
-                      ({formatArToUSD(parseFloat(walletInfo?.balance || '0'), arPriceUSD)})
-                    </span>
-                  )}
                 </div>
               </div>
             </div>
@@ -457,15 +417,6 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
                 <div style={{ fontSize: '12px', color: 'var(--gray-500)' }}>Turbo Credits</div>
                 <div style={{ fontWeight: '600', fontSize: '14px', color: 'var(--info-700)' }}>
                   {walletInfo?.turboBalance || '0.0000'} Credits
-                  {!loadingPrice && walletInfo?.turboBalance && (
-                    <span style={{ 
-                      color: 'var(--gray-500)', 
-                      fontSize: '12px',
-                      marginLeft: '4px'
-                    }}>
-                      ({formatTurboCreditsToUSD(parseFloat(walletInfo.turboBalance), arPriceUSD)})
-                    </span>
-                  )}
                 </div>
               </div>
             </div>
@@ -483,19 +434,19 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
             <div style={{ fontWeight: '600', fontSize: '16px' }}>
               {breakdown.freeFiles === pendingUploads.length ? (
                 <span style={{ color: 'var(--success-600)' }}>FREE</span>
-              ) : (
+              ) : breakdown.turboFiles > 0 ? (
                 <>
-                  {!loadingPrice && (
-                    <span>
-                      {formatArToUSD(breakdown.totalArCost + breakdown.totalTurboCredits, arPriceUSD)}
-                    </span>
+                  <span>{breakdown.totalTurboCredits.toFixed(4)} Credits</span>
+                  {breakdown.arFiles > 0 && (
+                    <div style={{ fontSize: '11px', color: 'var(--gray-500)', marginTop: '2px' }}>
+                      + {breakdown.arFiles} {breakdown.arFiles === 1 ? 'file' : 'files'}: estimate unavailable
+                    </div>
                   )}
-                  <div style={{ fontSize: '11px', color: 'var(--gray-500)', marginTop: '2px' }}>
-                    {breakdown.arFiles > 0 && `${formatArCost(breakdown.totalArCost)} AR`}
-                    {breakdown.arFiles > 0 && breakdown.turboFiles > 0 && ' + '}
-                    {breakdown.turboFiles > 0 && `${breakdown.totalTurboCredits.toFixed(4)} Credits`}
-                  </div>
                 </>
+              ) : (
+                <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--gray-500)' }}>
+                  Estimate unavailable
+                </span>
               )}
             </div>
           </div>
@@ -641,17 +592,11 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
               }}>
                 {uploadMethod.method === 'turbo-free' ? (
                   <span style={{ color: 'var(--success-600)', fontWeight: '500' }}>FREE</span>
+                ) : uploadMethod.method === 'turbo' ? (
+                  <div style={{ fontWeight: '500' }}>{uploadMethod.cost}</div>
                 ) : (
-                  <div>
-                    <div style={{ fontWeight: '500' }}>{uploadMethod.cost}</div>
-                    {!loadingPrice && (
-                      <div style={{ fontSize: '11px', color: 'var(--gray-500)' }}>
-                        {uploadMethod.method === 'turbo' 
-                          ? formatTurboCreditsToUSD(upload.estimatedTurboCost || 0, arPriceUSD)
-                          : formatArToUSD(upload.estimatedCost, arPriceUSD)
-                        }
-                      </div>
-                    )}
+                  <div style={{ fontSize: '12px', color: 'var(--gray-500)' }}>
+                    {uploadMethod.cost}
                   </div>
                 )}
               </div>
@@ -1014,12 +959,7 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
                         style={{ justifyContent: 'flex-start', textAlign: 'left' }}
                       >
                         <Upload size={16} style={{ marginRight: 'var(--space-1)' }} />
-                        Keep Local (upload this version) - {formatArCost(upload.estimatedCost)}
-                        {!loadingPrice && (
-                          <span style={{ marginLeft: '4px', color: 'var(--gray-600)' }}>
-                            ({formatArToUSD(upload.estimatedCost, arPriceUSD)})
-                          </span>
-                        )}
+                        Keep Local (upload this version)
                       </button>
                       <button 
                         className="button secondary"
@@ -1039,12 +979,7 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
                         }}
                         style={{ justifyContent: 'flex-start', textAlign: 'left' }}
                       >
-                        📁 Keep Both (rename local file) - {formatArCost(upload.estimatedCost)}
-                        {!loadingPrice && (
-                          <span style={{ marginLeft: '4px', color: 'var(--gray-600)' }}>
-                            ({formatArToUSD(upload.estimatedCost, arPriceUSD)})
-                          </span>
-                        )}
+                        📁 Keep Both (rename local file)
                       </button>
                       <button 
                         className="button secondary"
