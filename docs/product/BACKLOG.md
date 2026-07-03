@@ -173,6 +173,7 @@ Done 2026-07-03 (f005afc, qa-gate PASS static — download chain driven end-to-e
 ### SYNC-5 · P0 · Phase 2 · `todo`
 **Deletes propagate as ArFS hide — Dropbox-smooth.** Evidence: §2.4. Per D-011 (supersedes the disclose-only plan): local file/folder deletion → ArFS hide operation, through the approval queue like other metadata ops; wire the dead detection cache into consumption; implement the `hide`/`unhide` branch that currently throws (sync-manager.ts:3249-3253); private-drive hide paths too (upstream ardrive-core-js work allowed per D-016); honest permanence messaging in UI ("hidden, not erased — permanent storage cannot delete").
 Acceptance: delete a local file → hide operation appears in queue → approval hides it on ArFS (verified via fresh listing); Permaweb view reflects hidden state; works on public and private drives; unhide path exists.
+ESCALATION 2026-07-03 (worktree session, scope discovery): NO version of ardrive-core-js supports hide — the installed 3.0.3 AND the latest 4.0.0 contain zero hide APIs and zero `hidden`/`isHidden` references anywhere in the library (verified against the published 4.0.0 tarball). D-011's hide propagation therefore requires implementing the ArFS hide metadata revision from scratch (upstream core contribution per D-016, or in-app raw ArFS metadata transactions duplicating core internals). Materially larger scope than this entry — split proposal for Phil: SYNC-5a beta-interim truthful delete state (no hide claim in UI), SYNC-5b the upstream hide implementation. Awaiting Phil's call; item NOT claimed.
 
 ### SYNC-6 · P1 · Phase 2 · `todo`
 **Size limit: 2 GiB uploads, surfaced; no download cap.** Evidence: §2.11 (100MB comments vs 500MB constant; silent skip). Per D-014: single 2 GiB upload constant; oversized files appear in UI with reason (no silent skips); downloads have no such cap and must stream larger files (web app can upload ~2GB+). Docs updated (CLAUDE.md/README still say 100MB).
@@ -246,9 +247,11 @@ Note 2026-07-03: done — merged from `fix/PRIV-3-create-private` (479b0be + fin
 **Fix key persistence serialization.** Evidence: §3.4-3.5. `key.keyData.toString('base64')` on save; `new EntityKey(Buffer.from(..., 'base64'))` (+ driveSignatureType for VersionedDriveKey) on load; App.tsx must forward `persistKey`; wire the write-only DB prefs (or drop them); implement plan steps 5 (session restore) and 6 (settings UI) from docs/archive/SELECTIVE_DRIVE_PERSISTENCE_PLAN.md. The parked partial implementation lives on branch `wip/drive-key-persistence` (commit c8a1469) — review before reusing.
 Acceptance: unlock with "remember" → restart → drive auto-unlocks and decrypts listings; unlock without → restart → drive locked.
 
-### PRIV-5 · P1 · Phase 2 · `in-progress`
+### PRIV-5 · P1 · Phase 2 · `done`
 **Locked drives must not sync as "empty".** Evidence: §3.7 (swallowed listing error; boot auto-sync has no lock check).
 Acceptance: locked private drive at boot → visible "locked — unlock to sync" state; no silent empty sync.
+Note 2026-07-03: done — merged from `fix/PRIV-5-locked-sync` (54d4c93 + findings 9759f06) after qa-gate PASS (static — boot GUI not drivable; negative control proved 3/4 tests pin the audited silent-empty behavior). startSync lock pre-flight (single choke point, before the cache wipe) + listing failures now abort instead of yielding empty/partial listings; folded gate findings: manual-sync (sync:manual/redownload-all) lock pre-flight + no more 'continuing anyway' swallow; failed starts clear the nominal drive target; tray toggle catches rejections.
+Gate follow-ups filed: clear-cache-before-list window (list-then-swap, SYNC-9/SYNC-15 family); recursion log cascade (cosmetic); dead legacy syncDriveMetadata at sync-manager.ts:~3032 still contains the resurrectable silent-locked-skip — DELETE with INFRA-6; App boot swallow of non-primary locked mismatch → SYNC-9.
 
 ### PRIV-6 · P1 · Phase 2 · `todo`
 **Private move/rename (and hide) paths.** Evidence: §3.7/§1.7 (only `*Public*` ArFS calls exist). Pairs with SYNC-5's hide implementation; upstream ardrive-core-js work allowed (D-016).
