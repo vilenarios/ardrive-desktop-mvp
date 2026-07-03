@@ -161,7 +161,7 @@ Fix: single source of truth = active drive mapping's `localFolderPath`; migrate 
 Acceptance: after switching drives, the watched folder, UI-displayed folder, and upload target always agree.
 
 ### SYNC-8 · P1 · Track C · `deferred`
-**Remote change polling.** Evidence: §2.13 (no periodic remote sync while monitoring; `sync:manual` is download-only misnomer). Beta ships "remote changes appear on manual sync / restart" — document it.
+**Remote change polling.** Evidence: §2.13 (no periodic remote sync while monitoring; `sync:manual` is download-only misnomer). Beta ships "remote changes appear on manual sync / restart" — document it. Efficient polling wants CORE-2 (incremental listing upstream) — full-listing polls are wasteful on large drives.
 
 ### SYNC-9 · P1 · Phase 2 · `todo`
 **Minimum offline resilience.** Evidence: §2.10.
@@ -187,6 +187,7 @@ Fix: key "expected downloads" by path+size/hash rather than a fixed 30s window, 
 
 ### SYNC-15 · P1 · Track C · `deferred`
 **Wayfinder gateway routing.** Per D-012: replace hardcoded `arweave.net` with Wayfinder-based selection — `turbo-gateway.com` primary, simple routing across top-staked ar.io gateways. References: docs/features/wayfinder-integration-proposal.md, docs/vendor/wayfinder-core-README.md. Beta's no-single-gateway minimum ships inside SYNC-9; this item is the full routing integration.
+**DEPENDS: CORE-1** (D-018) — most ArFS GQL queries fail on turbo-gateway without an `owner` filter; query migration happens upstream in ardrive-core-js before the gateway swap is safe for metadata paths (raw data fetches can migrate earlier).
 Acceptance: gateway outage triggers transparent failover; gateway selection observable in logs; downloads verified identical across gateways.
 
 ---
@@ -355,6 +356,25 @@ Acceptance: one command runs the UI smoke suite against a packaged build; CI run
 
 ---
 
+## CORE — ardrive-core-js upstream (sibling repo, per D-016/D-018)
+
+Work items in the ardrive-core-js repo that desktop depends on. Same loop applies (implement → QA → merge there); desktop consumes via version bump with an interop check.
+
+### CORE-1 · P1 · Track C · `deferred`
+**Owner-scoped GQL queries (turbo-gateway compatibility).** Per D-018: most ArFS queries fail on turbo-gateway.com GQL unless an `owner` is supplied. Audit every GQL query core-js emits (drive/folder/file listings, drive discovery, manifest lookups) and thread `owner` through; desktop always knows the owner for its own drives (profile wallet address). BLOCKS SYNC-15's metadata migration.
+Open sub-question: discovery flows where the owner ISN'T known up front (e.g. "add existing drive" by drive ID) — resolve owner first via a full-index gateway, or require owner input. Needs a design call.
+Acceptance: full drive listing + sync round-trip succeeds against turbo-gateway.com GQL; interop test vectors pass on both turbo-gateway and arweave.net.
+
+### CORE-2 · P1 · Track C · `deferred`
+**Incremental sync support.** Per D-018: listing APIs that accept a since/cursor (block height or timestamp) so clients fetch only changes instead of full drive history. Desktop consumers: SYNC-8 remote polling, drive_metadata_cache refresh (`lastMetadataSyncAt` already exists in the schema, waiting for this).
+Acceptance: second listing of an unchanged large drive transfers near-zero data; changed-entity listing returns exactly the delta.
+
+### CORE-3 · P1 · Track C · `deferred`
+**ArFS snapshot support.** Per D-018: consume ArFS snapshot entities (as ardrive-web does) so cold-start listing of a large drive reads the snapshot + tail instead of replaying full GQL history. Read-side first; snapshot *writing* is a follow-on decision.
+Acceptance: cold listing of a snapshotted large drive is dramatically fewer queries than full-history replay; results identical to full replay on interop vectors.
+
+---
+
 ## FEAT — Major feature work (Track B, per D-013)
 
 ### FEAT-1 · P1 · Track B · `deferred`
@@ -366,5 +386,5 @@ Acceptance: new-user flow creates/imports a Solana wallet, tops up Turbo, and sy
 
 ---
 
-## Item count: 61 · P0: 18 · P1: 26 · P2: 17
-(2026-07-03 rescope per D-010..D-017: PRIV-1..7 onto beta phases, PRIV-0 wont-fix, SYNC-5 promoted P0, SYNC-10 promoted P1/Phase 2, +SYNC-15, +UX-16, +UX-17, +INFRA-12, +FEAT-1, +FEAT-2.)
+## Item count: 64 · P0: 18 · P1: 29 · P2: 17
+(2026-07-03 rescope per D-010..D-017: PRIV-1..7 onto beta phases, PRIV-0 wont-fix, SYNC-5 promoted P0, SYNC-10 promoted P1/Phase 2, +SYNC-15, +UX-16, +UX-17, +INFRA-12, +FEAT-1, +FEAT-2. Later 2026-07-03 per D-018: +CORE-1..3 upstream ardrive-core-js track.)

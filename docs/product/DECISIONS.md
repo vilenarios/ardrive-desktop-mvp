@@ -82,3 +82,14 @@ Phil: no monorepo — ardrive-web, ardrive-core-js, turbo-sdk, and ar-io-sdk are
 ## D-017 · Beta program: small Discord-run tester group; sanitized in-app log reporting · CONFIRMED · 2026-07-03
 
 Phil: "a handful of people — yes I'll give it over discord. sanitized logs would be dope." Feedback flows through Phil on Discord. New item UX-16: in-app "report a problem" that bundles sanitized logs (depends on SEC-8 secure-logger adoption so bundles can never contain secrets).
+
+## D-018 · ardrive-core-js heavy-update track: incremental sync, snapshots, owner-scoped GQL · CONFIRMED · 2026-07-03
+
+Phil: "ardrive-core-js will need heavy updates, like incremental sync, snapshot support, and even updating some of the queries to account for migration to turbo-gateway — for example most ArFS queries need to supply an owner or else GQL fails."
+
+Three upstream work items (CORE-1..3 in BACKLOG, Track C):
+- **CORE-1 owner-scoped GQL** — turbo-gateway's GQL requires an `owner` filter on most ArFS queries; core-js must thread owner through every query. This is a **hard dependency of SYNC-15** (D-012 gateway migration): raw data fetches can move to turbo-gateway early, metadata/GQL paths cannot until CORE-1 lands. Design sub-question: owner-unknown discovery flows (add-existing-drive by ID).
+- **CORE-2 incremental sync** — since/cursor listing APIs; feeds desktop SYNC-8 polling and metadata-cache refresh.
+- **CORE-3 snapshot support** — consume ArFS snapshots (as ardrive-web does) for cold-start listing; read-side first.
+
+Sequencing implication: CORE work happens in the sibling repo under the same loop (D-016), consumed by desktop via version bumps gated on interop vectors.

@@ -55,7 +55,7 @@ Ship via `build:testers` + GitHub Releases (unsigned, D-004) to Phil's Discord t
 
 **Track B — Wallet & payment evolution (D-013):** FEAT-1 Solana-default wallet onboarding with Turbo payments (open technical question: ArFS private-drive key derivation for non-Arweave wallets — likely upstream ardrive-core-js work). FEAT-2 "Advanced mode": Arweave wallet + AR tokens + self-bundled uploads (lite bundler). Ethereum stub deleted (INFRA-10).
 
-**Track C — Sync depth:** true multi-drive engine (SYNC-14), remote-change polling (SYNC-8), conflict detection + resolution, download hash verification (SYNC-12), full Wayfinder top-staked gateway routing (SYNC-15, D-012 — beta gets the no-single-gateway minimum), perf/indexing beyond the SYNC-10 baseline.
+**Track C — Sync depth (desktop) + CORE upstream (ardrive-core-js, D-018):** true multi-drive engine (SYNC-14), remote-change polling (SYNC-8, wants CORE-2), conflict detection + resolution, download hash verification (SYNC-12), full Wayfinder top-staked gateway routing (SYNC-15, D-012 — beta gets the no-single-gateway minimum; **metadata migration blocked on CORE-1** owner-scoped GQL), perf/indexing beyond the SYNC-10 baseline. Upstream: CORE-1 owner-scoped queries, CORE-2 incremental sync, CORE-3 ArFS snapshot consumption — the heavy core-js update wave Phil called out.
 
 **Track D — GA hardening:** code signing + notarization, secure-logger adoption (SEC-8) + in-app sanitized problem reports (UX-16, D-017), shell confinement (SEC-9), keytar→safeStorage (SEC-10), rate limiting (SEC-11), seed-confirm realness (SEC-13), UX-9/11/12/13/14 polish batch, repo hygiene (INFRA-6/8/11), MONEY-8.
 
@@ -67,6 +67,8 @@ Ship via `build:testers` + GitHub Releases (unsigned, D-004) to Phil's Discord t
 2. **Solana + private drives** — ArFS drive keys derive from an Arweave JWK; what's the intended derivation for Solana-default users (D-013)? Needs an ardrive-core-js design decision before FEAT-1 starts.
 3. **Hide semantics in the UI** — when a user deletes locally and we hide on ArFS (D-011): should the Permaweb view show hidden files with an "unhide" affordance, and what copy communicates permanence best?
 4. **Advanced-mode bundler scope** (FEAT-2) — is "lite bundler" per-file ANS-104 bundles signed by the user's wallet, or batch bundling with local receipts? Shapes turbo-sdk/arbundles reuse.
+5. **Owner-unknown discovery on turbo-gateway** (CORE-1, D-018) — "add existing drive" by drive ID has no owner up front, and owner-scoped GQL can't find it. Resolve the owner via a full-index gateway first, require the owner address as input, or something else?
+6. **Snapshot writing** (CORE-3) — should desktop eventually *create* snapshots for drives it syncs (cost/benefit for heavy users), or stay read-only consumer?
 
 ## Answered (moved to DECISIONS.md)
 
