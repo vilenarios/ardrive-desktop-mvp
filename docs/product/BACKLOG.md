@@ -76,7 +76,7 @@ Fix: either commit wallet only after confirmation, or drop the placebo checkbox 
 ## MONEY — Payment & cost integrity
 
 ### MONEY-1 · P0 · Phase 1 · `todo`
-**Resolve the cosmetic AR/Turbo choice.** Evidence: §1.1. Per decision D-001 (Turbo-only beta): remove the AR payment option from the approval queue UI, stop AR balance validation on approve, record `uploadMethod: 'turbo'` truthfully, label uploads accordingly. (Real AR upload support = Track B.)
+**Resolve the cosmetic AR/Turbo choice.** Evidence: §1.1. Per D-010 (Turbo-only beta): remove the AR payment option from the approval queue UI, stop AR balance validation on approve, record `uploadMethod: 'turbo'` truthfully, label uploads accordingly. Track B is now the D-013 direction (FEAT-2 Advanced-mode self-bundling replaces "real AR payments"); if planner changes are ever needed, ardrive-core-js is modifiable (D-016).
 Acceptance: UI offers no AR payment choice; DB `uploadMethod` matches actual execution; no AR-denominated balance gate on approval.
 
 ### MONEY-2 · P0 · Phase 2 · `todo`
@@ -144,14 +144,14 @@ Acceptance: kill -9 during an upload+download; relaunch resumes/requeues both; n
 Fix: recreate (or make restartable) the tracker and download manager on start; drive switch must not leave progress reporting dead.
 Acceptance: stop sync → start sync → upload/download progress still reaches the UI.
 
-### SYNC-5 · P1 · Phase 2 · `todo`
-**Deletes: propagate or disclose.** Evidence: §2.4. Beta decision: disclose — remove the dead detection cache, mark deleted files clearly ("removed locally — still on Arweave; permanent storage cannot be deleted") in Activity/Permaweb views. ArFS hide support = Track C.
-Acceptance: deleting a local file produces visible, truthful UI state; no code path pretends deletion syncs.
+### SYNC-5 · P0 · Phase 2 · `todo`
+**Deletes propagate as ArFS hide — Dropbox-smooth.** Evidence: §2.4. Per D-011 (supersedes the disclose-only plan): local file/folder deletion → ArFS hide operation, through the approval queue like other metadata ops; wire the dead detection cache into consumption; implement the `hide`/`unhide` branch that currently throws (sync-manager.ts:3249-3253); private-drive hide paths too (upstream ardrive-core-js work allowed per D-016); honest permanence messaging in UI ("hidden, not erased — permanent storage cannot delete").
+Acceptance: delete a local file → hide operation appears in queue → approval hides it on ArFS (verified via fresh listing); Permaweb view reflects hidden state; works on public and private drives; unhide path exists.
 
 ### SYNC-6 · P1 · Phase 2 · `todo`
-**Size limit: one number, surfaced.** Evidence: §2.11 (100MB comments vs 500MB constant; silent skip).
-Fix: single constant (decide 100 vs 500MB), skipped files appear in UI with reason, docs updated.
-Acceptance: dropping an oversized file shows a visible "too large" entry, not silence.
+**Size limit: 2 GiB uploads, surfaced; no download cap.** Evidence: §2.11 (100MB comments vs 500MB constant; silent skip). Per D-014: single 2 GiB upload constant; oversized files appear in UI with reason (no silent skips); downloads have no such cap and must stream larger files (web app can upload ~2GB+). Docs updated (CLAUDE.md/README still say 100MB).
+**HARD DEPENDENCY: SYNC-10 must land first** — current whole-file-in-memory hashing (×3 per event) is fatal at 2 GiB.
+Acceptance: dropping an oversized file shows a visible "too large" entry; a multi-GB file uploaded via web downloads successfully with flat memory.
 
 ### SYNC-7 · P0 · Phase 2 · `todo`
 **Kill the folder-vs-drive divergence.** Evidence: §2.8 (`sync:start` watches `config.syncFolder` while syncing the active mapping's drive; `drive:switchTo` never updates config).
@@ -163,11 +163,12 @@ Acceptance: after switching drives, the watched folder, UI-displayed folder, and
 
 ### SYNC-9 · P1 · Phase 2 · `todo`
 **Minimum offline resilience.** Evidence: §2.10.
-Fix: surface metadata-sync failures (no silent "continuing anyway"); watcher error → user-visible sync error state; startSync failure at boot retries with backoff or shows actionable state. Gateway fallback = Track C (Wayfinder).
+Fix: surface metadata-sync failures (no silent "continuing anyway"); watcher error → user-visible sync error state; startSync failure at boot retries with backoff or shows actionable state. Beta gateway minimum per D-012: no single-gateway hard dependency — `turbo-gateway.com` primary with simple failover (full Wayfinder routing = SYNC-15).
 Acceptance: pulling the network cable yields a visible degraded-sync state, not a silent healthy-looking app.
 
-### SYNC-10 · P2 · Track C · `deferred`
-**Perf: streaming hash + indexed lookups.** Evidence: §2.12 (whole-file reads ×3 per event; full-table `getProcessedFiles` per event).
+### SYNC-10 · P1 · Phase 2 · `todo`
+**Perf: streaming hash + indexed lookups.** Evidence: §2.12 (whole-file reads ×3 per event; full-table `getProcessedFiles` per event). Promoted from Track C per D-014 — hard prerequisite for the 2 GiB upload cap (SYNC-6).
+Acceptance: hashing a multi-GB file keeps process memory flat (stream-based); per-event DB lookups are indexed queries, not full-table scans.
 
 ### SYNC-11 · P2 · Phase 2 · `todo`
 **Watcher handler hygiene.** Evidence: §2.10 (handleFileChange missing monitoring/recently-downloaded guards; un-awaited async callbacks → unhandled rejections).
@@ -182,38 +183,40 @@ Fix: key "expected downloads" by path+size/hash rather than a fixed 30s window, 
 ### SYNC-14 · P2 · Track C · `deferred`
 **True multi-drive sync.** Evidence: §2.5 (singleton engine; `multi-sync:*` has no handlers; boot syncs first active mapping only). Beta: one drive syncs at a time — make the UI say so (see UX-15). Track C: per-mapping engine instances or a multiplexed engine, real `multi-sync` handlers, per-drive status.
 
+### SYNC-15 · P1 · Track C · `deferred`
+**Wayfinder gateway routing.** Per D-012: replace hardcoded `arweave.net` with Wayfinder-based selection — `turbo-gateway.com` primary, simple routing across top-staked ar.io gateways. References: docs/features/wayfinder-integration-proposal.md, docs/vendor/wayfinder-core-README.md. Beta's no-single-gateway minimum ships inside SYNC-9; this item is the full routing integration.
+Acceptance: gateway outage triggers transparent failover; gateway selection observable in logs; downloads verified identical across gateways.
+
 ---
 
-## PRIV — Private drives (Track A unless noted)
+## PRIV — Private drives (beta scope per D-010)
 
-### PRIV-0 · P0 · Phase 1 · `todo`
-**Feature-flag private drives off for beta.** Per decision D-001.
-Fix: hide private-drive creation option, hide/disable locked-drive unlock affordances, exclude private drives from mapped-drive lists behind a single flag (env or config `ENABLE_PRIVATE_DRIVES`).
-Acceptance: beta build shows no private-drive UI; flag flip restores it for development.
+### PRIV-0 · P0 · Phase 1 · `wont-fix`
+**Feature-flag private drives off for beta.** Obsolete: D-010 (2026-07-03) put private drives IN the beta — they stay enabled and get fixed (PRIV-1..7 rephased onto the critical path) instead of hidden.
 
-### PRIV-1 · P0 · Track A · `deferred`
-**Implement private download decryption.** Evidence: §3.1 (raw ciphertext written to sync folder).
+### PRIV-1 · P0 · Phase 2 · `todo`
+**Implement private download decryption.** Evidence: §3.1 (raw ciphertext written to sync folder). Upstream ardrive-core-js APIs may be extended if needed (D-016).
 Acceptance: round-trip UAT — upload to private drive, delete locally, re-download → plaintext bytes hash-equal the original.
 
-### PRIV-2 · P0 · Track A · `deferred`
+### PRIV-2 · P0 · Phase 2 · `todo`
 **Verify drive passwords with trial decryption.** Evidence: §3.2 (HKDF never fails; garbage keys cached).
 Acceptance: wrong password → `success: false`, nothing cached; correct password → decrypted drive name renders.
 
-### PRIV-3 · P0 · Track A · `deferred`
+### PRIV-3 · P0 · Phase 2 · `todo`
 **Fix private-drive create UX.** Evidence: §3.3 (user pays, UI says failed, no mapping). Root cause is UX-3's envelope mismatch — fix both handler shape and modal expectations together; create mapping + sync folder on success.
 
-### PRIV-4 · P0 · Track A · `deferred`
+### PRIV-4 · P0 · Phase 3 · `todo`
 **Fix key persistence serialization.** Evidence: §3.4-3.5. `key.keyData.toString('base64')` on save; `new EntityKey(Buffer.from(..., 'base64'))` (+ driveSignatureType for VersionedDriveKey) on load; App.tsx must forward `persistKey`; wire the write-only DB prefs (or drop them); implement plan steps 5 (session restore) and 6 (settings UI) from docs/archive/SELECTIVE_DRIVE_PERSISTENCE_PLAN.md. The parked partial implementation lives on branch `wip/drive-key-persistence` (commit c8a1469) — review before reusing.
 Acceptance: unlock with "remember" → restart → drive auto-unlocks and decrypts listings; unlock without → restart → drive locked.
 
-### PRIV-5 · P1 · Track A · `deferred`
+### PRIV-5 · P1 · Phase 2 · `todo`
 **Locked drives must not sync as "empty".** Evidence: §3.7 (swallowed listing error; boot auto-sync has no lock check).
 Acceptance: locked private drive at boot → visible "locked — unlock to sync" state; no silent empty sync.
 
-### PRIV-6 · P1 · Track A · `deferred`
-**Private move/rename (and hide) paths.** Evidence: §3.7/§1.7 (only `*Public*` ArFS calls exist).
+### PRIV-6 · P1 · Phase 2 · `todo`
+**Private move/rename (and hide) paths.** Evidence: §3.7/§1.7 (only `*Public*` ArFS calls exist). Pairs with SYNC-5's hide implementation; upstream ardrive-core-js work allowed (D-016).
 
-### PRIV-7 · P2 · Track A · `deferred`
+### PRIV-7 · P2 · Phase 3 · `todo`
 **Don't gate drive unlock on the 8-char wallet-password validator.** Evidence: §3.10 (drives from other clients with shorter passwords can never unlock).
 
 ---
@@ -280,6 +283,14 @@ Acceptance: copied links resolve; files without a dataTxId offer no raw-gateway 
 Fix: UI states plainly that the selected drive is the one that syncs; non-active mapped drives show "not syncing"; remove dead `multiSync`/`drive.getMetadata` preload surface or add handlers.
 Acceptance: no UI implies simultaneous multi-drive sync.
 
+### UX-16 · P1 · Track D · `todo`
+**In-app "report a problem" with sanitized logs.** Per D-017 ("sanitized logs would be dope"): a button that bundles recent app logs — passed through secure-logger redaction so key material/passwords/seeds are unrepresentable — plus app version and OS into a shareable file for Phil's Discord testers. DEPENDS: SEC-8.
+Acceptance: generated bundle contains zero secrets under adversarial grep; a tester can produce and share it in under a minute.
+
+### UX-17 · P2 · Phase 3 · `todo`
+**Profile identity: generated avatar + nickname.** Per D-015: port the avatar-generation approach from the ardrive-web sibling repo; add an editable profile nickname; deprioritize ArNS primary-name/avatar fetching (leave existing code dormant; also fixes the always-refetch cache bug §4.12 by simply not calling it).
+Acceptance: every profile shows a stable generated avatar and editable nickname; no ArNS network calls on profile load.
+
 ---
 
 ## INFRA — Build, test, release
@@ -329,8 +340,25 @@ Acceptance: an agent can run an end-to-end upload UAT spending only free-tier or
 Acceptance: every preload method has a live handler; every emitted event has ≥1 listener or is removed; a CI script greps for contract drift.
 
 ### INFRA-11 · P2 · Track D · `todo`
-**Docs truth pass.** Evidence: §6.7, §6.10. Fix RELEASE_GUIDE/TESTING_DISTRIBUTION workflow references; CLAUDE.md size-limit claim (per SYNC-6 decision); README "Current Limitations" (says public-only — will be true again for beta, but also says 100MB); mark superseded root planning docs.
+**Docs truth pass.** Evidence: §6.7, §6.10. Fix release-guide/testing-distribution workflow references; CLAUDE.md and README size-limit claims (2 GiB per D-014); README "Current Limitations" accuracy; README license says AGPL-3.0 while package.json says MIT — Phil to resolve.
+Note 2026-07-02: superseded-doc banners and README phantom links already fixed in the repo reorg.
+
+### INFRA-12 · P1 · Phase 4 · `todo`
+**E2E/UI test harness.** Per D-006 amendment ("unit, integration and UI"): stand up Playwright (or WebdriverIO) driving the built Electron app with a disposable test profile; smoke flows first — onboarding (import test wallet), drive create/select, file drop → approval queue appears, settings. Wire into CI as a gated job (headless via xvfb on Linux runner or windows-latest).
+Acceptance: one command runs the UI smoke suite against a packaged build; CI runs it on every PR; failures produce screenshots.
 
 ---
 
-## Item count: 55 · P0: 17 · P1: 22 · P2: 16
+## FEAT — Major feature work (Track B, per D-013)
+
+### FEAT-1 · P1 · Track B · `deferred`
+**Solana-default wallet onboarding with Turbo.** New users get a Solana wallet by default, paying via Turbo (turbo-sdk supports Solana signing/top-ups; sibling repo modifiable per D-016). OPEN DESIGN QUESTION (ROADMAP #2): ArFS private-drive key derivation for non-Arweave wallets — needs an ardrive-core-js decision before implementation starts.
+Acceptance: new-user flow creates/imports a Solana wallet, tops up Turbo, and syncs a public drive end-to-end.
+
+### FEAT-2 · P2 · Track B · `deferred`
+**"Advanced mode": Arweave wallet + AR tokens + self-bundled uploads (lite bundler).** Per D-013: an opt-in mode where the user holds an Arweave wallet with AR tokens and the app builds/signs/posts its own ANS-104 bundles (arbundles is already a dependency). Scope question open (ROADMAP #4): per-file bundles vs batching with receipts.
+
+---
+
+## Item count: 61 · P0: 18 · P1: 26 · P2: 17
+(2026-07-03 rescope per D-010..D-017: PRIV-1..7 onto beta phases, PRIV-0 wont-fix, SYNC-5 promoted P0, SYNC-10 promoted P1/Phase 2, +SYNC-15, +UX-16, +UX-17, +INFRA-12, +FEAT-1, +FEAT-2.)

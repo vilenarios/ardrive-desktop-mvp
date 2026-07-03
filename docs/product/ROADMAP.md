@@ -1,74 +1,73 @@
 # ArDrive Desktop — Roadmap
 
-Working plan from the [2026-07-02 audit](./AUDIT-2026-07-02.md). Work items live in [BACKLOG.md](./BACKLOG.md); decisions in [DECISIONS.md](./DECISIONS.md). Estimates assume one focused developer + agent support; phases 1–3 are sequential-ish, Phase 4 parallelizes.
+Working plan from the [2026-07-02 audit](./AUDIT-2026-07-02.md). Work items live in [BACKLOG.md](./BACKLOG.md); decisions in [DECISIONS.md](./DECISIONS.md). Phases 1–3 are sequential-ish; Phase 4 parallelizes. Per D-003: milestones are ordered quality gates with exit criteria — **no dates, no estimates**; we loop until each gate passes.
 
-## Beta scope (decision D-001, provisional)
+## Beta scope (D-010, confirmed)
 
-**Public drives · Turbo-only payments · one syncing drive at a time.**
+**Public AND private drives · Turbo-only payments · one syncing drive at a time.**
 
-Rationale: that is the spine that verifiably works today. Private drives (ciphertext downloads, no password verification), real AR payment routing, and true multi-drive sync are each multi-week correctness projects — they become post-beta tracks rather than beta blockers. The UI must be *truthful* about the reduced scope (feature flags + honest copy), not silently broken.
+Private drives are in (Phil, 2026-07-03) — their correctness work (PRIV-1..7) sits on the critical path. The AR-payment picker comes out (it was cosmetic; MONEY-1), and simultaneous multi-drive sync stays post-beta with truthful single-drive UI (UX-15). Upload cap is 2 GiB with streaming prerequisites (D-014); local deletes propagate as ArFS hides (D-011).
 
-## Milestone 1 — "Safe to hand to a tester" (Phase 1, ~1 week)
+## Milestone 1 — "Safe to hand to a tester" (Phase 1)
 
-Nothing in the build lies to users or leaks secrets. All P0/Phase-1 items:
+Nothing in the build lies to users or leaks secrets:
 
 - SEC-1 key logging · SEC-2 env exposure · SEC-3 sync-survives-logout · SEC-12 export mask
 - MONEY-1 remove cosmetic AR choice · MONEY-3 fake USD pricing · MONEY-4 fake Auto Top-Up · MONEY-5 no-op conflict modal
-- PRIV-0 private-drives feature flag
 - UX-1 toasts actually render · UX-2 Settings folder picker
 - INFRA-1 CI can install (lockfile + workflow committed)
 
-Exit criteria: a tester can import a wallet, sync a public drive with Turbo, and every visible control either works or doesn't exist. `git grep MOCK_AR_PRICE` returns nothing.
+Exit criteria: a tester can import a wallet and sync a drive with Turbo, and every visible control either works or doesn't exist. `git grep MOCK_AR_PRICE` returns nothing.
 
-## Milestone 2 — "Sync you can trust" (Phase 2, ~2 weeks)
+## Milestone 2 — "Sync you can trust" (Phase 2)
 
-The engine's core promises hold:
+The engine's core promises hold, for public and private drives alike:
 
 - SYNC-1 edits re-upload · SYNC-2 failed downloads marked failed · SYNC-3 crash recovery · SYNC-4 stop/start lifecycle · SYNC-7 folder/drive single source of truth
-- SYNC-5 truthful deletes · SYNC-6 size limit surfaced · SYNC-9 offline visibility · SYNC-11 watcher hygiene · SYNC-13 eviction feedback loop
+- SYNC-5 deletes propagate as ArFS hide (D-011, Dropbox-smooth) · SYNC-6 2 GiB upload cap, surfaced (D-014) · SYNC-10 streaming hashing (prereq for 2 GiB) · SYNC-9 offline visibility · SYNC-11 watcher hygiene · SYNC-13 eviction feedback loop
+- PRIV-1 private download decryption · PRIV-2 trial-decrypt password verification · PRIV-3 private-create flow · PRIV-5 locked-drive sync states · PRIV-6 private move/rename/hide paths
 - MONEY-2 cancel/retry safety · MONEY-6 approval semantics · MONEY-9 queue serialization · MONEY-10 upload-time revalidation
 
-Exit criteria (UAT script, run on a real drive): create/edit/rename/move/delete files and folders; kill the app mid-transfer; go offline mid-sync; switch drives — after each, DB state, disk state, and UI agree, and no money was spent that the user didn't approve.
+Exit criteria (UAT on real public AND private drives): create/edit/rename/move/delete files and folders; kill the app mid-transfer; go offline mid-sync; switch drives; lock/unlock a private drive — after each, DB state, disk state, and UI agree; deleted files show as hidden on ArFS; private files round-trip to plaintext; no money spent that the user didn't approve.
 
-## Milestone 3 — "Feels finished" (Phase 3, ~1 week)
+## Milestone 3 — "Feels finished" (Phase 3)
 
-- UX-3 unified IPC envelope (kills three known bugs at the root) · UX-4 listener redesign · UX-5 real profile switching · UX-6 auto-login or no keychain storage (with SEC-4) · UX-7 fail-safe boot routing · UX-8 progress-modal error state · UX-10 copy-link fix · UX-15 truthful single-drive UI
+- UX-3 unified IPC envelope · UX-4 listener redesign · UX-5 real profile switching · UX-6 auto-login or no keychain storage (with SEC-4) · UX-7 fail-safe boot routing · UX-8 progress-modal error state · UX-10 copy-link fix · UX-15 truthful single-drive UI · UX-17 generated avatar + nickname (D-015)
+- PRIV-4 drive-key persistence (fixed serialization + session restore + settings UI) · PRIV-7 unlock password validation
 - SEC-5 no plaintext JWK temp files · MONEY-7 payment window hardening
 
-Exit criteria: full manual UI walkthrough (every screen, every button) with zero silent failures; response-envelope typecheck enforced.
+Exit criteria: full manual UI walkthrough (every screen, every button) with zero silent failures; unlock-remember-restart round-trip works; envelope enforced by types.
 
-## Milestone 4 — "Sustainable to iterate" (Phase 4, ~1 week, parallel with 2–3)
+## Milestone 4 — "Sustainable to iterate" (Phase 4, parallel with 2–3)
 
-- INFRA-2 tests resurrected · INFRA-3 CI gating · INFRA-4 auto-update · INFRA-5 telemetry · INFRA-7 DB migrations · INFRA-9 test-money strategy · INFRA-10 IPC reconciliation
+- INFRA-2 tests resurrected · INFRA-3 CI gating · INFRA-4 auto-update · INFRA-5 telemetry · INFRA-7 DB migrations · INFRA-9 test-money strategy · INFRA-10 IPC reconciliation · INFRA-12 E2E/UI test harness (D-006 amendment)
 - SEC-6 Electron upgrade · SEC-7 shell hardening
 
-Exit criteria: green gated CI on every PR; a tester on build N gets offered N+1; a crash in the field produces a report we can read.
+Exit criteria: green gated CI on every PR (unit + integration + UI smoke); a tester on build N gets offered N+1; a crash in the field produces a readable report.
 
-## → Beta release (target: all four milestones)
+## → Beta release
 
-Ship via `build:testers` + GitHub Releases (unsigned, per D-004) to a private tester group with a KNOWN-ISSUES list generated from `deferred` backlog items.
+Ship via `build:testers` + GitHub Releases (unsigned, D-004) to Phil's Discord tester group (D-017) with a KNOWN-ISSUES list generated from `deferred` backlog items. **Released only on Phil's explicit final approval** (D-009).
 
 ---
 
 ## Post-beta tracks
 
-**Track A — Private drives** (PRIV-1..7): download decryption, trial-decrypt password verification, create-flow fix, key persistence (fixed serialization + session restore + settings UI), locked-drive sync states, private move/rename. Ship behind the PRIV-0 flag flip when the round-trip UAT passes.
+**Track B — Wallet & payment evolution (D-013):** FEAT-1 Solana-default wallet onboarding with Turbo payments (open technical question: ArFS private-drive key derivation for non-Arweave wallets — likely upstream ardrive-core-js work). FEAT-2 "Advanced mode": Arweave wallet + AR tokens + self-bundled uploads (lite bundler). Ethereum stub deleted (INFRA-10).
 
-**Track B — Real AR payments**: per-upload planner selection (requires ardrive-core factory changes or dual factory instances), true AR cost quotes incl. community tip, AR balance gating, method honored end-to-end.
+**Track C — Sync depth:** true multi-drive engine (SYNC-14), remote-change polling (SYNC-8), conflict detection + resolution, download hash verification (SYNC-12), full Wayfinder top-staked gateway routing (SYNC-15, D-012 — beta gets the no-single-gateway minimum), perf/indexing beyond the SYNC-10 baseline.
 
-**Track C — Sync depth**: true multi-drive engine (SYNC-14), remote-change polling (SYNC-8), conflict detection + resolution (with the modal MONEY-5 removed until then), download hash verification (SYNC-12), streaming hash/indexed lookups (SYNC-10), gateway failover / Wayfinder integration (repo already vendors Wayfinder docs — scope TBD, see Open Questions).
+**Track D — GA hardening:** code signing + notarization, secure-logger adoption (SEC-8) + in-app sanitized problem reports (UX-16, D-017), shell confinement (SEC-9), keytar→safeStorage (SEC-10), rate limiting (SEC-11), seed-confirm realness (SEC-13), UX-9/11/12/13/14 polish batch, repo hygiene (INFRA-6/8/11), MONEY-8.
 
-**Track D — GA hardening**: code signing + notarization, secure-logger adoption (SEC-8), shell confinement (SEC-9), keytar→safeStorage (SEC-10), rate limiting (SEC-11), seed-confirm realness (SEC-13), UX-9/11/12/13/14 polish batch, repo hygiene (INFRA-6/8/11), MONEY-8.
-
-**Track E — ArDrive Web convergence**: extend this agentic product process to the ardrive-web sibling repo; shared ArFS interop test vectors (files created by desktop must round-trip in web and vice versa); shared backlog conventions and cross-repo feature parity matrix.
+**Track E — Sibling-repo convergence (D-016):** extend this agentic product process to ardrive-web; shared ArFS interop test vectors (desktop ↔ web round-trips); shared patterns across ardrive-core-js / turbo-sdk / ar-io-sdk, which are modifiable when desktop needs upstream changes; feature-parity matrix.
 
 ## Open questions (need product input)
 
-1. **Wayfinder/ar.io gateways** — vendored docs suggest planned integration; is gateway failover via Wayfinder the intended Track C design, or is `arweave.net` acceptable for GA?
-2. **Delete semantics** — is ArFS *hide* the desired long-term behavior for local deletes (Track C), and how should the UI message permanence?
-3. **Tester pool** — who and how many for the beta; what's the feedback channel (GitHub issues? Discord?); do we need an in-app "report a problem" that bundles logs (depends on SEC-8)?
-4. **Success metrics** — what defines a successful beta (e.g., N drives synced with zero data-integrity reports, upload success rate, crash-free sessions %)? Telemetry (INFRA-5) should be designed against these.
-5. **Ethereum wallet support** — stub exists (`wallet:import-ethereum-from-file` TODO); on the roadmap or delete?
-6. **File size ceiling** — keep 100MB (docs) or 500MB (code) for beta? Cost implications for testers.
-7. **ArNS/avatar features** — present and working; any beta-scope changes needed?
-8. **ardrive-web timing** — when Track E starts, monorepo vs. sibling-repo conventions.
+1. **Beta success metrics** — what defines a successful beta (e.g., N drives synced with zero data-integrity reports, upload success rate, crash-free sessions %)? Telemetry (INFRA-5) should be designed against these. *(Unanswered from the original list.)*
+2. **Solana + private drives** — ArFS drive keys derive from an Arweave JWK; what's the intended derivation for Solana-default users (D-013)? Needs an ardrive-core-js design decision before FEAT-1 starts.
+3. **Hide semantics in the UI** — when a user deletes locally and we hide on ArFS (D-011): should the Permaweb view show hidden files with an "unhide" affordance, and what copy communicates permanence best?
+4. **Advanced-mode bundler scope** (FEAT-2) — is "lite bundler" per-file ANS-104 bundles signed by the user's wallet, or batch bundling with local receipts? Shapes turbo-sdk/arbundles reuse.
+
+## Answered (moved to DECISIONS.md)
+
+Gateway strategy → D-012 · Delete semantics → D-011 · Tester pool/feedback → D-017 · Ethereum → D-013 · Size ceiling → D-014 · ArNS/avatars → D-015 · Repo strategy → D-016 · Scope → D-010.
