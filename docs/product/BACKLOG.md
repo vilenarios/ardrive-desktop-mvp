@@ -411,6 +411,22 @@ Acceptance: every updatable field maps (compile-time-checked map or exhaustive s
 
 ---
 
+## DESIGN — Visual design & styling (parallel work stream, per D-023)
+
+Handled by the `designer` agent. Token-driven, light+dark, mirrors ardrive-web's `ardrive_ui` + the public site. DESIGN-1→2 are the sequential foundation; DESIGN-3+ fan out in parallel. Design flows through the loop (designer → qa-gate for correctness/no-regression/token-purity/contrast → Phil aesthetic sign-off via INFRA-12 screenshots).
+
+### DESIGN-1 · P1 · Design · `todo`
+**Extract the ArDrive design system → docs/product/DESIGN-SYSTEM.md.** Foundation for everything else. Distill tokens (color palette light+dark, typography scale, spacing, radii, shadows, motion) and component patterns from ardrive-web `packages/ardrive_ui` + `lib/theme/{colors,theme}.dart` + the public site (https://ardriveapp.github.io/public-site/). Opus-tier (taste + synthesis).
+Acceptance: DESIGN-SYSTEM.md defines a complete, implementable token set (both themes) + component-pattern specs, cited to ardrive-web/public-site sources.
+
+### DESIGN-2 · P1 · Design · `todo`
+**Desktop theme/token foundation.** Implement the DESIGN-1 tokens as a CSS-variable theme layer in the renderer + a light/dark ThemeProvider; migrate the scattered hardcoded colors in src/renderer/styles/* to tokens. Prereq for all restyling. DEPENDS: DESIGN-1.
+Acceptance: one token source; light/dark switch works; no raw color literals remain outside the theme layer (grep-clean); no visual regression vs current on a screenshot pass.
+
+### DESIGN-3..7 · P2 · Design · `todo` (fan out after DESIGN-2)
+Restyle each surface against the system, in parallel: **DESIGN-3** onboarding/wallet-setup · **DESIGN-4** dashboard shell + tabs + drive selector · **DESIGN-5** upload approval queue + Turbo/payments · **DESIGN-6** permaweb/activity/storage views · **DESIGN-7** settings + modals + toasts + user menu.
+Acceptance (each): surface matches DESIGN-SYSTEM.md in light+dark; token-driven; screenshots attached; no behavior change.
+
 ## CORE — ardrive-core-js upstream (sibling repo, per D-016/D-018)
 
 Work items in the ardrive-core-js repo that desktop depends on. Same loop applies (implement → QA → merge there); desktop consumes via version bump with an interop check.

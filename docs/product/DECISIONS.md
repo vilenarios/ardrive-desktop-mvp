@@ -115,3 +115,13 @@ Phil can't get in front of a real display. The remaining Milestone-1 caveat is r
 
 Phil: SYNC-5 (delete→hide) can't ship because no ArFS hide API exists in ardrive-core-js. Decision: build hide/unhide in core-js FIRST (D-016 permits sibling-repo work), mirroring ardrive-web's mechanism exactly, then SYNC-5 consumes it via a dependency bump. Tracked as CORE-4; full spec in docs/product/CORE-4-hide-scoping.md. Mechanism (from ardrive-web): a plain metadata revision adding `isHidden: boolean` to entity JSON — no tag, no ArFS spec bump, no child cascade, `lastModifiedDate` untouched, filtering left to the consumer. Base branch: **`master`** (Phil confirmed 2026-07-03 after the scoping finding that `dev` is ~11 months dormant / real default is master). Feature branch off origin/master.
 
+## D-023 · Design work stream: source of truth = ardrive_ui + public site; token-driven; runs parallel through the loop · CONFIRMED · 2026-07-03
+
+Phil: "spin up a designer agent … a beautifully styled app that is familiar, sleek and modern … follow our style guidelines/themes in ardrive web app and the public site."
+- **Source of truth**: ardrive-web `packages/ardrive_ui` + `lib/theme/{colors,theme}.dart` (canonical ArDrive design system) and the public site https://ardriveapp.github.io/public-site/ (modern/sleek finish). Bridged into desktop via docs/product/DESIGN-SYSTEM.md (DESIGN-1).
+- **Token-driven, light+dark mandatory**; no hardcoded colors in components.
+- **New `designer` agent** (.claude/agents/designer.md, default Sonnet, Opus for foundational DESIGN-1) — a specialized implementer for styling; changes visuals, not behavior.
+- **Workflow**: design flows through the standard loop — designer implements → qa-gate verifies correctness + no-regression + token-purity + WCAG-AA contrast + light/dark → **Phil signs off aesthetics from screenshots** (the INFRA-12 Playwright harness doubles as the design-review evidence tool). Mechanical checks are QA's; "is it beautiful" is Phil's.
+- **Parallelism**: runs concurrently with functional Phase-2 work. Lane rule: a DESIGN item and a functional item touching the SAME component serialize (styling/markup vs logic usually separable, but not always).
+- **Beta bar**: DESIGN-1/2 (foundation) targeted for beta; per-surface polish (DESIGN-3+) rolls through beta → GA.
+

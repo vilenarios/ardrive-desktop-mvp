@@ -53,6 +53,10 @@ Ship via `build:testers` + GitHub Releases (unsigned, D-004) to Phil's Discord t
 
 ---
 
+## Design work stream (parallel, cross-cutting — D-023)
+
+Runs alongside functional work, not after it. `designer` agent; source of truth = ardrive-web `ardrive_ui` + public site. Sequence: DESIGN-1 (extract the design system → DESIGN-SYSTEM.md) → DESIGN-2 (desktop token/theme foundation) → DESIGN-3..7 (per-surface restyle, parallel). Foundation (1/2) targeted for beta so the tester build looks like ArDrive; per-surface polish continues to GA. Verified through the loop with screenshot evidence (INFRA-12) + Phil's aesthetic sign-off.
+
 ## Post-beta tracks
 
 **Track B — Wallet & payment evolution (D-013):** FEAT-1 Solana-default wallet onboarding with Turbo payments (open technical question: ArFS private-drive key derivation for non-Arweave wallets — likely upstream ardrive-core-js work). FEAT-2 "Advanced mode": Arweave wallet + AR tokens + self-bundled uploads (lite bundler). Ethereum stub deleted (INFRA-10).

@@ -9,6 +9,7 @@ Three roles, one loop. This doc is the contract between them.
 | **PM / Coordinator** | The main Claude Code session | Picking work by ROADMAP phase order, dispatching, merge decisions, BACKLOG/DECISIONS upkeep, escalation to Phil | Implement and verify the same item itself (no self-review) |
 | **Implementer** | `implementer` agent (`.claude/agents/implementer.md`) | One backlog item per invocation: code + tests on an isolated branch, honest self-report | Self-certify done; touch main; spend funds; exceed item scope |
 | **QA Gate** | `qa-gate` agent (`.claude/agents/qa-gate.md`) | Adversarial verification against acceptance criteria + full regression gates; PASS/FAIL verdict with evidence | Fix product code; pass on vibes; verify work it helped design |
+| **Designer** | `designer` agent (`.claude/agents/designer.md`) | Visual/styling for DESIGN-track items — token-driven, light/dark, matches ardrive_ui + public site | Change behavior/logic/IPC; self-certify; push |
 
 **Phil** is the release authority and product-decision owner. Defaults below say what reaches him and what doesn't.
 
@@ -58,6 +59,10 @@ Override per dispatch (`model:` on Agent/SendMessage) beats the role-file defaul
 - **File-overlap rule extends across sessions**: an item whose files overlap a claimed item waits (main.ts remains the biggest serialization point).
 - **Direct instructions from Phil to any agent win** over that agent's standing rails; the agent notes the instruction in its report and the PM reconciles the record afterward. Route follow-ups on *finished* items through the PM to keep one writer per checkout.
 - **Orphaned verdicts route to the PM.** If a QA gate (or implementer) finishes and its requesting session is unreachable, its report lands with the main conversation; the PM adjudicates, makes any required records, and closes the item out. A QA PASS conditioned on an unrecorded decision is not merge-ready until the PM records that decision (this happened on UX-1 — the gate was right to insist).
+
+## Design sub-loop (DESIGN-track items, per D-023)
+
+Same implement→verify loop, adapted: the **designer** agent restyles a surface (token-driven, no behavior change) → **qa-gate** verifies the mechanical bar (typecheck/lint/build, no logic regression, zero raw color literals outside the theme layer, WCAG-AA contrast, light+dark both render) → **Phil signs off the aesthetic** from screenshots (the INFRA-12 Playwright harness renders each surface light+dark and is the design-review evidence tool). QA verifies "correct + on-system"; Phil decides "beautiful." Lane rule: a DESIGN item and a functional item on the same component file serialize.
 
 ## Escalation to Phil (PM must stop and ask)
 
