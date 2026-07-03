@@ -110,7 +110,8 @@ Done 2026-07-03 (67db271, qa-gate PASS under zero-trust after implementer sessio
 
 ### MONEY-6 · P1 · Phase 2 · `todo`
 **Fix approval-queue semantics.** Evidence: §1.5.
-Fix: "Approve & Upload" calls approve-all once (no per-file follow-up loop that bypasses balance checks); remove the dead "Payment Method" radio; consistent balance gating between single and batch paths.
+Fix: "Approve & Upload" calls approve-all once (no per-file follow-up loop that bypasses balance checks); consistent balance gating between single and batch paths. (Dead radio already removed by MONEY-1.)
+Re-homed from MONEY-1 (2026-07-03, need sync-manager.ts access): :3392 synthetic `estimatedTurboCost: 0.000001` for metadata ops — store honest value; :1973 `|| undefined` zero-quote coercion. Plus staleness: top-up affordance doesn't refresh row quotes — blocked rows stay blocked until re-quote despite live main-side check.
 Acceptance: one approval action → one approval per file; skipped-for-balance files stay skipped with a visible reason.
 
 ### MONEY-7 · P1 · Phase 3 · `todo`

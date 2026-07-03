@@ -8,7 +8,9 @@ Working plan from the [2026-07-02 audit](./AUDIT-2026-07-02.md). Work items live
 
 Private drives are in (Phil, 2026-07-03) — their correctness work (PRIV-1..7) sits on the critical path. The AR-payment picker comes out (it was cosmetic; MONEY-1), and simultaneous multi-drive sync stays post-beta with truthful single-drive UI (UX-15). Upload cap is 2 GiB with streaming prerequisites (D-014); local deletes propagate as ArFS hides (D-011).
 
-## Milestone 1 — "Safe to hand to a tester" (Phase 1)
+## Milestone 1 — "Safe to hand to a tester" (Phase 1) — ✅ CODE COMPLETE 2026-07-03
+
+All 11 items done and merged (SEC-1/2/3/12, MONEY-1/3/4/5, UX-1/2 via full QA gates; INFRA-1 committed). Exit criteria met at verified-component level: every claim is backed by adversarially-gated behavioral tests (~230 suite); `git grep MOCK_AR_PRICE` clean. TWO OPEN CAVEATS before declaring the milestone fully exited: (1) INFRA-1's clean-runner CI dispatch — blocked on the workflow-scope push auth; (2) a live-Electron manual smoke UAT (import wallet → sync → approve) has not been run — every gate was jsdom/handler-level; schedule one on a real display before tester handoff.
 
 Nothing in the build lies to users or leaks secrets:
 
