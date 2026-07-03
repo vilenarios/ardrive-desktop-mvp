@@ -378,7 +378,7 @@ Acceptance: every preload method has a live handler; every emitted event has ≥
 **Docs truth pass.** Evidence: §6.7, §6.10. Fix release-guide/testing-distribution workflow references; CLAUDE.md and README size-limit claims (2 GiB per D-014); README "Current Limitations" accuracy; README license says AGPL-3.0 while package.json says MIT — Phil to resolve.
 Note 2026-07-02: superseded-doc banners and README phantom links already fixed in the repo reorg.
 
-### INFRA-12 · P1 · Phase 4 · `todo`
+### INFRA-12 · P1 · Phase 2 (pulled forward per D-021) · `todo`
 **E2E/UI test harness.** Per D-006 amendment ("unit, integration and UI"): stand up Playwright (or WebdriverIO) driving the built Electron app with a disposable test profile; smoke flows first — onboarding (import test wallet), drive create/select, file drop → approval queue appears, settings. Wire into CI as a gated job (headless via xvfb on Linux runner or windows-latest).
 Acceptance: one command runs the UI smoke suite against a packaged build; CI runs it on every PR; failures produce screenshots.
 

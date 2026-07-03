@@ -106,3 +106,8 @@ Phil's clarifications on D-018:
 Phil: "For Solana support we should do what we do for the ardrive app — derive an Arweave wallet from the Solana wallet. Then we have best of both worlds. Like ArNS requires a Solana wallet." (Final clause recorded verbatim.)
 
 Resolves the FEAT-1 design blocker (ROADMAP open question 2): the Solana wallet is the user-facing identity/payment rail (Turbo), and a deterministic Arweave JWK derived from it powers everything ArFS — drive-key derivation, signing, interop — unchanged. Reference implementation: ardrive-web's existing Solana→Arweave derivation (mirror it exactly for cross-app wallet compatibility — the same Solana wallet must yield the same Arweave wallet in both apps). Upstream home for the derivation if shared: ardrive-core-js (D-016).
+
+## D-021 · M1 smoke UAT is automated-headed with screenshot evidence · CONFIRMED · 2026-07-03
+
+Phil can't get in front of a real display. The remaining Milestone-1 caveat is re-scoped: instead of a human manual smoke UAT, INFRA-12 is pulled forward to deliver (tier 1) a Playwright-Electron smoke suite driving the real built app headed under WSLg locally — wallet import via dev-mode, drive creation, free-tier (<100KB, zero-fund wallet) upload through the real approval queue — with step screenshots delivered to Phil for review; then (tier 2) the same suite on windows-latest CI against the packaged build (real Windows, real keytar/Credential Manager, silent NSIS install smoke), screenshots as artifacts. Honest residual (deferred to first tester, disclosed): human look-and-feel, interactive-installer UX, OS-native dialogs.
+
