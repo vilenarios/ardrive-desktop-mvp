@@ -383,7 +383,7 @@ Done 2026-07-03 (45b1b2e + adopted QA probe, qa-gate PASS — real-engine advers
 ### INFRA-8 · P2 · Track D · `todo`
 **Dependency debt**: sqlite3 → better-sqlite3 (optional), remove ts-jest/@types/jest, retire crypto-js (pair SEC-10). Evidence: §6.6.
 
-### INFRA-9 · P1 · Phase 4 · `todo`
+### INFRA-9 · P1 · Phase 4 · `in-progress`
 **Test-money strategy for agents & CI.** Uploads cost real money; agents and CI must be able to verify money paths safely.
 Fix: dedicated funded test wallet (small Turbo balance) checked into secrets (never the repo); free-tier (<100KB) fixtures for upload UAT; ArLocal or mocked gateway for integration tests; document in CLAUDE.md what may/may not spend.
 Acceptance: an agent can run an end-to-end upload UAT spending only free-tier or explicitly-budgeted test credits.
