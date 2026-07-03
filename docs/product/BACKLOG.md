@@ -275,7 +275,7 @@ Acceptance: a failed sync shows the error and the modal is dismissible; no infin
 Acceptance: copied links resolve; files without a dataTxId offer no raw-gateway link.
 
 ### UX-11 · P2 · Track D · `todo`
-**Small-wiring batch**: rename doesn't refresh drive name (OverviewTab); DownloadQueueTab retry/pause/resume props never passed + not drive-filtered; UserMenu turbo refresh doesn't update displayed balance; `App.tsx:291` sets active drive to `drivesList[0]` on any drive:update; Permaweb copy-link feedback console-only; StorageTab `parentFolderId: ''` TODO; TurboCreditsManager shares one `loading` flag between mount-time balance load and checkout — Pay button can re-enable while a checkout session is pending (implementer finding 2026-07-03). Evidence: §5.6, §5.8.
+**Small-wiring batch**: rename doesn't refresh drive name (OverviewTab); DownloadQueueTab retry/pause/resume props never passed + not drive-filtered; UserMenu turbo refresh doesn't update displayed balance; `App.tsx:291` sets active drive to `drivesList[0]` on any drive:update; Permaweb copy-link feedback console-only; StorageTab `parentFolderId: ''` TODO; TurboCreditsManager shares one `loading` flag between mount-time balance load and checkout — Pay button can re-enable while a checkout session is pending (implementer finding 2026-07-03); WalletExport `handleCopy` schedules an unmanaged 30s clipboard-clear setTimeout that survives unmount and can blank unrelated clipboard content (QA finding 2026-07-03). Evidence: §5.6, §5.8.
 
 ### UX-12 · P2 · Track D · `todo`
 **Move wallet keygen off the main process** (worker thread) + real progress. Evidence: §4.4.
