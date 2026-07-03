@@ -105,6 +105,17 @@ describe('DatabaseManager', () => {
       expect(uploadCall![1][0]).toMatch(/may or may not have reached Arweave/);
     });
 
+    it('fails never-started pending uploads with a never-charged message (batch-crash gap)', async () => {
+      await databaseManager.recoverInterruptedOperations();
+
+      const pendingCall = mockDbInstance.run.mock.calls.find((c: any[]) =>
+        String(c[0]).includes("WHERE status = 'pending'") && String(c[0]).includes('uploads')
+      );
+      expect(pendingCall).toBeDefined();
+      expect(String(pendingCall![0])).toContain("SET status = 'failed'");
+      expect(String(pendingCall![0])).toContain('nothing was charged');
+    });
+
     it('resets stuck download rows and metadata to recoverable states', async () => {
       await databaseManager.recoverInterruptedOperations();
 
@@ -126,12 +137,24 @@ describe('DatabaseManager', () => {
         const changes = String(sql).includes('UPDATE uploads') ? 2
           : String(sql).includes('UPDATE downloads') ? 3
           : String(sql).includes('UPDATE drive_metadata_cache') ? 5 : 0;
+        // note: both uploads statements (in-flight + pending) report 2 each
         if (callback) callback.call({ changes }, null);
       });
 
-      const result = await databaseManager.recoverInterruptedOperations();
+      let result;
+      try {
+        result = await databaseManager.recoverInterruptedOperations();
+      } finally {
+        // restore the default impl — mockImplementation (not ...Once) would
+        // otherwise leak into later tests (qa-gate hygiene note)
+        mockDbInstance.run.mockImplementation((sql: string, params?: any, callback?: any) => {
+          if (typeof params === 'function') callback = params;
+          if (callback) callback.call({ changes: 0 }, null);
+        });
+      }
 
-      expect(result).toEqual({ uploadsReset: 2, downloadsReset: 3, metadataReset: 5 });
+      // uploadsReset = in-flight (2) + never-started pending (2)
+      expect(result).toEqual({ uploadsReset: 4, downloadsReset: 3, metadataReset: 5 });
     });
 
     it('propagates database errors', async () => {

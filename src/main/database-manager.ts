@@ -61,8 +61,12 @@ export class DatabaseManager {
    *
    * - uploads stuck 'uploading' become terminal 'failed' with an honest
    *   message: the network call may or may not have completed on Arweave, so
-   *   blindly re-queueing could pay for the same file twice (MONEY-2). The
-   *   user retries deliberately via uploads:retry, which admission-checks.
+   *   blindly re-queueing could pay for the same file twice. The user
+   *   retries deliberately via uploads:retry (admission-guarded by MONEY-2).
+   * - uploads stuck 'pending' (approved and queued in the memory-only queue,
+   *   never started) also become 'failed' with a never-charged message —
+   *   otherwise they are unreachable forever (qa-gate finding: retry-all
+   *   only consumes 'failed', and the watcher dedup blocks re-detection).
    * - downloads stuck 'downloading' become 'failed' (free to redo).
    * - drive metadata syncStatus stuck 'downloading'/'queued' resets to
    *   'pending', which the boot sync flow re-queues automatically.
@@ -90,6 +94,10 @@ export class DatabaseManager {
       [interruptedUploadMessage]
     );
 
+    const pendingUploadsReset = await run(
+      `UPDATE uploads SET status = 'failed', error = 'Interrupted before starting — nothing was charged; use Retry to re-queue' WHERE status = 'pending'`
+    );
+
     const downloadsReset = await run(
       `UPDATE downloads SET status = 'failed', error = 'Interrupted by app shutdown' WHERE status IN ('downloading', 'queued', 'pending')`
     );
@@ -98,14 +106,15 @@ export class DatabaseManager {
       `UPDATE drive_metadata_cache SET syncStatus = 'pending', lastError = NULL WHERE syncStatus IN ('downloading', 'queued')`
     );
 
-    if (uploadsReset || downloadsReset || metadataReset) {
+    if (uploadsReset || pendingUploadsReset || downloadsReset || metadataReset) {
       console.log(
-        `DatabaseManager - crash recovery: ${uploadsReset} uploads -> failed (verify-before-retry), ` +
+        `DatabaseManager - crash recovery: ${uploadsReset} in-flight uploads -> failed (verify-before-retry), ` +
+        `${pendingUploadsReset} queued uploads -> failed (never charged), ` +
         `${downloadsReset} downloads -> failed, ${metadataReset} metadata rows -> pending`
       );
     }
 
-    return { uploadsReset, downloadsReset, metadataReset };
+    return { uploadsReset: uploadsReset + pendingUploadsReset, downloadsReset, metadataReset };
   }
 
   private async createTables(): Promise<void> {
