@@ -230,7 +230,7 @@ QA finding 2026-07-03: sync-manager.ts:1559/1608 log raw rename/move results —
 
 ## UX — Flows & wiring
 
-### UX-1 · P0 · Phase 1 · `todo`
+### UX-1 · P0 · Phase 1 · `in-progress`
 **Pass the toast prop.** Evidence: §5.1 (App.tsx:654 renders Dashboard without `toast`; all feedback silent).
 Acceptance: drive switch failure / removal / creation / sync completion each shows a visible toast.
 
