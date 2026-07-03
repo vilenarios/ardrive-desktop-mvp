@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
       "Bash(mkdir:*)",
@@ -41,9 +42,10 @@
       "Bash(npm outdated)",
       "Bash(npx jest:*)",
       "Bash(awk:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(set WIN_CSC_LINK=none)",
+      "Bash(set CSC_IDENTITY_AUTO_DISCOVERY=false)"
     ],
     "deny": []
-  },
-  "$schema": "https://json.schemastore.org/claude-code-settings.json"
+  }
 }

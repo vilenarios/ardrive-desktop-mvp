@@ -1,0 +1,145 @@
+name: MVP Build & Test
+
+on:
+  # Manual trigger - primary method for MVP
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+        - test      # Quick build for testing
+        - release   # Create GitHub release
+      
+      platforms:
+        description: 'Platforms to build'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+        - windows
+        - mac
+        - both
+
+  # Auto-build on version tags (for releases)
+  push:
+    tags:
+      - 'v*.*.*'
+  
+  # Optional: Auto-build on push to main (disabled by default to save minutes)
+  # Uncomment if you want automatic builds
+  # push:
+  #   branches: [main]
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    
+    # Skip jobs based on platform selection
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
+      (github.event.inputs.platforms == 'both') ||
+      (github.event.inputs.platforms == 'windows' && matrix.os == 'windows-latest') ||
+      (github.event.inputs.platforms == 'mac' && matrix.os == 'macos-latest')
+    
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows
+            build_cmd: dist:win
+            artifact_path: release/*.exe
+          
+          - os: macos-latest
+            name: macOS  
+            build_cmd: dist:mac
+            artifact_path: |
+              release/*.dmg
+              release/*.zip
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 18
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run tests
+      run: npm test
+      continue-on-error: true  # Don't fail build if tests fail (MVP flexibility)
+
+    - name: Build app
+      run: npm run build
+
+    - name: Create installer
+      env:
+        CSC_IDENTITY_AUTO_DISCOVERY: false
+        WIN_CSC_LINK: none
+        CSC_LINK: none
+      run: npm run ${{ matrix.build_cmd }}
+
+    - name: Upload build
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.name }}-build
+        path: ${{ matrix.artifact_path }}
+        retention-days: 7
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    
+    # Only run for release builds or version tags
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
+      (github.event.inputs.build_type == 'release')
+    
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: dist
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name || format('v0.0.{0}-test', github.run_number) }}
+        name: ${{ github.ref_name || format('Test Build #{0}', github.run_number) }}
+        draft: ${{ github.event.inputs.build_type == 'test' }}
+        prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        generate_release_notes: true
+        files: |
+          dist/**/*.exe
+          dist/**/*.dmg
+          dist/**/*.zip
+        body: |
+          ## 🚀 ArDrive Desktop - ${{ github.ref_name || 'Test Build' }}
+          
+          ### Installation
+          
+          **Windows:**
+          1. Download the `.exe` file below
+          2. Run the installer
+          3. If you see a SmartScreen warning: "More info" → "Run anyway"
+          
+          **macOS:**
+          1. Download the `.dmg` file below
+          2. Open and drag ArDrive to Applications
+          3. First run: Right-click → "Open" (bypasses Gatekeeper)
+          
+          ### ⚠️ Testing Notes
+          - This is an unsigned build for testing
+          - Report issues: [Create Issue](https://github.com/${{ github.repository }}/issues/new)
+          
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
