@@ -234,7 +234,7 @@ QA finding 2026-07-03: sync-manager.ts:1559/1608 log raw rename/move results —
 **Pass the toast prop.** Evidence: §5.1 (App.tsx:654 renders Dashboard without `toast`; all feedback silent).
 Acceptance: drive switch failure / removal / creation / sync completion each shows a visible toast.
 
-### UX-2 · P0 · Phase 1 · `todo`
+### UX-2 · P0 · Phase 1 · `in-progress`
 **Fix Settings "Change Folder".** Evidence: §5.2 (reads `.filePath` off a string).
 Acceptance: changing the folder from Settings persists and re-targets sync (respecting SYNC-7's source of truth).
 
