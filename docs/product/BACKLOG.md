@@ -170,11 +170,11 @@ Fix: recreate (or make restartable) the tracker and download manager on start; d
 Acceptance: stop sync → start sync → upload/download progress still reaches the UI.
 Done 2026-07-03 (f005afc, qa-gate PASS static — download chain driven end-to-end post-restart incl. the throttled path; upload half static-verified): ensureStarted() heals tracker + download manager after any stop/switch/logout; tray pause/resume path healed; discharges SEC-3's interplay note. Minor QA notes: 100%-emissions while destroyed possible (cosmetic); failed startSync leaves no-op intervals until next stop.
 
-### SYNC-5 · P0 · Phase 2 · `todo`
+### SYNC-5 · P0 · Phase 2 · `blocked`
 **Deletes propagate as ArFS hide — Dropbox-smooth.** Evidence: §2.4. Per D-011 (supersedes the disclose-only plan): local file/folder deletion → ArFS hide operation, through the approval queue like other metadata ops; wire the dead detection cache into consumption; implement the `hide`/`unhide` branch that currently throws (sync-manager.ts:3249-3253); private-drive hide paths too (upstream ardrive-core-js work allowed per D-016); honest permanence messaging in UI ("hidden, not erased — permanent storage cannot delete").
 Acceptance: delete a local file → hide operation appears in queue → approval hides it on ArFS (verified via fresh listing); Permaweb view reflects hidden state; works on public and private drives; unhide path exists.
 ESCALATION 2026-07-03 (worktree session, scope discovery): NO version of ardrive-core-js supports hide — the installed 3.0.3 AND the latest 4.0.0 contain zero hide APIs and zero `hidden`/`isHidden` references anywhere in the library (verified against the published 4.0.0 tarball). D-011's hide propagation therefore requires implementing the ArFS hide metadata revision from scratch (upstream core contribution per D-016, or in-app raw ArFS metadata transactions duplicating core internals). Materially larger scope than this entry — split proposal for Phil: SYNC-5a beta-interim truthful delete state (no hide claim in UI), SYNC-5b the upstream hide implementation. Awaiting Phil's call; item NOT claimed.
-
+BLOCKED on CORE-4 (D-022): no ArFS hide API exists in ardrive-core-js; hide is being built upstream first. SYNC-5 resumes on the core-js dependency bump.
 ### SYNC-6 · P1 · Phase 2 · `todo`
 **Size limit: 2 GiB uploads, surfaced; no download cap.** Evidence: §2.11 (100MB comments vs 500MB constant; silent skip). Per D-014: single 2 GiB upload constant; oversized files appear in UI with reason (no silent skips); downloads have no such cap and must stream larger files (web app can upload ~2GB+). Docs updated (CLAUDE.md/README still say 100MB).
 **HARD DEPENDENCY: SYNC-10 must land first** — current whole-file-in-memory hashing (×3 per event) is fatal at 2 GiB.
@@ -430,6 +430,10 @@ Acceptance: second listing of an unchanged large drive transfers near-zero data;
 Acceptance: cold listing of a snapshotted large drive is dramatically fewer queries than full-history replay; results identical to full replay on interop vectors; creation API produces snapshots ardrive-web reads correctly.
 
 ---
+
+### CORE-4 · P0 · Track C (blocks SYNC-5) · `todo`
+**ArFS hide/unhide in ardrive-core-js.** Per D-022. Mirror ardrive-web: add `isHidden: boolean` to file/folder(/drive?) entity JSON metadata via a plain new metadata revision (no tag, no ArFS spec bump, no cascade, `lastModifiedDate` untouched). New public API `hide/unhide × Public/Private × File/Folder` mirroring the rename methods; surface `isHidden` on parsed entities; filtering stays in the consumer. FULL SPEC + insertion points: docs/product/CORE-4-hide-scoping.md. Base branch pending Phil re-confirm (dev vs master — dev is dormant, see spec). Implementation is Opus-tier (ArFS protocol correctness).
+Acceptance: hidePublicFile/unhidePublicFile (+ private + folder) write a metadata revision setting isHidden; round-trips through builders for public AND private; published (alpha or tarball) so desktop SYNC-5 can consume; interop — a core-js-hidden entity reads as hidden in ardrive-web.
 
 ## FEAT — Major feature work
 
