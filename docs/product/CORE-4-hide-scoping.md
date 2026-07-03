@@ -43,6 +43,6 @@ Existing rename/move coverage is thin (only cost-estimator tests). Meet/exceed t
 - GitHub's **actual default branch is `master`**, not `dev` (`gh api repos/ardriveapp/ardrive-core-js` → `default_branch: master`; local `origin/HEAD→dev` is stale cache).
 - **`dev` is dormant ~11 months**: `git log origin/master..dev` is EMPTY; `dev..master` is 15+ commits. Every merged PR since 2025-08 targeted `master`; both currently-open PRs target `master`. The historical `dev`→alpha→`master` pipeline has been dormant.
 - semantic-release is NOT active (the `.releaserc` only ever lived on an unmerged 2021 branch); publishing is manual (`chore: bump version` + hand-edited CHANGELOG). npm dist-tags today: `latest: 4.0.0`, `alpha: 3.0.3-alpha.0` (stale Aug-2025), `beta` dead.
-- **Consequence**: PRing to `dev` builds on an 11-month-stale base and risks stranding. `master` is where active development is. This needs Phil's re-decision (he said `dev` before seeing this).
+- **Resolved 2026-07-03**: Phil confirmed base = **`master`**. Feature branch off origin/master.
 
 Full analysis: research agent transcript 2026-07-03.
