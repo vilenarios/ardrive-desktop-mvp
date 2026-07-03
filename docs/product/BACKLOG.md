@@ -447,9 +447,10 @@ Acceptance: cold listing of a snapshotted large drive is dramatically fewer quer
 
 ---
 
-### CORE-4 · P0 · Track C (blocks SYNC-5) · `todo`
+### CORE-4 · P0 · Track C (blocks SYNC-5) · `in-progress`
 **ArFS hide/unhide in ardrive-core-js.** Per D-022. Mirror ardrive-web: add `isHidden: boolean` to file/folder(/drive?) entity JSON metadata via a plain new metadata revision (no tag, no ArFS spec bump, no cascade, `lastModifiedDate` untouched). New public API `hide/unhide × Public/Private × File/Folder` mirroring the rename methods; surface `isHidden` on parsed entities; filtering stays in the consumer. FULL SPEC + insertion points: docs/product/CORE-4-hide-scoping.md. Base branch: **master** (confirmed; dev is dormant). Implementation is Opus-tier (ArFS protocol correctness).
 Acceptance: hidePublicFile/unhidePublicFile (+ private + folder) write a metadata revision setting isHidden; round-trips through builders for public AND private; published (alpha or tarball) so desktop SYNC-5 can consume; interop — a core-js-hidden entity reads as hidden in ardrive-web.
+Impl done 2026-07-03 on core-js branch `feat/hide-unhide-support` (commit 177fb4a, off origin/master): 8 methods (file/folder × public/private × hide/unhide), 14 tests pass in core-js suite, mutation-checked, lastModifiedDate no-op asserted; drive-level hide + web-ArDrive parity deferred (cheap). PENDING: Phil reviews + opens PR to core-js master → merge → publish (alpha/tarball) → desktop dep bump (3.0.3→4.x gap) → SYNC-5 unblocks.
 
 ## FEAT — Major feature work
 
