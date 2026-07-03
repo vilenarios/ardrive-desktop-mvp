@@ -3,98 +3,122 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-ArDrive Desktop MVP is an Electron-based desktop application for syncing files with Arweave's permanent storage network. It features secure multi-profile support, dual upload systems (AR tokens and Turbo Credits), and bidirectional file synchronization.
+ArDrive Desktop MVP is an Electron-based desktop application for syncing files with Arweave's permanent storage network. It features secure multi-profile support, dual upload systems (AR tokens and Turbo Credits), bidirectional file synchronization, and private drive encryption. Multi-drive support is the current work in progress.
+
+## Product Docs & Agent Workflow
+
+Development runs a three-role loop — **PM/coordinator** (main session), **implementer** agent, **qa-gate** agent (`.claude/agents/`) — defined in **[PROCESS.md](docs/product/PROCESS.md)**. The main session coordinates and merges; it does not implement-and-verify the same item itself.
+
+Product state lives in `docs/product/` — read these before starting substantive work:
+- **[BACKLOG.md](docs/product/BACKLOG.md)** — canonical work tracker with stable item IDs (SEC-1, SYNC-2, …), severity, phase, status, and acceptance criteria. Pick work from here; reference IDs in commits (`fix(sync): re-upload edited files [SYNC-1]`); update the item's status **in the same PR** as the fix.
+- **[ROADMAP.md](docs/product/ROADMAP.md)** — beta scope, milestones with exit criteria, post-beta tracks, open product questions.
+- **[DECISIONS.md](docs/product/DECISIONS.md)** — append-only decision log (D-###). Don't relitigate decisions in code review; supersede them with a new entry.
+- **[AUDIT-2026-07-02.md](docs/product/AUDIT-2026-07-02.md)** — immutable evidence snapshot behind every backlog item. Never edit findings; line numbers drift as code changes.
+
+Workflow rules for agents:
+1. Before fixing anything user-facing, check whether it's a known backlog item — the acceptance criteria there define "done".
+2. A fix isn't done until verified against its acceptance criteria (drive the actual flow, not just typecheck) and covered by at least one behavioral test where feasible.
+3. **Never spend real funds.** Uploads cost AR/Turbo Credits. Use free-tier (<100KB) files for upload testing; anything larger requires the dedicated test wallet and explicit budget (see BACKLOG INFRA-9).
+4. Known trap: IPC handlers currently return inconsistent shapes (raw vs `{success, data}`); the standard is the envelope (D-005). Don't add new handlers that return raw values.
+5. Root-level planning docs (`DRIVE_KEY_PERSISTENCE_FIX.md`, `SELECTIVE_DRIVE_PERSISTENCE_PLAN.md`) are superseded by the backlog — don't implement from them.
 
 ## Commands
 
 ### Development
 ```bash
-npm install          # Install dependencies
-npm run dev          # Start in development mode (TypeScript watch + webpack dev server)
-npm run dev:main     # Watch TypeScript compilation for main process only
-npm run dev:renderer # Run webpack dev server for React app only
+npm install          # Install dependencies (postinstall runs patch-package)
+npm run dev          # TypeScript watch (main) + webpack dev server (renderer, port 3000)
+npm run dev:electron # Launch Electron against the dev server (sets WEBPACK_DEV_SERVER=true)
 ```
+
+**Important**: `npm run dev` does NOT launch Electron — it only starts the compilers. Run `npm run dev:electron` in a second terminal once the dev server is up. Without `WEBPACK_DEV_SERVER=true`, Electron loads built files from `dist/` (so plain `npm start` requires `npm run build` first).
 
 ### Building & Distribution
 ```bash
-npm run build        # Full production build (main + renderer)
-npm run dist         # Create platform-specific installers
-npm run clean        # Clean build artifacts
-npm start            # Start Electron app (requires build first)
+npm run build        # Full production build (clean + main + renderer)
+npm run dist         # Create platform-specific installers (also dist:win, dist:mac, dist:linux)
+npm run clean        # Remove dist/ and release/
+npm run build:testers # Build packages for external testers (scripts/build-for-testers.js)
 ```
 
 ### Quality Assurance
 ```bash
-npm run lint         # ESLint code quality checks
-npm run typecheck    # TypeScript type checking
-npm run test         # Run Vitest tests
-npm run test:ui      # Run tests with UI
-npm run test:coverage # Generate test coverage reports
-npm run test:watch   # Run tests in watch mode
-npm run test -- --watch    # Alternative watch mode syntax
+npm run typecheck    # TypeScript type checking (must pass before committing)
+npm run lint         # ESLint (lint:fix to auto-fix)
+npm run test         # Vitest — watch mode by default; add -- --run for a single pass
+npm run test:coverage # Coverage reports (text, JSON, HTML)
 ```
 
-### Testing Specific Files
+### Running Specific Tests
 ```bash
-npm run test -- tests/WalletManager.test.ts  # Run specific test file
-npm run test -- --grep "should create wallet" # Run tests matching pattern
-npm run test -- -t "test name"               # Run single test by name
+npm run test -- --run tests/unit/sync/sync-manager.test.ts  # Single file
+npm run test -- --run -t "test name"                        # Filter by test name
 ```
+
+**Test config gotcha**: `npm run test` runs Vitest, which only picks up `tests/**/*.test.{ts,tsx}`. The tests under `src/main/__tests__/` are matched only by the legacy `jest.config.js` and do NOT run under `npm run test`. Put new tests in `tests/`.
 
 ### User Acceptance Testing
 ```bash
-npm run uat              # Run in test mode
+npm run uat              # Run in test mode (NODE_ENV=test)
 npm run uat:new-user     # Test new user onboarding
 npm run uat:existing-user # Test existing user flow
 npm run uat:dashboard    # Test dashboard functionality
 npm run uat:clean        # Clean build + run UAT
 ```
 
+### Releases
+Single-branch strategy: all development on `main`, releases via tags. GitHub Actions builds are manual only (`.github/workflows/mvp-workflow.yml`, workflow_dispatch) to save CI minutes. `npm run release:patch|minor|major` bumps version, tags, and pushes; `npm run prerelease` runs typecheck + lint. See `RELEASE_GUIDE.md`, `MVP_WORKFLOW.md`, and `TESTING_DISTRIBUTION.md`.
+
 ## Architecture
 
 ### High-Level Architecture
 The application follows Electron's multi-process architecture with secure IPC communication:
 
-1. **Main Process** (Node.js backend):
-   - Manages wallet operations, file sync, and database
-   - Handles all system-level operations
-   - Enforces security through input validation
-   - No direct renderer access to filesystem or sensitive operations
+1. **Main Process** (`src/main/`, Node.js backend):
+   - Wallet operations, file sync, database, all system-level operations
+   - Entry point `main.ts` is ~3,000 lines and registers ~90 `ipcMain.handle` calls — search there for existing handlers
+   - Enforces security through `InputValidator`; renderer never touches the filesystem or secrets directly
 
-2. **Renderer Process** (React frontend):
-   - UI components and user interaction
-   - Communicates with main process via typed IPC channels
-   - No access to Node.js APIs or filesystem
+2. **Renderer Process** (`src/renderer/`, React frontend):
+   - UI components and user interaction; no Node.js API access
+   - Communicates with main only via typed IPC channels
 
-3. **Preload Script** (Bridge):
-   - Exposes safe, typed API to renderer via `window.electronAPI`
-   - All IPC channels are namespaced (wallet:*, drive:*, sync:*, etc.)
+3. **Preload Script** (`src/main/preload.ts`):
+   - Exposes safe, typed API to renderer as `window.electronAPI`
+   - Namespaces: `wallet`, `drive`, `sync`, `files`, `uploads`, `config`, `dialog`, `shell`, `payment`, `security`, `turbo`, `arns`, `profiles`, `profile`, `driveMappings`, `multiSync`, `multiFiles`, `error`, `system`
 
 ### Security Architecture
-- **Encryption**: AES-256-GCM with authenticated encryption
+- **Encryption**: AES-256-GCM with authenticated encryption (`crypto-utils.ts`)
 - **Key Derivation**: Scrypt (N=16384, r=8, p=1) for passwords
 - **Profile Isolation**: Each profile has separate encrypted storage
-- **Input Validation**: All inputs validated using InputValidator class
+- **Input Validation**: All IPC inputs validated using the InputValidator class
 - **No Plaintext Storage**: Passwords never stored, only derived keys
 
-### Database Architecture
-- SQLite with profile-specific databases
-- Database isolation per profile for complete data separation
-- Location: 
-  - Windows: `%APPDATA%\ardrive-desktop-mvp\[profile-id]\ardrive.db`
-  - macOS/Linux: `~/.config/ardrive-desktop-mvp/[profile-id]/ardrive.db`
+### Storage Layout & Database
+All app data lives in Electron's `userData` directory (`%APPDATA%\ardrive-desktop-mvp` on Windows, `~/.config/ardrive-desktop-mvp` on Linux, `~/Library/Application Support/ardrive-desktop-mvp` on macOS):
+
+```
+userData/
+├── profiles.json                # Profile metadata
+├── profiles/{profile-id}/
+│   ├── data.db                  # Per-profile SQLite database
+│   └── ...                      # Encrypted wallet, drive keys, config
+└── ardrive.db                   # Legacy fallback DB (no active profile)
+```
+
+`DatabaseManager.setActiveProfile()` closes and reopens the SQLite connection on profile switch — complete data isolation per profile. Tables are created in `database-manager.ts` (`createTables()`); the `drive_mappings` table underpins multi-drive support (per-drive sync folder, direction, exclude patterns).
 
 ### Sync Engine Architecture
-The sync system uses intelligent operation detection:
-- **FileOperationDetector**: Detects file moves, renames, copies, deletes
-- **FolderOperationDetector**: Detects folder operations using content similarity
-- **StreamingDownloader**: Handles efficient file downloads with streaming
-- **FileHashVerifier**: Verifies file integrity with SHA-256 hashes
-- **ErrorHandler**: Centralized error handling for sync operations
-- **Hash-based matching**: SHA-256 for duplicate detection
-- **3-second detection window**: Groups related operations
-- **Batch support**: Handles multiple simultaneous file operations
-- **SyncProgressTracker**: Real-time progress tracking for uploads/downloads
+`sync-manager.ts` (~3,500 lines) watches the sync folder with chokidar and orchestrates helpers in `src/main/sync/`:
+- **FileOperationDetector / FolderOperationDetector**: Detect moves, renames, copies, deletes using content similarity; 3-second detection window groups related operations
+- **FileStateManager**: Tracks known file state
+- **UploadQueueManager**: Upload approval queue for cost control
+- **DownloadManager / StreamingDownloader**: Efficient streaming downloads
+- **FileHashVerifier**: SHA-256 integrity verification; hashes also drive duplicate detection
+- **CostCalculator**: AR vs Turbo cost estimation
+- **SyncProgressTracker**: Real-time progress for uploads/downloads
+- **ErrorHandler**: Centralized sync error handling
+- Core types live in `sync/interfaces.ts`, `sync/types.ts`, and `sync/constants.ts`
 
 ### IPC Communication Pattern
 All IPC handlers follow this structure:
@@ -117,24 +141,22 @@ namespace: {
 const result = await window.electronAPI.namespace.action(data);
 ```
 
-### Key Services & Managers
-- **wallet-manager-secure.ts**: Encrypted wallet operations (NEVER use wallet-manager.ts)
+To add a handler: register in `main.ts`, expose in `preload.ts`, call via `window.electronAPI`.
+
+### Key Services & Managers (`src/main/`)
+- **wallet-manager-secure.ts**: Encrypted wallet operations (import via JSON or seed phrase)
 - **sync-manager.ts**: Main file synchronization engine
-- **profile-manager.ts**: Multi-profile support and switching
-- **database-manager.ts**: SQLite operations with profile isolation
-- **database-types.ts**: TypeScript types for database operations
-- **turbo-manager.ts**: Turbo Credits management
+- **profile-manager.ts**: Multi-profile support, switching, and per-profile storage paths
+- **database-manager.ts**: SQLite operations with profile isolation (types in `database-types.ts`)
+- **drive-key-manager.ts**: Private drive keys — in-memory cache of derived keys, opt-in encrypted persistence per drive, cleared on profile switch
+- **turbo-manager.ts**: Turbo Credits (balance, top-up, uploads)
 - **arns-service.ts**: ArNS name resolution
 - **input-validator.ts**: Security-critical input validation
-- **sync/interfaces.ts**: Core sync engine interfaces and types
-- **drive-key-manager.ts**: Private drive key management and encryption
+- **crypto-utils.ts**: Encryption primitives and secure file deletion
+- **keychain-service.ts**: OS keychain integration (keytar)
+- **config-manager.ts**: Global and per-profile configuration
 
 ## Important Patterns
-
-### Adding New IPC Handlers
-1. Add handler in `src/main/main.ts` (search for "ipcMain.handle")
-2. Add to preload API in `src/main/preload.ts`
-3. Use in renderer via `window.electronAPI`
 
 ### Error Handling Pattern
 ```typescript
@@ -148,150 +170,47 @@ try {
 ```
 
 ### Component Creation
-1. Create in `src/renderer/components/`
-2. Use functional components with TypeScript
-3. Follow existing patterns from Dashboard.tsx or WalletSetup.tsx
-4. Use inline styles for component-specific styling
-5. Use lucide-react for icons
-6. Place utility functions in `src/renderer/utils/`
-7. Create dedicated CSS files in `src/renderer/styles/` for complex components
-
-## Development Workflow
-
-### Before Starting
-1. Check git status for modified files
-2. Review recent commits for work-in-progress
-3. Set up dev environment with `.env` file (see .env.example)
-
-### While Developing
-1. Use TypeScript strictly - no `any` types
-2. Validate all user inputs with InputValidator
-3. Handle errors gracefully with user-friendly messages
-4. Test in development mode frequently
-
-### Before Committing
-1. Run `npm run typecheck` - must pass
-2. Run `npm run lint` - fix any issues  
-3. Run `npm run test` - ensure tests pass
-4. Test profile switching if touching auth
-5. Test sync operations if touching file system
-
-## Current Development Status
-Based on git status:
-- **Modified**: Core sync engine, database manager, upload queue components
-- **New**: drive-key-manager.ts, utils/, PrivateDriveUnlockModal.tsx
-- **Work in Progress**: Multi-drive support implementation
-
-Recent commits show active development on:
-- Multi-drive functionality
-- Direct file opening capabilities
-- Permaweb view with status indicators
-- Private drive support with encryption
+1. Create in `src/renderer/components/` (feature subfolders exist: `dashboard/`, `turbo/`, `common/`)
+2. Use functional components with TypeScript; follow patterns from Dashboard.tsx or WalletSetup.tsx
+3. Use inline styles for component-specific styling; create dedicated CSS files in `src/renderer/styles/` for complex components
+4. Use lucide-react for icons
+5. Place utility functions in `src/renderer/utils/`
 
 ## Testing
 
-### Test Configuration
-- Framework: Vitest with React Testing Library
-- Environment: JSDOM for component testing
-- Mocks: Comprehensive mocks in `tests/__mocks__/`
-- Coverage: Reports in text, JSON, and HTML formats
-
-### Writing Tests
-- Tests go in `tests/` directory
-- Unit tests in `tests/unit/`
-- Test helpers in `tests/helpers/`
-- Follow existing patterns for mocking (see mock-ardrive.ts, mock-database.ts)
-- Use descriptive test names
-- Test both success and error cases
-- Component tests use React Testing Library
+- Framework: Vitest + React Testing Library, JSDOM environment, setup in `tests/setup.ts`
+- Path alias: `@` → `src/`
+- Mocks live in `tests/helpers/` (`mock-ardrive.ts`, `mock-database.ts`) — follow these patterns for mocking ardrive-core-js and the database
+- Unit tests in `tests/unit/`; test both success and error cases
+- Before committing: `npm run typecheck`, `npm run lint`, `npm run test -- --run` must pass. Test profile switching if touching auth; test sync operations if touching the file system.
 
 ## Environment Variables
 
-### Development Mode (.env file)
+Development mode auto-fill (`.env` file, see `.env.example`):
 ```env
-# Enable dev mode features
-ARDRIVE_DEV_MODE=true
-
-# Auto-fill import flow (testing only)
-ARDRIVE_DEV_WALLET_PATH=C:\path\to\test-wallet.json
+ARDRIVE_DEV_MODE=true                        # Enable dev mode features
+ARDRIVE_DEV_WALLET_PATH=C:\path\to\wallet.json # Auto-fill import flow (test wallets only)
 ARDRIVE_DEV_PASSWORD=testPassword
 ARDRIVE_DEV_SYNC_FOLDER=C:\ARDRIVE
-
-# Testing shortcuts (from .env.example)
-NODE_ENV=development
-DEBUG=ardrive:*
+DEBUG=ardrive:*                              # Detailed logging
 ```
 
 ## Key Technical Decisions
 
-### File Size Limits
-- 100MB maximum file size (MVP restriction)
-- Enforced in sync-manager.ts
-
-### Upload Methods
-- **AR Tokens**: Traditional Arweave upload
-- **Turbo Credits**: Instant upload with fiat payment option
-- Automatic recommendations based on file size
-
-### Profile System
-- Complete isolation between profiles
-- Each profile has separate:
-  - Encrypted wallet storage
-  - SQLite database
-  - Configuration
-  - Sync state
-
-### Sync Strategy
-- Hash-based duplicate detection
-- Upload approval queue for cost control
-- Bidirectional sync with conflict detection
-- Intelligent operation detection for moves/renames
-- Streaming downloads for efficient memory usage
-- Progress tracking with real-time updates
+- **100MB file size limit** (MVP restriction), enforced in `sync-manager.ts`
+- **Upload methods**: AR tokens (traditional Arweave) vs Turbo Credits (instant, fiat option); automatic recommendation by file size; files under 100KB are free with Turbo
+- **Upload approval queue**: uploads require explicit user approval for cost control
+- **Profile system**: complete isolation — separate encrypted wallet, SQLite database, config, and sync state per profile
+- **Private drives**: keys derived from user password via ardrive-core-js; unlock via `drive:unlock` IPC; persistence is opt-in per drive
 
 ## Debugging & Troubleshooting
 
-### Common Issues and Solutions
+- **Build failures**: `npm run clean` before rebuilding; Node.js must be 18+
+- **IPC handler errors**: ensure handler registered in main.ts AND exposed in preload.ts with matching namespace
+- **`Drive key not found`**: private drive not unlocked — use `drive:unlock` (see drive-key-manager.ts)
+- **`Wallet decryption failed`**: wrong password or corrupted wallet
+- **Sync issues**: check 100MB limit in sync-manager.ts, 3-second FileOperationDetector window, and drive_mappings in the profile database
 
-1. **Build Failures**
-   - Run `npm run clean` before rebuilding
-   - Check Node.js version (must be 18+)
-   - Delete node_modules and run `npm install`
+## Documentation
 
-2. **IPC Handler Errors**
-   - Ensure handler is registered in main.ts
-   - Check preload.ts exposes the method
-   - Verify namespace matches (e.g., wallet:*, sync:*, drive:*)
-
-3. **Profile/Wallet Issues**
-   - Profile data location: `%APPDATA%\ardrive-desktop-mvp\[profile-id]\`
-   - Wallet encryption uses AES-256-GCM
-   - Password issues: Check InputValidator.validatePassword
-
-4. **Sync Engine Problems**
-   - Check sync-manager.ts for file size limits (100MB)
-   - Verify FileOperationDetector timing (3-second window)
-   - Database queries in database-manager.ts
-
-5. **Private Drive Issues**
-   - Drive keys managed by drive-key-manager.ts
-   - Encryption/decryption in driveKeyManager service
-   - Check drive:unlock and drive:lock handlers
-
-### Debug Mode
-Enable detailed logging with environment variables:
-```bash
-# Windows
-set DEBUG=ardrive:*
-npm run dev
-
-# macOS/Linux
-DEBUG=ardrive:* npm run dev
-```
-
-### Common Error Patterns
-- `ENOENT`: File/directory not found - check paths are absolute
-- `EPERM`: Permission denied - check file access rights
-- `Wallet decryption failed`: Wrong password or corrupted wallet
-- `IPC handler not found`: Missing handler registration in main.ts
-- `Drive key not found`: Private drive not unlocked - use drive:unlock
+Extensive docs live in `docs/` (developer setup, architecture, building, testing, API reference). Top-level workflow docs: `MVP_WORKFLOW.md` (dev/CI workflow), `RELEASE_GUIDE.md`, `TESTING_DISTRIBUTION.md`, `MVP_GETTING_STARTED.md`.

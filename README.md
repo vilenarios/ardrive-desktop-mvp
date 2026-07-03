@@ -6,6 +6,7 @@ A secure, multi-profile desktop application for syncing files to the Arweave per
 
 ## 📚 Documentation
 
+- **[Product Docs](./docs/product/)** — [Roadmap](./docs/product/ROADMAP.md) · [Backlog](./docs/product/BACKLOG.md) · [Decisions](./docs/product/DECISIONS.md) · [Audit 2026-07](./docs/product/AUDIT-2026-07-02.md)
 - **[User Documentation](./docs/user/)**
   - [Getting Started](./docs/user/getting-started.md)
   - [User Guide](./docs/user/user-guide.md)
