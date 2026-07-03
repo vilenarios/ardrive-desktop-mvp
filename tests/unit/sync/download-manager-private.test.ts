@@ -219,6 +219,10 @@ describe('Manifest-named files in private drives (qa-gate fix round)', () => {
   // raw-fetch (ArFS manifests are public-only; core exposes only
   // uploadPublicManifest).
   it('decrypts private files whose names look like manifests', async () => {
+    // Own the key mock: clearAllMocks clears calls, not implementations, so
+    // without this the test inherits whatever the previous describe set —
+    // and fails when run in isolation (qa-gate finding, 2026-07-03).
+    vi.mocked(driveKeyManager.getDriveKey).mockReturnValue({ keyData: Buffer.from('k') } as any);
     const mockDb = createMockDatabaseManager() as any;
     mockDb.getDriveMappings.mockResolvedValue([
       {
