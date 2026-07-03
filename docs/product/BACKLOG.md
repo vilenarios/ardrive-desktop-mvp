@@ -100,9 +100,10 @@ Done 2026-07-03 (6aa174b + 29a5855, qa-gate FAIL→fix→PASS): ar-price-utils.t
 **Remove or implement Auto Top-Up.** Evidence: §1.11 (fake "saved" confirmation).
 Acceptance: no UI implies recurring charges are configured unless they are.
 
-### MONEY-5 · P1 · Phase 1 · `in-progress`
+### MONEY-5 · P1 · Phase 1 · `done`
 **Remove the no-op conflict-resolution modal.** Evidence: §1.6. (Real conflict detection = Track C scope with SYNC; ship neither half until both exist.)
 Acceptance: no UI offers conflict choices that are discarded.
+Done 2026-07-03 (67db271, qa-gate PASS under zero-trust after implementer session died — defect-catching re-proven, completeness sweep clean): modal, Resolve button, handler, and prop chain removed; passive conflict displays remain (unreachable, conflictType hardcoded 'none'); detection stubs/DB fields preserved for Track C. Track C note: conflicted rows will render with NO actions until the real UI lands — rework the gating then.
 
 ### MONEY-6 · P1 · Phase 2 · `todo`
 **Fix approval-queue semantics.** Evidence: §1.5.
