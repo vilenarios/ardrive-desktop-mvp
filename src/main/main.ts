@@ -2351,21 +2351,31 @@ class ArDriveApp {
     
     ipcMain.handle('uploads:cancel', async (_, uploadId: string) => {
       try {
-        // MONEY-2: a completed upload is already stored and charged — cancel
-        // must never rewrite that history as 'failed'.
-        const uploads = await databaseManager.getUploads();
-        const dbUpload = uploads.find(u => u.id === uploadId);
-        if (dbUpload?.status === 'completed') {
-          console.warn(`Refusing to cancel upload ${uploadId}: already completed (stored and charged)`);
-          return false;
-        }
-        
-        // Cancel in the queue: pending items are removed before any spend;
-        // in-flight items get a cancellation request honored at every spend
-        // checkpoint and at completion (no resurrection).
+        // MONEY-2: cancel in the queue FIRST — pending items are removed
+        // before any spend; in-flight items get a cancellation request
+        // honored at every spend checkpoint and at completion.
         const result = this.syncManager
           ? this.syncManager.cancelUpload(uploadId)
           : { cancelled: false, wasInFlight: false };
+        
+        if (!result.cancelled) {
+          // The queue doesn't know this id — consult the (fresh) DB truth and
+          // never rewrite charged history (qa-gate FAIL reason 4: the old
+          // snapshot-then-write flipped just-completed rows to 'failed').
+          const uploads = await databaseManager.getUploads();
+          const dbUpload = uploads.find(u => u.id === uploadId);
+          if (!dbUpload) {
+            return false;
+          }
+          if (dbUpload.status === 'completed') {
+            console.warn(`Refusing to cancel upload ${uploadId}: already completed (stored and charged)`);
+            return false;
+          }
+          if (dbUpload.status === 'failed') {
+            return true; // already terminal — idempotent success
+          }
+          // Stale transient row with no live queue entry (mid-session orphan)
+        }
         
         const message = result.wasInFlight
           ? 'Cancellation requested — the upload was already in flight; the final state will reflect whether it completed on Arweave'
@@ -2406,7 +2416,8 @@ class ArDriveApp {
         const guard = isRetryAllowed({
           dbStatus: upload.status,
           queueStatus: this.syncManager?.getQueueEntryStatus(uploadId),
-          cancellationPending: this.syncManager?.isUploadCancellationPending(uploadId) ?? false
+          cancellationPending: this.syncManager?.isUploadCancellationPending(uploadId) ?? false,
+          hasChargeEvidence: !!(upload.dataTxId || upload.fileId)
         });
         if (!guard.allowed) {
           console.warn(`Refusing retry of upload ${uploadId}: ${guard.reason}`);
@@ -2445,7 +2456,8 @@ class ArDriveApp {
           isRetryAllowed({
             dbStatus: u.status,
             queueStatus: this.syncManager?.getQueueEntryStatus(u.id),
-            cancellationPending: this.syncManager?.isUploadCancellationPending(u.id) ?? false
+            cancellationPending: this.syncManager?.isUploadCancellationPending(u.id) ?? false,
+            hasChargeEvidence: !!(u.dataTxId || u.fileId)
           }).allowed
         );
         

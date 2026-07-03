@@ -11,6 +11,7 @@ describe('isRetryAllowed (MONEY-2)', () => {
       dbStatus: 'failed',
       queueStatus: undefined,
       cancellationPending: false,
+      hasChargeEvidence: false,
     });
     expect(result.allowed).toBe(true);
   });
@@ -20,6 +21,7 @@ describe('isRetryAllowed (MONEY-2)', () => {
       dbStatus: undefined,
       queueStatus: undefined,
       cancellationPending: false,
+      hasChargeEvidence: false,
     });
     expect(result.allowed).toBe(false);
     expect(result.reason).toMatch(/not found/i);
@@ -44,6 +46,7 @@ describe('isRetryAllowed (MONEY-2)', () => {
       dbStatus: 'failed',
       queueStatus: 'uploading',
       cancellationPending: false,
+      hasChargeEvidence: false,
     });
     expect(result.allowed).toBe(false);
     expect(result.reason).toMatch(/twice/);
@@ -54,8 +57,22 @@ describe('isRetryAllowed (MONEY-2)', () => {
       dbStatus: 'failed',
       queueStatus: 'pending',
       cancellationPending: false,
+      hasChargeEvidence: false,
     });
     expect(result.allowed).toBe(false);
+  });
+
+  it('refuses a failed row carrying charge evidence (cancelled-but-completed truth record)', () => {
+    // qa-gate FAIL reason 1: this exact record passed admission and got
+    // re-queued into the paid pipeline — a deterministic double charge
+    const result = isRetryAllowed({
+      dbStatus: 'failed',
+      queueStatus: undefined,
+      cancellationPending: false,
+      hasChargeEvidence: true,
+    });
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toMatch(/stored and charged/);
   });
 
   it('refuses while a cancellation is still resolving', () => {
@@ -63,6 +80,7 @@ describe('isRetryAllowed (MONEY-2)', () => {
       dbStatus: 'failed',
       queueStatus: undefined,
       cancellationPending: true,
+      hasChargeEvidence: false,
     });
     expect(result.allowed).toBe(false);
     expect(result.reason).toMatch(/cancellation/i);

@@ -522,6 +522,20 @@ export class SyncManager {
     return this.uploadQueueManager.isCancellationRequested(uploadId);
   }
 
+  private static readonly UPLOAD_CANCELLED_SENTINEL = 'UPLOAD_CANCELLED_BY_USER';
+
+  /**
+   * MONEY-2: throws the cancellation sentinel when a cancellation is pending
+   * for the given upload — used inside multi-step paid loops (folder
+   * structure creation) so successive paid calls stop launching the moment
+   * cancellation is requested (qa-gate FAIL reason 3).
+   */
+  private throwIfUploadCancelled(cancellationUploadId?: string): void {
+    if (cancellationUploadId && this.uploadQueueManager.isCancellationRequested(cancellationUploadId)) {
+      throw new Error(SyncManager.UPLOAD_CANCELLED_SENTINEL);
+    }
+  }
+
   /**
    * MONEY-2 spend checkpoint: if cancellation was requested and no money has
    * been spent yet, finalize the upload as cancelled. Returns true when the
@@ -2197,10 +2211,24 @@ export class SyncManager {
       this.emitUploadProgress(upload.id, 100, 'completed');
 
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      
+      // MONEY-2: a pending cancellation resolves here — whether the throw was
+      // our own sentinel (spend loop stopped) or a genuine failure, the
+      // outcome for the user is a cancelled/failed upload with no further
+      // spend, and the cancellation request must not leak (a leaked request
+      // blocks retry forever — qa-gate finding).
+      if (message === SyncManager.UPLOAD_CANCELLED_SENTINEL ||
+          this.uploadQueueManager.isCancellationRequested(upload.id)) {
+        if (await this.finalizeCancelledUpload(upload)) {
+          return;
+        }
+      }
+      
       console.error(`Failed to upload ${upload.fileName}:`, error);
       
       upload.status = 'failed';
-      upload.error = error instanceof Error ? error.message : 'Unknown error';
+      upload.error = message;
 
       await this.databaseManager.updateUpload(upload.id, {
         status: 'failed',
@@ -2242,6 +2270,10 @@ export class SyncManager {
         const existingFolder = await this.databaseManager.getFolderByPath(upload.localPath);
         if (existingFolder?.arfsFolderId) {
           console.log(`Folder already exists on Arweave with ID: ${existingFolder.arfsFolderId}`);
+          // MONEY-2: nothing was spent — a pending cancellation wins here
+          if (await this.finalizeCancelledUpload(upload)) {
+            return;
+          }
           // Mark upload as completed
           upload.status = 'completed';
           await this.databaseManager.updateUpload(upload.id, { 
@@ -2255,6 +2287,11 @@ export class SyncManager {
         const mappings = await this.databaseManager.getDriveMappings();
         const mapping = mappings.find(m => m.driveId === this.driveId);
         const isPrivateDrive = mapping?.drivePrivacy === 'private';
+        
+        // MONEY-2: last spend checkpoint before the paid folder creation
+        if (await this.finalizeCancelledUpload(upload)) {
+          return;
+        }
         
         let result;
         if (isPrivateDrive) {
@@ -2294,6 +2331,26 @@ export class SyncManager {
               });
             }
             
+            // MONEY-2: never resurrect a cancelled record as 'completed' —
+            // the folder WAS created on-chain (charged); record the truth in
+            // the terminal cancelled state instead (qa-gate FAIL reason 2).
+            if (this.uploadQueueManager.isCancellationRequested(upload.id)) {
+              this.uploadQueueManager.clearCancellationRequest(upload.id);
+              const folderTruth = 'Cancelled — but the folder had already been created on Arweave (charged)';
+              upload.status = 'failed';
+              upload.error = folderTruth;
+              await this.databaseManager.updateUpload(upload.id, {
+                status: 'failed',
+                error: folderTruth,
+                fileId: arfsFolderId,
+                completedAt: new Date()
+              });
+              this.emitUploadProgress(upload.id, 100, 'failed', folderTruth);
+              this.uploadQueueManager.removeFromQueue(upload.id);
+              console.warn(`Folder upload ${upload.id} completed on-chain despite cancellation — recorded truthfully (folderId: ${arfsFolderId})`);
+              return;
+            }
+            
             // Mark upload as completed
             upload.status = 'completed';
             await this.databaseManager.updateUpload(upload.id, { 
@@ -2313,7 +2370,7 @@ export class SyncManager {
       }
       
       // Get the correct parent folder for this file (will create folder structure if needed)
-      const targetFolderId = await this.getTargetFolderId(upload.localPath);
+      const targetFolderId = await this.getTargetFolderId(upload.localPath, upload.id);
       console.log(`Target folder ID for upload: ${targetFolderId}`);
       
       // Wrap file for upload using ArDrive Core
@@ -2396,14 +2453,14 @@ export class SyncManager {
               return;
             }
             
-            await this.ensureFolderStructure(path.dirname(upload.localPath));
+            await this.ensureFolderStructure(path.dirname(upload.localPath), upload.id);
             
             // Small delay to ensure folder is fully created
             await new Promise(resolve => setTimeout(resolve, 1000));
             
             // Re-wrap the file and get target folder
             const retryWrappedFile = wrapFileOrFolder(upload.localPath);
-            const retryTargetFolderId = await this.getTargetFolderId(upload.localPath);
+            const retryTargetFolderId = await this.getTargetFolderId(upload.localPath, upload.id);
             
             // Build retry options
             const retryOptions: any = {
@@ -2464,7 +2521,7 @@ export class SyncManager {
     }
   }
 
-  private async getTargetFolderId(filePath: string): Promise<string> {
+  private async getTargetFolderId(filePath: string, cancellationUploadId?: string): Promise<string> {
     // Get the directory containing the file
     const fileDir = path.dirname(filePath);
     
@@ -2501,8 +2558,11 @@ export class SyncManager {
     let lastError: any = null;
     
     while (retryCount < maxRetries) {
+      // MONEY-2: each retry launches more paid folder creations — stop the
+      // moment cancellation is requested
+      this.throwIfUploadCancelled(cancellationUploadId);
       try {
-        await this.ensureFolderStructure(fileDir);
+        await this.ensureFolderStructure(fileDir, cancellationUploadId);
         
         // Add a small delay to ensure folder creation is propagated
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -2550,7 +2610,7 @@ export class SyncManager {
   }
 
   // Ensure folder structure exists on Arweave before uploading files
-  private async ensureFolderStructure(targetPath: string): Promise<void> {
+  private async ensureFolderStructure(targetPath: string, cancellationUploadId?: string): Promise<void> {
     if (!this.syncFolderPath || !this.arDrive || !this.rootFolderId) {
       throw new Error('Sync not properly initialized');
     }
@@ -2580,6 +2640,9 @@ export class SyncManager {
     
     // Create folders in order from parent to child
     for (const dirPath of dirsToCreate) {
+      // MONEY-2: every iteration is a separate paid call — honor a pending
+      // cancellation before launching the next one (qa-gate FAIL reason 3)
+      this.throwIfUploadCancelled(cancellationUploadId);
       try {
         await this.createFolderOnArweave(dirPath);
       } catch (error) {
@@ -2765,6 +2828,24 @@ export class SyncManager {
       });
       this.emitUploadProgress(upload.id, 100, 'failed', truth);
       this.uploadQueueManager.removeFromQueue(upload.id);
+      
+      // The file IS on Arweave — register it in processed_files so the
+      // watcher's dedup never re-detects and re-charges it (qa-gate finding:
+      // skipping this left a retry-independent double-charge vector).
+      try {
+        const content = await fs.readFile(upload.localPath);
+        const hash = crypto.createHash('sha256').update(content).digest('hex');
+        await this.databaseManager.addProcessedFile(
+          hash,
+          upload.fileName,
+          upload.fileSize,
+          upload.localPath,
+          'upload'
+        );
+      } catch (dedupError) {
+        console.error('Could not register cancelled-but-charged file in processed_files:', dedupError);
+      }
+      
       console.warn(`Upload ${upload.id} completed on-chain despite cancellation — recorded truthfully (dataTxId: ${dataTxId})`);
       return;
     }

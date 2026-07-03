@@ -12,6 +12,13 @@ export interface RetryGuardInput {
   queueStatus: string | undefined;
   /** True when an in-flight cancellation for this id has not resolved yet. */
   cancellationPending: boolean;
+  /**
+   * True when the row carries on-chain charge evidence (dataTxId/fileId).
+   * The cancelled-but-completed flow records a terminal 'failed' row WITH
+   * tx ids — that file is already stored and charged; retrying it would pay
+   * a second time (qa-gate FAIL reason 1).
+   */
+  hasChargeEvidence: boolean;
 }
 
 export interface RetryGuardResult {
@@ -45,6 +52,15 @@ export function isRetryAllowed(input: RetryGuardInput): RetryGuardResult {
     return {
       allowed: false,
       reason: `Only failed uploads can be retried (status: ${input.dbStatus})`,
+    };
+  }
+
+  // A failed row carrying tx ids is the cancelled-but-completed truth record:
+  // the file IS on Arweave and WAS charged. Retrying pays again.
+  if (input.hasChargeEvidence) {
+    return {
+      allowed: false,
+      reason: 'Upload already completed on Arweave (stored and charged) — retrying would pay for the same file again',
     };
   }
 
