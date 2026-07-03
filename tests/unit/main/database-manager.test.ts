@@ -1,48 +1,63 @@
-import { DatabaseManager } from '../database-manager';
-import { FileUpload, PendingUpload } from '../../types';
-import * as fs from 'fs';
-import * as path from 'path';
+// @vitest-environment node
+//
+// Migrated from src/main/__tests__/database-manager.test.ts (jest) as part of
+// INFRA-2. Main-process suite: runs under node with sqlite3 fully mocked so no
+// native bindings are required.
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { DatabaseManager } from '../../../src/main/database-manager';
+import { FileUpload, PendingUpload } from '../../../src/types';
 
 // Mock electron app
-jest.mock('electron', () => ({
+vi.mock('electron', () => ({
   app: {
-    getPath: jest.fn(() => '/tmp/test-ardrive'),
+    getPath: vi.fn(() => '/tmp/test-ardrive'),
   },
 }));
 
-// Mock sqlite3
-const mockDbInstance = {
-  exec: jest.fn((sql, callback) => {
-    if (callback) callback(null);
-  }),
-  run: jest.fn((sql, params, callback) => {
-    if (typeof params === 'function') {
-      callback = params;
-    }
-    if (callback) callback(null);
-  }),
-  get: jest.fn((sql, params, callback) => {
-    if (typeof params === 'function') {
-      callback = params;
-    }
-    if (callback) callback(null, null);
-  }),
-  all: jest.fn((sql, params, callback) => {
-    if (typeof params === 'function') {
-      callback = params;
-    }
-    if (callback) callback(null, []);
-  }),
-  close: jest.fn((callback) => {
-    if (callback) callback(null);
-  }),
-};
+// Mock profile-manager (imported by database-manager for profile DB paths);
+// mocked with a factory so sqlite3/keytar-adjacent modules never load.
+vi.mock('../../../src/main/profile-manager', () => ({
+  profileManager: {
+    getProfileStoragePath: vi.fn(
+      (profileId: string, fileName: string) => `/tmp/test-ardrive/${profileId}/${fileName}`
+    ),
+  },
+}));
 
-jest.mock('sqlite3', () => ({
-  Database: jest.fn().mockImplementation((dbPath, callback) => {
+// Shared sqlite3 database mock (hoisted so the vi.mock factory can use it)
+const { mockDbInstance } = vi.hoisted(() => ({
+  mockDbInstance: {
+    exec: vi.fn((sql: string, callback?: (err: Error | null) => void) => {
+      if (callback) callback(null);
+    }),
+    run: vi.fn((sql: string, params?: any, callback?: (err: Error | null) => void) => {
+      if (typeof params === 'function') {
+        callback = params;
+      }
+      if (callback) callback(null);
+    }),
+    get: vi.fn((sql: string, params?: any, callback?: (err: Error | null, row?: any) => void) => {
+      if (typeof params === 'function') {
+        callback = params;
+      }
+      if (callback) callback(null, null);
+    }),
+    all: vi.fn((sql: string, params?: any, callback?: (err: Error | null, rows?: any[]) => void) => {
+      if (typeof params === 'function') {
+        callback = params;
+      }
+      if (callback) callback(null, []);
+    }),
+    close: vi.fn((callback?: (err: Error | null) => void) => {
+      if (callback) callback(null);
+    }),
+  },
+}));
+
+vi.mock('sqlite3', () => ({
+  Database: vi.fn().mockImplementation((dbPath: string, callback?: (err: Error | null) => void) => {
     // Simulate successful database connection
     if (callback) callback(null);
-    
     return mockDbInstance;
   }),
 }));
@@ -50,11 +65,11 @@ jest.mock('sqlite3', () => ({
 describe('DatabaseManager', () => {
   let databaseManager: DatabaseManager;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     databaseManager = new DatabaseManager();
-    jest.clearAllMocks();
-    
-    // Mock the private db property directly
+    vi.clearAllMocks();
+
+    // Inject the mock db directly (the class opens it lazily otherwise)
     (databaseManager as any).db = mockDbInstance;
   });
 
@@ -78,9 +93,7 @@ describe('DatabaseManager', () => {
     });
 
     it('should check if file is processed', async () => {
-      const fileHash = 'abc123';
-      
-      const result = await databaseManager.isFileProcessed(fileHash);
+      const result = await databaseManager.isFileProcessed('abc123');
       expect(typeof result).toBe('boolean');
     });
 
@@ -90,10 +103,8 @@ describe('DatabaseManager', () => {
     });
 
     it('should remove a processed file', async () => {
-      const fileHash = 'abc123';
-      
       await expect(
-        databaseManager.removeProcessedFile(fileHash)
+        databaseManager.removeProcessedFile('abc123')
       ).resolves.not.toThrow();
     });
   });
@@ -114,7 +125,7 @@ describe('DatabaseManager', () => {
 
     it('should update an upload', async () => {
       const updates = { status: 'completed' as const, progress: 100 };
-      
+
       await expect(
         databaseManager.updateUpload('test-upload-1', updates)
       ).resolves.not.toThrow();
@@ -163,7 +174,7 @@ describe('DatabaseManager', () => {
 
     it('should update pending upload fields', async () => {
       const updates = { hasSufficientTurboBalance: false, estimatedTurboCost: 800 };
-      
+
       await expect(
         databaseManager.updatePendingUpload('test-pending-1', updates)
       ).resolves.not.toThrow();
@@ -198,13 +209,12 @@ describe('DatabaseManager', () => {
 
     beforeEach(() => {
       // Mock database responses for version tests
-      mockDbInstance.get.mockImplementation((sql, params, callback) => {
+      mockDbInstance.get.mockImplementation((sql: string, params?: any, callback?: any) => {
         if (typeof params === 'function') {
           callback = params;
         }
-        
+
         if (sql.includes('isLatest = 1')) {
-          // Mock latest version response
           const mockRow = {
             ...mockFileVersion,
             isLatest: 1,
@@ -216,13 +226,12 @@ describe('DatabaseManager', () => {
         }
       });
 
-      mockDbInstance.all.mockImplementation((sql, params, callback) => {
+      mockDbInstance.all.mockImplementation((sql: string, params?: any, callback?: any) => {
         if (typeof params === 'function') {
           callback = params;
         }
-        
+
         if (sql.includes('file_versions')) {
-          // Mock versions list response
           const mockRows = [
             {
               ...mockFileVersion,
@@ -241,14 +250,14 @@ describe('DatabaseManager', () => {
       await expect(
         databaseManager.addFileVersion(mockFileVersion)
       ).resolves.not.toThrow();
-      
+
       // Verify that it first updates existing versions to not latest
       expect(mockDbInstance.run).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE file_versions SET isLatest = 0'),
         expect.any(Array),
         expect.any(Function)
       );
-      
+
       // Verify that it inserts the new version
       expect(mockDbInstance.run).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO file_versions'),
@@ -263,7 +272,7 @@ describe('DatabaseManager', () => {
 
     it('should get file versions', async () => {
       const result = await databaseManager.getFileVersions('/path/to/test.txt');
-      
+
       expect(Array.isArray(result)).toBe(true);
       expect(mockDbInstance.all).toHaveBeenCalledWith(
         expect.stringContaining('SELECT * FROM file_versions WHERE filePath = ?'),
@@ -274,7 +283,7 @@ describe('DatabaseManager', () => {
 
     it('should get latest file version', async () => {
       const result = await databaseManager.getLatestFileVersion('/path/to/test.txt');
-      
+
       expect(result).toBeTruthy();
       expect(mockDbInstance.get).toHaveBeenCalledWith(
         expect.stringContaining('SELECT * FROM file_versions WHERE filePath = ? AND isLatest = 1'),
@@ -284,7 +293,7 @@ describe('DatabaseManager', () => {
     });
 
     it('should return null for non-existent file version', async () => {
-      mockDbInstance.get.mockImplementationOnce((sql, params, callback) => {
+      mockDbInstance.get.mockImplementationOnce((sql: string, params?: any, callback?: any) => {
         if (typeof params === 'function') {
           callback = params;
         }
@@ -310,7 +319,7 @@ describe('DatabaseManager', () => {
       await expect(
         databaseManager.addFileOperation(mockFileOperation)
       ).resolves.not.toThrow();
-      
+
       expect(mockDbInstance.run).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO file_operations'),
         expect.arrayContaining([
@@ -326,11 +335,11 @@ describe('DatabaseManager', () => {
     });
 
     it('should get file operations', async () => {
-      mockDbInstance.all.mockImplementationOnce((sql, params, callback) => {
+      mockDbInstance.all.mockImplementationOnce((sql: string, params?: any, callback?: any) => {
         if (typeof params === 'function') {
           callback = params;
         }
-        
+
         const mockRows = [
           {
             ...mockFileOperation,
@@ -342,7 +351,7 @@ describe('DatabaseManager', () => {
       });
 
       const result = await databaseManager.getFileOperations('abc123hash');
-      
+
       expect(Array.isArray(result)).toBe(true);
       expect(result[0]).toHaveProperty('metadata');
       expect(result[0]).toHaveProperty('timestamp');
@@ -362,7 +371,7 @@ describe('DatabaseManager', () => {
       await expect(
         databaseManager.addFileOperation(operationWithoutMetadata)
       ).resolves.not.toThrow();
-      
+
       expect(mockDbInstance.run).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO file_operations'),
         expect.arrayContaining([
@@ -379,19 +388,21 @@ describe('DatabaseManager', () => {
   });
 
   describe('folder structure management', () => {
+    // NOTE: field renamed from arweaveFolderId to arfsFolderId since the
+    // original jest suite was written (schema uses the arfsFolderId column).
     const mockFolder = {
       id: 'folder-1',
       folderPath: '/path/to/folder',
       relativePath: 'folder',
       parentPath: '/path/to',
-      arweaveFolderId: 'arweave-folder-123',
+      arfsFolderId: 'arweave-folder-123',
     };
 
     it('should add a folder', async () => {
       await expect(
         databaseManager.addFolder(mockFolder)
       ).resolves.not.toThrow();
-      
+
       expect(mockDbInstance.run).toHaveBeenCalledWith(
         expect.stringContaining('INSERT OR REPLACE INTO folder_structure'),
         expect.arrayContaining([
@@ -399,18 +410,18 @@ describe('DatabaseManager', () => {
           mockFolder.folderPath,
           mockFolder.relativePath,
           mockFolder.parentPath,
-          mockFolder.arweaveFolderId
+          mockFolder.arfsFolderId
         ]),
         expect.any(Function)
       );
     });
 
     it('should get folders', async () => {
-      mockDbInstance.all.mockImplementationOnce((sql, params, callback) => {
+      mockDbInstance.all.mockImplementationOnce((sql: string, params?: any, callback?: any) => {
         if (typeof params === 'function') {
           callback = params;
         }
-        
+
         const mockRows = [
           {
             ...mockFolder,
@@ -422,7 +433,7 @@ describe('DatabaseManager', () => {
       });
 
       const result = await databaseManager.getFolders();
-      
+
       expect(Array.isArray(result)).toBe(true);
       expect(result[0]).toHaveProperty('isDeleted', false);
       expect(result[0]).toHaveProperty('createdAt');
@@ -434,11 +445,11 @@ describe('DatabaseManager', () => {
     });
 
     it('should get folder by path', async () => {
-      mockDbInstance.get.mockImplementationOnce((sql, params, callback) => {
+      mockDbInstance.get.mockImplementationOnce((sql: string, params?: any, callback?: any) => {
         if (typeof params === 'function') {
           callback = params;
         }
-        
+
         const mockRow = {
           ...mockFolder,
           isDeleted: 0,
@@ -448,7 +459,7 @@ describe('DatabaseManager', () => {
       });
 
       const result = await databaseManager.getFolderByPath('/path/to/folder');
-      
+
       expect(result).toBeTruthy();
       expect(result?.folderPath).toBe('/path/to/folder');
       expect(mockDbInstance.get).toHaveBeenCalledWith(
@@ -462,7 +473,7 @@ describe('DatabaseManager', () => {
       await expect(
         databaseManager.markFolderDeleted('/path/to/folder')
       ).resolves.not.toThrow();
-      
+
       expect(mockDbInstance.run).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE folder_structure SET isDeleted = 1'),
         ['/path/to/folder'],
@@ -471,7 +482,7 @@ describe('DatabaseManager', () => {
     });
 
     it('should return null for non-existent folder', async () => {
-      mockDbInstance.get.mockImplementationOnce((sql, params, callback) => {
+      mockDbInstance.get.mockImplementationOnce((sql: string, params?: any, callback?: any) => {
         if (typeof params === 'function') {
           callback = params;
         }

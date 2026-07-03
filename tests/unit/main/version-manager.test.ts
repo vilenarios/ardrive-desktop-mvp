@@ -1,40 +1,44 @@
-import { VersionManager, ChangeType } from '../version-manager';
-import { DatabaseManager } from '../database-manager';
+// @vitest-environment node
+//
+// Migrated from src/main/__tests__/version-manager.test.ts (jest) as part of
+// INFRA-2. Main-process suite: runs under node with fs and crypto mocked.
+import { describe, it, expect, beforeEach, vi, Mocked } from 'vitest';
+import { VersionManager } from '../../../src/main/version-manager';
+import { DatabaseManager } from '../../../src/main/database-manager';
 import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
 
 // Mock fs module
-jest.mock('fs/promises');
-const mockFs = fs as jest.Mocked<typeof fs>;
+vi.mock('fs/promises');
+const mockFs = fs as Mocked<typeof fs>;
 
 // Mock crypto module
-jest.mock('crypto', () => ({
-  createHash: jest.fn(() => ({
-    update: jest.fn().mockReturnThis(),
-    digest: jest.fn(() => 'mock-hash-123')
+vi.mock('crypto', () => ({
+  createHash: vi.fn(() => ({
+    update: vi.fn().mockReturnThis(),
+    digest: vi.fn(() => 'mock-hash-123')
   })),
-  randomUUID: jest.fn(() => 'mock-uuid-123')
+  randomUUID: vi.fn(() => 'mock-uuid-123')
 }));
 
 describe('VersionManager', () => {
   let versionManager: VersionManager;
-  let mockDatabaseManager: jest.Mocked<DatabaseManager>;
+  let mockDatabaseManager: Mocked<DatabaseManager>;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+
     // Create mock database manager
     mockDatabaseManager = {
-      getLatestFileVersion: jest.fn(),
-      addFileVersion: jest.fn(),
-      addFileOperation: jest.fn(),
-      getFileVersions: jest.fn(),
-      getFileOperations: jest.fn(),
+      getLatestFileVersion: vi.fn(),
+      addFileVersion: vi.fn(),
+      addFileOperation: vi.fn(),
+      getFileVersions: vi.fn(),
+      getFileOperations: vi.fn(),
     } as any;
 
     versionManager = new VersionManager(mockDatabaseManager);
     versionManager.setSyncFolder('/test/sync');
-
-    // Reset mocks
-    jest.clearAllMocks();
   });
 
   describe('calculateFileHash', () => {
@@ -63,12 +67,12 @@ describe('VersionManager', () => {
     });
 
     it('should handle Windows paths', () => {
-      // Skip this test on non-Windows platforms since path.resolve 
+      // Skip this test on non-Windows platforms since path.resolve
       // behaves differently. The functionality works correctly on Windows.
       if (process.platform !== 'win32') {
         return;
       }
-      
+
       versionManager.setSyncFolder('C:\\test\\sync');
       const result = versionManager.getRelativePath('C:\\test\\sync\\folder\\file.txt');
       expect(result).toBe('folder/file.txt');
@@ -213,15 +217,15 @@ describe('VersionManager', () => {
         .mockResolvedValueOnce(Buffer.from('new content'));
 
       // Mock different hashes
-      const mockHash = crypto.createHash as jest.MockedFunction<typeof crypto.createHash>;
+      const mockHash = vi.mocked(crypto.createHash);
       mockHash
         .mockReturnValueOnce({
-          update: jest.fn().mockReturnThis(),
-          digest: jest.fn(() => 'hash-1')
+          update: vi.fn().mockReturnThis(),
+          digest: vi.fn(() => 'hash-1')
         } as any)
         .mockReturnValueOnce({
-          update: jest.fn().mockReturnThis(),
-          digest: jest.fn(() => 'hash-2')
+          update: vi.fn().mockReturnThis(),
+          digest: vi.fn(() => 'hash-2')
         } as any);
 
       const isMove = await versionManager.detectMove('/test/sync/old.txt', '/test/sync/new.txt');

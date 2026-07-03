@@ -55,7 +55,7 @@ npm run test -- --run tests/unit/sync/sync-manager.test.ts  # Single file
 npm run test -- --run -t "test name"                        # Filter by test name
 ```
 
-**Test config gotcha**: `npm run test` runs Vitest, which only picks up `tests/**/*.test.{ts,tsx}`. The tests under `src/main/__tests__/` are matched only by the legacy `jest.config.js` and do NOT run under `npm run test`. Put new tests in `tests/`.
+**Test config**: Vitest is the only test runner (D-006); it picks up `tests/**/*.test.{ts,tsx}`. Put new tests in `tests/` (`tests/unit/main/` for main-process suites — mark those with `// @vitest-environment node`, since the ardrive-core-js/turbo-sdk import chain fails its ecc self-check under jsdom).
 
 ### User Acceptance Testing
 ```bash

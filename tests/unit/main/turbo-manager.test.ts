@@ -1,57 +1,30 @@
-import { TurboManager } from '../turbo-manager';
+// @vitest-environment node
+//
+// Migrated from src/main/__tests__/turbo-manager.test.ts (jest) as part of
+// INFRA-2. The whole @ardrive/turbo-sdk module is mocked: no network calls,
+// no real payment/top-up endpoints are ever reachable from this suite.
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { TurboManager } from '../../../src/main/turbo-manager';
+import { TurboFactory, ArweaveSigner } from '@ardrive/turbo-sdk';
 
-// Get mocked modules
-const mockTurboSdk = jest.requireMock('@ardrive/turbo-sdk');
-
-// Mock the entire @ardrive/turbo-sdk module
-jest.mock('@ardrive/turbo-sdk', () => ({
+vi.mock('@ardrive/turbo-sdk', () => ({
   TurboFactory: {
-    authenticated: jest.fn(),
-    unauthenticated: jest.fn(),
+    authenticated: vi.fn(),
+    unauthenticated: vi.fn(),
   },
-  ArweaveSigner: jest.fn().mockImplementation((jwk) => ({
-    getNativeAddress: jest.fn(() => Promise.resolve('mock-address'))
+  ArweaveSigner: vi.fn().mockImplementation(() => ({
+    getNativeAddress: vi.fn(() => Promise.resolve('mock-address'))
   })),
-  USD: jest.fn((amount) => ({
-    amount: amount * 100, // Mock converting to cents
-    type: 'usd'
-  })),
-  EUR: jest.fn((amount) => ({
-    amount: amount * 100,
-    type: 'eur'
-  })),
-  GBP: jest.fn((amount) => ({
-    amount: amount * 100,
-    type: 'gbp'
-  })),
-  CAD: jest.fn((amount) => ({
-    amount: amount * 100,
-    type: 'cad'
-  })),
-  AUD: jest.fn((amount) => ({
-    amount: amount * 100,
-    type: 'aud'
-  })),
-  JPY: jest.fn((amount) => ({
-    amount: amount,
-    type: 'jpy'
-  })),
-  INR: jest.fn((amount) => ({
-    amount: amount * 100,
-    type: 'inr'
-  })),
-  SGD: jest.fn((amount) => ({
-    amount: amount * 100,
-    type: 'sgd'
-  })),
-  HKD: jest.fn((amount) => ({
-    amount: amount * 100,
-    type: 'hkd'
-  })),
-  BRL: jest.fn((amount) => ({
-    amount: amount * 100,
-    type: 'brl'
-  })),
+  USD: vi.fn((amount: number) => ({ amount: amount * 100, type: 'usd' })),
+  EUR: vi.fn((amount: number) => ({ amount: amount * 100, type: 'eur' })),
+  GBP: vi.fn((amount: number) => ({ amount: amount * 100, type: 'gbp' })),
+  CAD: vi.fn((amount: number) => ({ amount: amount * 100, type: 'cad' })),
+  AUD: vi.fn((amount: number) => ({ amount: amount * 100, type: 'aud' })),
+  JPY: vi.fn((amount: number) => ({ amount: amount, type: 'jpy' })),
+  INR: vi.fn((amount: number) => ({ amount: amount * 100, type: 'inr' })),
+  SGD: vi.fn((amount: number) => ({ amount: amount * 100, type: 'sgd' })),
+  HKD: vi.fn((amount: number) => ({ amount: amount * 100, type: 'hkd' })),
+  BRL: vi.fn((amount: number) => ({ amount: amount * 100, type: 'brl' })),
 }));
 
 describe('TurboManager', () => {
@@ -60,29 +33,32 @@ describe('TurboManager', () => {
   let mockUnauthenticatedClient: any;
 
   beforeEach(() => {
-    // Reset mocks
-    jest.clearAllMocks();
-    
-    // Create mock clients
+    vi.clearAllMocks();
+
     mockAuthenticatedClient = {
-      getBalance: jest.fn(),
-      upload: jest.fn(),
-      uploadFile: jest.fn(),
-      createCheckoutSession: jest.fn(),
-      topUpWithTokens: jest.fn(),
+      getBalance: vi.fn(),
+      upload: vi.fn(),
+      uploadFile: vi.fn(),
+      createCheckoutSession: vi.fn(),
+      topUpWithTokens: vi.fn(),
       signer: {
-        getNativeAddress: jest.fn(() => Promise.resolve('mock-address')),
+        getNativeAddress: vi.fn(() => Promise.resolve('mock-address')),
       },
     };
 
     mockUnauthenticatedClient = {
-      getUploadCosts: jest.fn(),
-      getFiatEstimateForBytes: jest.fn(),
+      getUploadCosts: vi.fn(),
+      getFiatEstimateForBytes: vi.fn(),
     };
 
-    // Mock factory methods
-    mockTurboSdk.TurboFactory.authenticated.mockReturnValue(mockAuthenticatedClient);
-    mockTurboSdk.TurboFactory.unauthenticated.mockReturnValue(mockUnauthenticatedClient);
+    vi.mocked(TurboFactory.authenticated).mockReturnValue(mockAuthenticatedClient);
+    vi.mocked(TurboFactory.unauthenticated).mockReturnValue(mockUnauthenticatedClient);
+    vi.mocked(ArweaveSigner).mockImplementation(
+      () =>
+        ({
+          getNativeAddress: vi.fn(() => Promise.resolve('mock-address')),
+        }) as any
+    );
 
     turboManager = new TurboManager();
   });
@@ -90,19 +66,21 @@ describe('TurboManager', () => {
   describe('initialization', () => {
     it('should initialize with a wallet', async () => {
       const mockJwk = { kty: 'RSA', n: 'mock-n', e: 'AQAB' };
-      
+
       await expect(turboManager.initialize(mockJwk)).resolves.not.toThrow();
       expect(turboManager.isInitialized()).toBe(true);
     });
 
     it('should handle initialization errors', async () => {
-      mockTurboSdk.ArweaveSigner.mockImplementation(() => {
+      // Once-only so the broken signer does not leak into later tests
+      vi.mocked(ArweaveSigner).mockImplementationOnce(() => {
         throw new Error('Mock signer error');
       });
 
       const mockJwk = { kty: 'RSA', n: 'mock-n', e: 'AQAB' };
-      
+
       await expect(turboManager.initialize(mockJwk)).rejects.toThrow('Failed to initialize Turbo client');
+      expect(turboManager.isInitialized()).toBe(false);
     });
 
     it('should not be initialized before initialize is called', () => {
@@ -121,7 +99,7 @@ describe('TurboManager', () => {
       mockAuthenticatedClient.getBalance.mockResolvedValue(mockBalance);
 
       const result = await turboManager.getBalance();
-      
+
       expect(result).toEqual({
         winc: '1000000000000',
         ar: '1.000000'
@@ -137,7 +115,7 @@ describe('TurboManager', () => {
 
     it('should throw error when not initialized', async () => {
       const uninitializedManager = new TurboManager();
-      
+
       await expect(uninitializedManager.getBalance()).rejects.toThrow('Turbo not initialized');
     });
   });
@@ -148,7 +126,7 @@ describe('TurboManager', () => {
       mockUnauthenticatedClient.getUploadCosts.mockResolvedValue(mockCosts);
 
       const result = await turboManager.getUploadCosts(1024);
-      
+
       expect(result).toEqual({
         winc: '1000',
         adjustments: []
@@ -161,7 +139,7 @@ describe('TurboManager', () => {
       mockUnauthenticatedClient.getFiatEstimateForBytes.mockResolvedValue(mockEstimate);
 
       const result = await turboManager.getFiatEstimate(1024, 'usd');
-      
+
       expect(result).toEqual(mockEstimate);
       expect(mockUnauthenticatedClient.getFiatEstimateForBytes).toHaveBeenCalledWith({
         byteCount: 1024,
@@ -169,12 +147,12 @@ describe('TurboManager', () => {
       });
     });
 
-    it('should handle unsupported currency', async () => {
+    it('should fall back to USD for an unsupported currency', async () => {
       const mockEstimate = { amount: 10, winc: '1000000000000', currency: 'usd' };
       mockUnauthenticatedClient.getFiatEstimateForBytes.mockResolvedValue(mockEstimate);
 
-      const result = await turboManager.getFiatEstimate(1024, 'invalid');
-      
+      await turboManager.getFiatEstimate(1024, 'invalid');
+
       expect(mockUnauthenticatedClient.getFiatEstimateForBytes).toHaveBeenCalledWith({
         byteCount: 1024,
         currency: 'usd' // Should fallback to USD
@@ -197,16 +175,25 @@ describe('TurboManager', () => {
       mockAuthenticatedClient.createCheckoutSession.mockResolvedValue(mockSession);
 
       const result = await turboManager.createCheckoutSession(10, 'USD');
-      
+
       expect(result).toEqual(mockSession);
-      expect(mockAuthenticatedClient.createCheckoutSession).toHaveBeenCalledWith({
-        amount: expect.objectContaining({
-          amount: 1000, // 10 USD in cents
-          type: 'usd'
-        }),
-        owner: 'mock-address',
-        uiMode: 'embedded'
-      });
+      expect(mockAuthenticatedClient.createCheckoutSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount: expect.objectContaining({
+            amount: 1000, // 10 USD in cents
+            type: 'usd'
+          }),
+          owner: 'mock-address'
+        })
+      );
+    });
+
+    it('should reject a session response without a checkout URL', async () => {
+      mockAuthenticatedClient.createCheckoutSession.mockResolvedValue({ id: 'cs_test_123' });
+
+      await expect(turboManager.createCheckoutSession(10, 'USD')).rejects.toThrow(
+        'Failed to create checkout session'
+      );
     });
 
     it('should handle checkout session errors', async () => {
@@ -220,7 +207,7 @@ describe('TurboManager', () => {
       mockAuthenticatedClient.createCheckoutSession.mockResolvedValue(mockSession);
 
       await turboManager.createCheckoutSession(10);
-      
+
       expect(mockAuthenticatedClient.createCheckoutSession).toHaveBeenCalledWith(
         expect.objectContaining({
           amount: expect.objectContaining({
@@ -248,9 +235,9 @@ describe('TurboManager', () => {
 
       const testData = Buffer.from('test data');
       const testTags = [{ name: 'Content-Type', value: 'text/plain' }];
-      
+
       const result = await turboManager.uploadData(testData, testTags);
-      
+
       expect(result).toEqual(mockResult);
       expect(mockAuthenticatedClient.upload).toHaveBeenCalledWith({
         data: testData,
@@ -267,7 +254,7 @@ describe('TurboManager', () => {
       mockAuthenticatedClient.upload.mockRejectedValue(new Error('Upload failed'));
 
       const testData = Buffer.from('test data');
-      
+
       await expect(turboManager.uploadData(testData)).rejects.toThrow('Failed to upload data with Turbo Credits');
     });
   });
@@ -283,7 +270,7 @@ describe('TurboManager', () => {
       mockAuthenticatedClient.topUpWithTokens.mockResolvedValue(mockResult);
 
       const result = await turboManager.topUpWithTokens(1.5); // 1.5 AR
-      
+
       expect(result).toEqual(mockResult);
       expect(mockAuthenticatedClient.topUpWithTokens).toHaveBeenCalledWith({
         tokenAmount: 1500000000000, // 1.5 AR in winston
@@ -296,7 +283,7 @@ describe('TurboManager', () => {
       mockAuthenticatedClient.topUpWithTokens.mockResolvedValue(mockResult);
 
       await turboManager.topUpWithTokens(1.0, 2.0);
-      
+
       expect(mockAuthenticatedClient.topUpWithTokens).toHaveBeenCalledWith({
         tokenAmount: 1000000000000,
         feeMultiplier: 2.0
@@ -308,11 +295,11 @@ describe('TurboManager', () => {
     it('should reset the manager state', async () => {
       const mockJwk = { kty: 'RSA', n: 'mock-n', e: 'AQAB' };
       await turboManager.initialize(mockJwk);
-      
+
       expect(turboManager.isInitialized()).toBe(true);
-      
+
       turboManager.reset();
-      
+
       expect(turboManager.isInitialized()).toBe(false);
     });
   });

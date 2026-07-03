@@ -1,17 +1,40 @@
+import { vi } from 'vitest';
 import { DatabaseManager } from '@/main/database-manager';
 
 export class MockDatabaseManager {
   public addDriveMapping = vi.fn();
   public getDriveMapping = vi.fn();
+  public getDriveMappings = vi.fn();
   public updateDriveMapping = vi.fn();
   public deleteDriveMapping = vi.fn();
+  public getDriveMetadata = vi.fn();
+  public upsertDriveMetadata = vi.fn();
+  public clearDriveMetadataCache = vi.fn();
+  public updateMetadataSyncTimestamp = vi.fn();
+  public updateDriveMetadataStatus = vi.fn();
+  public updateFileSyncStatus = vi.fn();
   public addUploadToHistory = vi.fn();
   public getUploadHistory = vi.fn();
   public updateUploadStatus = vi.fn();
+  public getUploads = vi.fn();
+  public addUpload = vi.fn();
+  public updateUpload = vi.fn();
   public addPendingUpload = vi.fn();
   public getPendingUploads = vi.fn();
   public removePendingUpload = vi.fn();
   public updatePendingUpload = vi.fn();
+  public getDownloads = vi.fn();
+  public addDownload = vi.fn();
+  public updateDownload = vi.fn();
+  public cancelDownload = vi.fn();
+  public getProcessedFiles = vi.fn();
+  public addProcessedFile = vi.fn();
+  public removeProcessedFile = vi.fn();
+  public getLatestFileVersion = vi.fn();
+  public addFileVersion = vi.fn();
+  public addFileOperation = vi.fn();
+  public getFileVersions = vi.fn();
+  public getFileOperations = vi.fn();
 
   constructor() {
     // Set up default mock implementations
@@ -24,8 +47,17 @@ export class MockDatabaseManager {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     });
+    this.getDriveMappings.mockResolvedValue([]);
+    this.getDriveMetadata.mockResolvedValue([]);
+    this.upsertDriveMetadata.mockResolvedValue(undefined);
+    this.clearDriveMetadataCache.mockResolvedValue(undefined);
+    this.updateMetadataSyncTimestamp.mockResolvedValue(undefined);
     this.getPendingUploads.mockResolvedValue([]);
     this.getUploadHistory.mockResolvedValue([]);
+    this.getUploads.mockResolvedValue([]);
+    this.getDownloads.mockResolvedValue([]);
+    this.getProcessedFiles.mockResolvedValue([]);
+    this.getLatestFileVersion.mockResolvedValue(null);
   }
 
   reset() {

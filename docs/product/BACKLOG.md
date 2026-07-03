@@ -290,10 +290,11 @@ Fix: un-gitignore + commit `package-lock.json`; commit `mvp-workflow.yml`; remov
 Acceptance: a manual workflow dispatch completes install on a clean runner.
 Note 2026-07-02: lockfile + workflow committed locally (commit 6299771). Remaining: push, run a dispatch to verify acceptance, and the docs-reconciliation half (with INFRA-11).
 
-### INFRA-2 · P0 · Phase 4 · `todo`
+### INFRA-2 · P0 · Phase 4 · `in-progress`
 **Resurrect the test suite.** Evidence: §6.7, ground truth.
 Fix: resolve the `ecc library invalid` import failure (mock/alias the transitive @keplr-wallet chain in vitest setup); fix or rewrite the 8 failing ProfileSwitcher tests; migrate the 4 orphaned suites (database-manager, turbo-manager, version-manager, TurboCreditsManager) into `tests/` under Vitest; delete `jest.config.js` + jest-only devDeps; replace the `expect(true).toBe(true)` placeholders in the sync test.
 Acceptance: `npx vitest --run` green locally and in CI; ≥1 real behavioral test per P0 fix shipped in Phases 1–3.
+Note 2026-07-03: local half done on branch `fix/INFRA-2-tests` — ecc failure fixed (main-process suites run under node env via `@vitest-environment`, + @kyvejs/sdk alias stub), ProfileSwitcher + orphaned suites rewritten to current contracts under `tests/unit/`, jest infra deleted, placeholders removed; `npx vitest --run` green locally. Remaining: green in CI (blocked on INFRA-1 push/dispatch; CI's `npm test` step is INFRA-3 scope).
 
 ### INFRA-3 · P0 · Phase 4 · `todo`
 **Gate CI on quality.** Evidence: §6.7 (no typecheck/lint step; tests continue-on-error; no Linux job).

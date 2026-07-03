@@ -1,8 +1,11 @@
+import { vi } from 'vitest';
 import { ArDrive } from 'ardrive-core-js';
 
 export class MockArDrive {
   public getAllFoldersInDrive = vi.fn();
   public getAllFilesInDrive = vi.fn();
+  public listPublicFolder = vi.fn();
+  public listPrivateFolder = vi.fn();
   public downloadFileData = vi.fn();
   public uploadPublicFile = vi.fn();
   public createPublicFolder = vi.fn();
@@ -13,6 +16,8 @@ export class MockArDrive {
     // Set up default mock implementations
     this.getAllFoldersInDrive.mockResolvedValue([]);
     this.getAllFilesInDrive.mockResolvedValue([]);
+    this.listPublicFolder.mockResolvedValue([]);
+    this.listPrivateFolder.mockResolvedValue([]);
     this.downloadFileData.mockResolvedValue(Buffer.from('test data'));
     this.uploadPublicFile.mockResolvedValue({
       created: [{ entityId: 'test-file-id' }]
