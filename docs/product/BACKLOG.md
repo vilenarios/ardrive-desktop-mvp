@@ -26,7 +26,7 @@ Fix: return nothing when `app.isPackaged` or `ARDRIVE_DEV_MODE !== 'true'`.
 Acceptance: packaged build returns empty for `ARDRIVE_DEV_PASSWORD`/`ARDRIVE_DEV_WALLET_PATH`.
 Note 2026-07-03: done — merged from `fix/SEC-2-env-gate` (f14755d) after qa-gate PASS (static; gate verified on compiled dist with isPackaged injected). Handler delegates to `readDevEnv` (src/main/utils/dev-env.ts), fails closed; 17 behavioral tests. Raw return shape kept deliberately — envelope lands with UX-3 (safeIpcHandler does not yet produce the D-005 envelope).
 
-### SEC-3 · P0 · Phase 1 · `todo`
+### SEC-3 · P0 · Phase 1 · `in-progress`
 **Stop sync on logout and profile switch.** Evidence: §4.9 (no stopSync in `wallet:logout`/`profiles:switch`; sync-manager holds own ArDrive ref; startSync early-returns when monitoring).
 Fix: `await syncManager.stopSync()` + clear its ArDrive/drive state in both paths; make `startSync` re-target when drive/folder differ.
 Acceptance: after logout, no chokidar watcher is active and syncManager holds no wallet-bearing object; switching profiles then starting sync watches the new profile's folder/drive.
