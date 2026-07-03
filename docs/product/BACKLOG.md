@@ -244,7 +244,7 @@ Note 2026-07-03: done — merged from `fix/PRIV-3-create-private` (479b0be + fin
 **Fix key persistence serialization.** Evidence: §3.4-3.5. `key.keyData.toString('base64')` on save; `new EntityKey(Buffer.from(..., 'base64'))` (+ driveSignatureType for VersionedDriveKey) on load; App.tsx must forward `persistKey`; wire the write-only DB prefs (or drop them); implement plan steps 5 (session restore) and 6 (settings UI) from docs/archive/SELECTIVE_DRIVE_PERSISTENCE_PLAN.md. The parked partial implementation lives on branch `wip/drive-key-persistence` (commit c8a1469) — review before reusing.
 Acceptance: unlock with "remember" → restart → drive auto-unlocks and decrypts listings; unlock without → restart → drive locked.
 
-### PRIV-5 · P1 · Phase 2 · `todo`
+### PRIV-5 · P1 · Phase 2 · `in-progress`
 **Locked drives must not sync as "empty".** Evidence: §3.7 (swallowed listing error; boot auto-sync has no lock check).
 Acceptance: locked private drive at boot → visible "locked — unlock to sync" state; no silent empty sync.
 
