@@ -155,10 +155,14 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
         freeFiles++;
       } else if (isTurboFree(upload.fileSize)) {
         freeFiles++;
-      } else if (upload.hasSufficientTurboBalance !== false && upload.estimatedTurboCost !== undefined) {
+      } else if (upload.estimatedTurboCost != null) {
+        // Real Turbo quote (whether or not the balance covers it) — the cost
+        // itself is known. NOTE: rows arrive DB-shaped over IPC (booleans as
+        // 0/1, missing quotes as null), so only `!= null` is a safe test here.
         turboFiles++;
-        totalTurboCredits += upload.estimatedTurboCost || 0;
+        totalTurboCredits += upload.estimatedTurboCost;
       } else {
+        // Genuinely no quote — cost unknown, disclosed as unavailable
         arFiles++;
         totalArCost += upload.estimatedCost;
       }
@@ -303,20 +307,31 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
     return uploadState?.progress || 0;
   };
   
-  const getFileUploadMethod = (upload: PendingUpload): { method: 'turbo-free' | 'turbo' | 'ar'; cost: string } => {
+  const getFileUploadMethod = (
+    upload: PendingUpload
+  ): { method: 'turbo-free' | 'turbo' | 'ar'; cost: string; insufficientBalance?: boolean } => {
     if (upload.operationType && ['move', 'rename', 'hide', 'unhide', 'delete'].includes(upload.operationType)) {
       // Metadata-only operations are tiny (<1KB) and free with Turbo
       return { method: 'turbo-free', cost: 'Free' };
     }
     if (isTurboFree(upload.fileSize)) {
       return { method: 'turbo-free', cost: 'Free' };
-    } else if (upload.hasSufficientTurboBalance !== false && upload.estimatedTurboCost != null) {
-      // Real Turbo quote from the payment service
-      return { method: 'turbo', cost: `${upload.estimatedTurboCost.toFixed(4)} Credits` };
+    } else if (upload.estimatedTurboCost != null) {
+      // Real Turbo quote from the payment service — always shown. If the
+      // balance can't cover it, say so rather than hiding the real number.
+      // (Truthy check: rows arrive DB-shaped over IPC with booleans as 0/1.)
+      if (upload.hasSufficientTurboBalance) {
+        return { method: 'turbo', cost: `${upload.estimatedTurboCost.toFixed(4)} Credits` };
+      }
+      return {
+        method: 'ar',
+        cost: `${upload.estimatedTurboCost.toFixed(4)} Credits`,
+        insufficientBalance: true
+      };
     } else {
-      // No real quote (Turbo unavailable/insufficient credits). The internal
-      // AR figure is a placeholder, not network pricing — never display it
-      // as a price (MONEY-3).
+      // No real quote (Turbo unavailable). The internal AR figure is a
+      // placeholder, not network pricing — never display it as a price
+      // (MONEY-3).
       return { method: 'ar', cost: 'Estimate unavailable' };
     }
   };
@@ -592,8 +607,15 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
               }}>
                 {uploadMethod.method === 'turbo-free' ? (
                   <span style={{ color: 'var(--success-600)', fontWeight: '500' }}>FREE</span>
-                ) : uploadMethod.method === 'turbo' ? (
-                  <div style={{ fontWeight: '500' }}>{uploadMethod.cost}</div>
+                ) : uploadMethod.method === 'turbo' || uploadMethod.insufficientBalance ? (
+                  <div>
+                    <div style={{ fontWeight: '500' }}>{uploadMethod.cost}</div>
+                    {uploadMethod.insufficientBalance && (
+                      <div style={{ fontSize: '11px', color: 'var(--warning-600)' }}>
+                        Insufficient balance
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <div style={{ fontSize: '12px', color: 'var(--gray-500)' }}>
                     {uploadMethod.cost}

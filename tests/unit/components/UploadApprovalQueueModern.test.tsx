@@ -87,6 +87,8 @@ describe('UploadApprovalQueueModern cost display (MONEY-3)', () => {
       [makeUpload({ estimatedTurboCost: undefined, hasSufficientTurboBalance: false })],
       // real quote
       [makeUpload({ estimatedTurboCost: 0.0123, hasSufficientTurboBalance: true })],
+      // real quote, insufficient balance
+      [makeUpload({ estimatedTurboCost: 0.0123, hasSufficientTurboBalance: false })],
       // free file
       [makeUpload({ fileSize: 50 * 1024, estimatedCost: (50 * 1024) / 1e12 })],
     ];
@@ -109,6 +111,34 @@ describe('UploadApprovalQueueModern cost display (MONEY-3)', () => {
     // Row cost + banner total both show the real quote
     expect(screen.getAllByText('0.0123 Credits').length).toBe(2);
     expect(screen.queryByText(/estimate unavailable/i)).toBeNull();
+  });
+
+  it('shows the real quote WITH an insufficient-balance indication (real info stays visible)', () => {
+    const { container } = renderQueue([
+      makeUpload({
+        estimatedTurboCost: 0.0123, // real quote from the payment service
+        hasSufficientTurboBalance: false, // ...but the balance cannot cover it
+      }),
+    ]);
+
+    // Row shows the real quote; banner total includes it (the cost IS known)
+    expect(screen.getAllByText('0.0123 Credits').length).toBe(2);
+    expect(screen.getByText('Insufficient balance')).toBeInTheDocument();
+    // "Estimate unavailable" is reserved for genuinely absent quotes
+    expect(screen.queryByText('Estimate unavailable')).toBeNull();
+    expect(container.textContent).not.toContain('$');
+  });
+
+  it('treats the DB-shaped insufficient flag (integer 0) the same as false', () => {
+    renderQueue([
+      makeUpload({
+        estimatedTurboCost: 0.0123,
+        hasSufficientTurboBalance: 0 as unknown as boolean, // raw sqlite shape
+      }),
+    ]);
+
+    expect(screen.getAllByText('0.0123 Credits').length).toBe(2);
+    expect(screen.getByText('Insufficient balance')).toBeInTheDocument();
   });
 
   it('shows FREE for files within the Turbo free tier', () => {
