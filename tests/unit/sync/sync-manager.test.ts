@@ -799,6 +799,39 @@ describe('SyncManager', () => {
     });
   });
 
+  describe('Folder follows the drive (SYNC-7)', () => {
+    it('switchDrive re-points the watcher at the NEW mapping folder', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([testMapping, otherMapping]);
+      await syncManager.startSync(testDriveId, testRootFolderId);
+      expect(vi.mocked(chokidar.watch)).toHaveBeenLastCalledWith(
+        testSyncPath,
+        expect.objectContaining({ ignoreInitial: true })
+      );
+
+      const switched = await syncManager.switchDrive(otherDriveId, otherRootFolderId);
+
+      expect(switched).toBe(true);
+      // The audited divergence: the watcher stayed on the OLD drive's folder
+      // while uploads targeted the new drive
+      expect(vi.mocked(chokidar.watch)).toHaveBeenLastCalledWith(
+        otherMapping.localFolderPath,
+        expect.objectContaining({ ignoreInitial: true })
+      );
+      expect(syncManager['syncFolderPath']).toBe(otherMapping.localFolderPath);
+      expect(syncManager['driveId']).toBe(otherDriveId);
+    });
+
+    it('switchDrive keeps the current folder when the new mapping lacks one (legacy fallback)', async () => {
+      const folderlessMapping = { ...otherMapping, localFolderPath: undefined } as any;
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([testMapping, folderlessMapping]);
+      await syncManager.startSync(testDriveId, testRootFolderId);
+
+      await syncManager.switchDrive(otherDriveId, otherRootFolderId);
+
+      expect(syncManager['syncFolderPath']).toBe(testSyncPath);
+    });
+  });
+
   describe('Error Scenarios', () => {
     it('should surface database failures and return to idle', async () => {
       mockDatabaseManager.getDriveMappings.mockRejectedValue(new Error('Database error'));
