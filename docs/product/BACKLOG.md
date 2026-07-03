@@ -230,9 +230,10 @@ QA finding 2026-07-03: sync-manager.ts:1559/1608 log raw rename/move results —
 
 ## UX — Flows & wiring
 
-### UX-1 · P0 · Phase 1 · `in-progress`
+### UX-1 · P0 · Phase 1 · `done`
 **Pass the toast prop.** Evidence: §5.1 (App.tsx:654 renders Dashboard without `toast`; all feedback silent).
 Acceptance: drive switch failure / removal / creation / sync completion each shows a visible toast.
+Done 2026-07-03 (0908cf5 + 698316f, qa-gate PASS static, cross-session verdict adjudicated by PM): toast prop passed; listWithStatus envelope unwrapped at all 3 Dashboard call sites (fixed a mount-time false-error toast QA caught); switch-failure/creation/sync toasts empirically driven. PM re-scope ruling recorded: the "removal" clause is met at wiring level — NO drive-removal surface exists on main (it was parked with the WIP branch); restoring it is UX-18. QA's adversarial probe suite adopted as tests/unit/components/qa-ux1-reverify-probe.test.tsx.
 
 ### UX-2 · P0 · Phase 1 · `todo`
 **Fix Settings "Change Folder".** Evidence: §5.2 (reads `.filePath` off a string).
@@ -299,6 +300,10 @@ Acceptance: generated bundle contains zero secrets under adversarial grep; a tes
 ### UX-17 · P2 · Phase 3 · `todo`
 **Profile identity: generated avatar + nickname.** Per D-015: port the avatar-generation approach from the ardrive-web sibling repo; add an editable profile nickname; deprioritize ArNS primary-name/avatar fetching (leave existing code dormant; also fixes the always-refetch cache bug §4.12 by simply not calling it).
 Acceptance: every profile shows a stable generated avatar and editable nickname; no ArNS network calls on profile load.
+
+### UX-18 · P1 · Phase 3 · `todo`
+**Restore the drive-removal surface.** Found via UX-1's QA cycle: no product UI on main can remove a drive mapping — `onDriveDeleted` plumbing (App→Dashboard→StorageTab) is wired but never invoked; zero `driveMappings.remove` callers. A removal implementation exists on the parked `wip/drive-key-persistence` branch (Dashboard.tsx) — review it when implementing (with PRIV-4's wip review). The success toast is already wired (UX-1).
+Acceptance: user can remove a mapped drive from the UI (with confirm); mapping deleted, sync re-targets or stops, removal toast shows; covered by a behavioral test.
 
 ---
 
@@ -394,5 +399,5 @@ Acceptance: create-snapshot flow with cost approval; snapshot list per drive; a 
 
 ---
 
-## Item count: 65 · P0: 18 · P1: 30 · P2: 17
+## Item count: 66 · P0: 18 · P1: 31 · P2: 17
 (2026-07-03 rescope per D-010..D-017: PRIV-1..7 onto beta phases, PRIV-0 wont-fix, SYNC-5 promoted P0, SYNC-10 promoted P1/Phase 2, +SYNC-15, +UX-16, +UX-17, +INFRA-12, +FEAT-1, +FEAT-2. Later 2026-07-03 per D-018/D-019: +CORE-1..3 upstream ardrive-core-js track, +FEAT-3 snapshot UI.)
