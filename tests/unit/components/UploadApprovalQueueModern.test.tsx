@@ -206,3 +206,51 @@ describe('UploadApprovalQueueModern cost display (MONEY-3)', () => {
     expect(screen.queryByText(/0\.0000 Credits/)).toBeNull();
   });
 });
+
+describe('Batch approval semantics (MONEY-6)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('Approve & Upload calls approve-all exactly once — no per-file follow-up', async () => {
+    const { fireEvent, waitFor } = await import('@testing-library/react');
+    renderQueue([
+      makeUpload({ estimatedTurboCost: 0.001, hasSufficientTurboBalance: true }),
+      makeUpload({ estimatedTurboCost: 0.002, hasSufficientTurboBalance: true }),
+      makeUpload({ estimatedTurboCost: 0.003, hasSufficientTurboBalance: true }),
+    ]);
+
+    fireEvent.click(screen.getByText('Approve & Upload'));
+
+    await waitFor(() => {
+      expect(defaultProps.onApproveAll).toHaveBeenCalledTimes(1);
+    });
+    // The audited bug: a follow-up loop re-approved every file individually
+    // after approve-all — one approval action must mean one approval per file
+    expect(defaultProps.onApproveUpload).not.toHaveBeenCalled();
+  });
+
+  it('balance-blocked rows stay skipped with a visible reason after batch approval', async () => {
+    const { fireEvent, waitFor } = await import('@testing-library/react');
+    renderQueue([
+      makeUpload({ estimatedTurboCost: 0.001, hasSufficientTurboBalance: true }),
+      makeUpload({
+        fileName: 'too-expensive.bin',
+        estimatedTurboCost: 9.9,
+        hasSufficientTurboBalance: false,
+      }),
+    ]);
+
+    fireEvent.click(screen.getByText('Approve & Upload'));
+
+    await waitFor(() => {
+      expect(defaultProps.onApproveAll).toHaveBeenCalledTimes(1);
+    });
+    // The blocked row was never individually pushed through (the old loop
+    // did exactly that, bypassing the batch's balance gating)
+    expect(defaultProps.onApproveUpload).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(/1 file skipped — insufficient Turbo Credits/)
+    ).toBeInTheDocument();
+  });
+});

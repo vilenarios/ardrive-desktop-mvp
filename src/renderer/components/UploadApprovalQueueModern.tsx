@@ -877,14 +877,14 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
 
                 console.log(`Starting upload of ${uploadsToProcess.length} ${uploadsToProcess.length === 1 ? 'file' : 'files'}`);
 
+                // MONEY-6: one approval action → one approval per file.
+                // uploads:approve-all approves every eligible row with
+                // consistent running-balance gating; the old per-file
+                // follow-up loop re-approved rows approve-all had already
+                // handled and pushed through rows it had deliberately
+                // skipped for balance. (Per-file custom metadata was never
+                // actually delivered through that loop — UX-14.)
                 await onApproveAll();
-
-                for (const upload of uploadsToProcess) {
-                  if (!processingFiles.has(upload.id)) {
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    handleApproveUpload(upload.id);
-                  }
-                }
               } catch (error) {
                 console.error('Failed to approve all uploads:', error);
               }
