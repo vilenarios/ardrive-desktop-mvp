@@ -125,6 +125,11 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
 
       // Create the drive mapping
       const driveMapping = {
+        // qa-gate finding: without an id the PRIMARY KEY is NULL and every
+        // later updateDriveMapping/removeDriveMapping silently no-ops
+        // (Settings folder change, rename). Same convention as
+        // DriveAndSyncSetup: drive id doubles as the mapping id.
+        id: drive.id,
         driveId: drive.id,
         driveName: drive.name,
         drivePrivacy: drive.privacy || drivePrivacy,

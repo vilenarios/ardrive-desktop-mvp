@@ -81,6 +81,7 @@ describe('CreateDriveModal (PRIV-3 envelope + mapping flow)', () => {
     // Mapping created with the drive's real id and a folder inside the sync dir
     expect(mockElectronAPI.driveMappings.add).toHaveBeenCalledWith(
       expect.objectContaining({
+        id: 'new-drive-id', // qa-gate finding: NULL PRIMARY KEY made updates no-op
         driveId: 'new-drive-id',
         drivePrivacy: 'private',
         localFolderPath: '/sync/Family Photos',
