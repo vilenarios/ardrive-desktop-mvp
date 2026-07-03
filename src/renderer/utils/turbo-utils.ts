@@ -35,22 +35,9 @@ export function getTurboFreeStatus(fileSize: number): string {
   return `Requires credits (${formatFileSize(fileSize - TURBO_FREE_LIMIT)} over limit)`;
 }
 
-/**
- * Calculate Turbo credits needed for a file
- * Note: This is a simplified calculation. Actual costs may vary.
- */
-export function calculateTurboCredits(fileSize: number): number {
-  if (isTurboFree(fileSize)) {
-    return 0;
-  }
-  
-  // Approximate: 1 credit per MB over the free limit
-  const bytesOverLimit = fileSize - TURBO_FREE_LIMIT;
-  const creditsNeeded = bytesOverLimit / (1024 * 1024);
-  
-  // Minimum charge
-  return Math.max(0.000001, creditsNeeded);
-}
+// NOTE (MONEY-1): calculateTurboCredits ("1 credit per MB" invention) was
+// deleted — it was unreferenced and its formula had no relation to real
+// Turbo pricing. Real quotes come from turbo-manager.getUploadCosts.
 
 /**
  * Format Turbo credits to string

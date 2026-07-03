@@ -128,7 +128,8 @@ const api = {
   uploads: {
     getPending: () =>
       ipcRenderer.invoke('uploads:get-pending'),
-    approve: (uploadId: string, uploadMethod?: 'ar' | 'turbo') =>
+    // Turbo-only (D-010): 'turbo' is the only accepted upload method
+    approve: (uploadId: string, uploadMethod?: 'turbo') =>
       ipcRenderer.invoke('uploads:approve', uploadId, uploadMethod),
     reject: (uploadId: string) =>
       ipcRenderer.invoke('uploads:reject', uploadId),
