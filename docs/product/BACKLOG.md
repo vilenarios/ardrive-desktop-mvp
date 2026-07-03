@@ -100,7 +100,7 @@ Done 2026-07-03 (6aa174b + 29a5855, qa-gate FAIL→fix→PASS): ar-price-utils.t
 **Remove or implement Auto Top-Up.** Evidence: §1.11 (fake "saved" confirmation).
 Acceptance: no UI implies recurring charges are configured unless they are.
 
-### MONEY-5 · P1 · Phase 1 · `todo`
+### MONEY-5 · P1 · Phase 1 · `in-progress`
 **Remove the no-op conflict-resolution modal.** Evidence: §1.6. (Real conflict detection = Track C scope with SYNC; ship neither half until both exist.)
 Acceptance: no UI offers conflict choices that are discarded.
 
