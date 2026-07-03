@@ -58,7 +58,8 @@ Acceptance: main-process logging goes through secure-logger with redaction; no s
 
 ### SEC-9 · P2 · Track D · `todo`
 **Confine `shell:open-file/path` to sync folders.** Evidence: §6.3.
-Acceptance: paths outside configured sync folders (after realpath resolution) are rejected.
+QA finding 2026-07-03 (UX-2 gate): `validateFilePath`'s substring blocklist now also rejects UNC network-share paths (`\\server\share\...`) on `sync:setFolder` — Windows NAS users can't set such folders. Fold a real path-validation design (confinement + UNC policy) into this item.
+Acceptance: paths outside configured sync folders (after realpath resolution) are rejected; UNC policy explicit.
 
 ### SEC-10 · P2 · Track D · `todo`
 **Migrate keytar → Electron safeStorage; retire crypto-js.** Evidence: §6.6.
@@ -288,7 +289,7 @@ Acceptance: a failed sync shows the error and the modal is dismissible; no infin
 Acceptance: copied links resolve; files without a dataTxId offer no raw-gateway link.
 
 ### UX-11 · P2 · Track D · `todo`
-**Small-wiring batch**: rename doesn't refresh drive name (OverviewTab); DownloadQueueTab retry/pause/resume props never passed + not drive-filtered; UserMenu turbo refresh doesn't update displayed balance; `App.tsx:291` sets active drive to `drivesList[0]` on any drive:update; Permaweb copy-link feedback console-only; StorageTab `parentFolderId: ''` TODO; TurboCreditsManager shares one `loading` flag between mount-time balance load and checkout — Pay button can re-enable while a checkout session is pending (implementer finding 2026-07-03); WalletExport `handleCopy` schedules an unmanaged 30s clipboard-clear setTimeout that survives unmount and can blank unrelated clipboard content (QA finding 2026-07-03). Evidence: §5.6, §5.8.
+**Small-wiring batch**: rename doesn't refresh drive name (OverviewTab); DownloadQueueTab retry/pause/resume props never passed + not drive-filtered; UserMenu turbo refresh doesn't update displayed balance; `App.tsx:291` sets active drive to `drivesList[0]` on any drive:update; Permaweb copy-link feedback console-only; StorageTab `parentFolderId: ''` TODO; TurboCreditsManager shares one `loading` flag between mount-time balance load and checkout — Pay button can re-enable while a checkout session is pending (implementer finding 2026-07-03); WalletExport `handleCopy` schedules an unmanaged 30s clipboard-clear setTimeout that survives unmount and can blank unrelated clipboard content (QA finding 2026-07-03); Settings' displayed folder is local state seeded once from config — won't reflect external changes while open (QA finding, UX-2 gate). Evidence: §5.6, §5.8.
 
 ### UX-12 · P2 · Track D · `todo`
 **Move wallet keygen off the main process** (worker thread) + real progress. Evidence: §4.4.
@@ -373,6 +374,10 @@ Note 2026-07-02: superseded-doc banners and README phantom links already fixed i
 **E2E/UI test harness.** Per D-006 amendment ("unit, integration and UI"): stand up Playwright (or WebdriverIO) driving the built Electron app with a disposable test profile; smoke flows first — onboarding (import test wallet), drive create/select, file drop → approval queue appears, settings. Wire into CI as a gated job (headless via xvfb on Linux runner or windows-latest).
 Acceptance: one command runs the UI smoke suite against a packaged build; CI runs it on every PR; failures produce screenshots.
 
+### INFRA-13 · P2 · Track D · `todo`
+**Exhaustive field mapping + validation for drive-mapping updates.** QA finding 2026-07-03 (UX-2 gate): `updateDriveMapping` silently drops `driveId`/`drivePrivacy`/`rootFolderId`/`lastMetadataSyncAt` (fields in `Partial<DriveSyncMapping>` with no SQL branch — the same silent-no-op family as UX-2's bug), and the generic `drive-mappings:update` IPC handler (main.ts:~2814) forwards unvalidated `updates: any`. Latent today (all callers pass only mapped fields — verified), but a trap for Track A/C work.
+Acceptance: every updatable field maps (compile-time-checked map or exhaustive switch); handler validates input; test feeds each field and asserts the SQL.
+
 ---
 
 ## CORE — ardrive-core-js upstream (sibling repo, per D-016/D-018)
@@ -410,5 +415,5 @@ Acceptance: create-snapshot flow with cost approval; snapshot list per drive; a 
 
 ---
 
-## Item count: 67 · P0: 18 · P1: 31 · P2: 18
+## Item count: 68 · P0: 18 · P1: 31 · P2: 19
 (2026-07-03 rescope per D-010..D-017: PRIV-1..7 onto beta phases, PRIV-0 wont-fix, SYNC-5 promoted P0, SYNC-10 promoted P1/Phase 2, +SYNC-15, +UX-16, +UX-17, +INFRA-12, +FEAT-1, +FEAT-2. Later 2026-07-03 per D-018/D-019: +CORE-1..3 upstream ardrive-core-js track, +FEAT-3 snapshot UI.)
