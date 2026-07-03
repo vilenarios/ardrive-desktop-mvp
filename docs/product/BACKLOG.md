@@ -150,7 +150,7 @@ Acceptance: UAT — edit a synced file locally → new pending upload appears �
 Fix: rethrow from `downloadFile`'s catch (or return a result the caller honors); only mark `synced` after verifying the file exists (and hash once SYNC-12 lands); make retry/permanent-error logic reachable.
 Acceptance: killing the network mid-download leaves the row `failed` with retry available; no `synced` row without the file on disk.
 
-### SYNC-3 · P0 · Phase 2 · `todo`
+### SYNC-3 · P0 · Phase 2 · `in-progress`
 **Startup crash recovery.** Evidence: §2.7.
 Fix: on DB init, reset rows stuck in `uploading`→`pending`(re-approval-safe) and `downloading`/`queued`→`pending`; rehydrate queues from DB; add CHECK constraints on status columns (needs INFRA-7 migrations).
 Acceptance: kill -9 during an upload+download; relaunch resumes/requeues both; nothing remains stuck.
