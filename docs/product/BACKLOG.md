@@ -354,6 +354,7 @@ Note 2026-07-03: done — merged from `fix/INFRA-2-tests` (e4ed866 + QA-findings
 ### INFRA-3 · P0 · Phase 4 · `in-progress`
 **Gate CI on quality.** Evidence: §6.7 (no typecheck/lint step; tests continue-on-error; no Linux job). QA finding 2026-07-03: `npm run typecheck` never checks `tests/` (tsconfig include is `src/**/*`) — add a tests-covering typecheck (e.g. `tsconfig.tests.json`) to the gate, and make the CI test step an explicit `vitest --run`.
 Acceptance: typecheck (src + tests) + lint + tests are required steps; Linux build job added or Linux support explicitly dropped from docs.
+Note 2026-07-03: gates are live and demonstrated — dispatch run 28672506367: required `quality` job (ubuntu; npm ci, typecheck, typecheck:tests via new tsconfig.tests.json, lint, `npx vitest --run`) gates the build matrix; the continue-on-error test step is gone; tests-typecheck immediately surfaced and fixed 3 latent errors. REMAINING: Phil's call on the either/or half — add Linux packaging (AppImage/deb) to the build matrix vs drop Linux support from docs for beta.
 
 ### INFRA-4 · P1 · Phase 4 · `todo`
 **Auto-update for beta iteration.** Evidence: §6.9. electron-updater + GitHub Releases `publish` config; unsigned-update caveats documented for beta (per D-004).

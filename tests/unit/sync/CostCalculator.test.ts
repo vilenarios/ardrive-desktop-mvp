@@ -87,7 +87,7 @@ describe('CostCalculator', () => {
     it('passes through a real Turbo quote and detects sufficient balance', async () => {
       mockTurboManager.isInitialized.mockReturnValue(true);
       mockTurboManager.getUploadCosts.mockResolvedValue({ winc: '2000000000' }); // 0.002 AR
-      mockTurboManager.getBalance.mockResolvedValue({ winc: '5000000000' });
+      mockTurboManager.getBalance.mockResolvedValue({ winc: '5000000000', ar: '0.005' });
 
       const result = await calculator.calculateUploadCosts(FILE_SIZE_5MB);
 
@@ -99,7 +99,7 @@ describe('CostCalculator', () => {
     it('keeps the real quote when balance is insufficient (only the flag changes)', async () => {
       mockTurboManager.isInitialized.mockReturnValue(true);
       mockTurboManager.getUploadCosts.mockResolvedValue({ winc: '2000000000' });
-      mockTurboManager.getBalance.mockResolvedValue({ winc: '1000' });
+      mockTurboManager.getBalance.mockResolvedValue({ winc: '1000', ar: '0.000000001' });
 
       const result = await calculator.calculateUploadCosts(FILE_SIZE_5MB);
 
@@ -111,7 +111,8 @@ describe('CostCalculator', () => {
     it('keeps the real quote when the balance lookup returns null', async () => {
       mockTurboManager.isInitialized.mockReturnValue(true);
       mockTurboManager.getUploadCosts.mockResolvedValue({ winc: '2000000000' });
-      mockTurboManager.getBalance.mockResolvedValue(null);
+      // deliberately type-violating: probes the runtime null-defense
+      mockTurboManager.getBalance.mockResolvedValue(null as any);
 
       const result = await calculator.calculateUploadCosts(FILE_SIZE_5MB);
 
