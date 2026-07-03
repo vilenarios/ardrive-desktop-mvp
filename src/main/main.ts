@@ -12,6 +12,7 @@ import { arnsService } from './arns-service';
 import { profileManager } from './profile-manager';
 import InputValidator, { ValidationError } from './input-validator';
 import { driveKeyManager } from './drive-key-manager';
+import { readDevEnv } from './utils/dev-env';
 
 // Load .env file in development
 if (process.env.NODE_ENV !== 'production') {
@@ -2813,12 +2814,9 @@ class ArDriveApp {
 
     // System operations
     ipcMain.handle('system:get-env', async (_, key: string) => {
-      // Only allow specific dev mode environment variables
-      const allowedKeys = ['ARDRIVE_DEV_MODE', 'ARDRIVE_DEV_WALLET_PATH', 'ARDRIVE_DEV_PASSWORD', 'ARDRIVE_DEV_SYNC_FOLDER'];
-      if (!allowedKeys.includes(key)) {
-        return undefined;
-      }
-      return process.env[key];
+      // SEC-2: dev-only variables, gated behind dev mode. Packaged builds and
+      // non-dev runs expose nothing (fails closed to undefined).
+      return readDevEnv(key, { isPackaged: app.isPackaged, env: process.env });
     });
 
     // Error reporting handler

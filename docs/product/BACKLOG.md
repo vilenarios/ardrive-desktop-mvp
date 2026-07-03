@@ -20,10 +20,11 @@ Fix: remove/redact the `JSON.stringify(result)` logs; route through secure-logge
 Acceptance: creating a private drive emits no key material to stdout/logs; grep for `JSON.stringify(result` in wallet-manager-secure.ts is clean.
 Done 2026-07-03 (8172c3f, qa-gate PASS — dynamically exercised + mutation-checked): all raw ArFSResult logging replaced with whitelist `summarizeArFSResult()` (new src/main/utils/arfs-result-summary.ts); includes two self-found leaks in sync-manager upload paths beyond the audited sites; sentinel leak-test covers URL-encoded and raw-bytes vectors (115+1 green).
 
-### SEC-2 · P0 · Phase 1 · `in-progress`
+### SEC-2 · P0 · Phase 1 · `done`
 **Gate `system:get-env` behind dev mode.** Evidence: §6.4 (main.ts:2891-2898).
 Fix: return nothing when `app.isPackaged` or `ARDRIVE_DEV_MODE !== 'true'`.
 Acceptance: packaged build returns empty for `ARDRIVE_DEV_PASSWORD`/`ARDRIVE_DEV_WALLET_PATH`.
+Note 2026-07-03: done — merged from `fix/SEC-2-env-gate` (f14755d) after qa-gate PASS (static; gate verified on compiled dist with isPackaged injected). Handler delegates to `readDevEnv` (src/main/utils/dev-env.ts), fails closed; 17 behavioral tests. Raw return shape kept deliberately — envelope lands with UX-3 (safeIpcHandler does not yet produce the D-005 envelope).
 
 ### SEC-3 · P0 · Phase 1 · `todo`
 **Stop sync on logout and profile switch.** Evidence: §4.9 (no stopSync in `wallet:logout`/`profiles:switch`; sync-manager holds own ArDrive ref; startSync early-returns when monitoring).
