@@ -1904,36 +1904,41 @@ export class SyncManager {
       console.log(`  - File size: ${stats.size}`);
       console.log(`  - File path: ${filePath}`);
       
-      // Check database for this file - look for any entry with this hash OR path
+      // SYNC-1: dedup must distinguish IDENTICAL content (hash match — skip)
+      // from an EDIT (same path, different hash — must re-upload as a new
+      // ArFS revision). The old `hash OR path` matching made every edited
+      // file look "already uploaded/downloaded" and dead-ended it.
       const processedFiles = await this.databaseManager.getProcessedFiles();
       const matchingFiles = processedFiles.filter(f => f.fileHash === hash || f.localPath === filePath);
       
-      // Check if any matching file has source 'download'
-      const hasDownloadEntry = matchingFiles.some(f => f.source === 'download');
+      const hashMatches = matchingFiles.filter(f => f.fileHash === hash);
       const hasPlaceholder = matchingFiles.some(f => f.fileHash.startsWith('downloading-'));
-      const isAlreadyProcessed = matchingFiles.length > 0;
+      const pathOnlyMatches = matchingFiles.filter(
+        f => f.localPath === filePath && f.fileHash !== hash && !f.fileHash.startsWith('downloading-')
+      );
+      const isEdit = pathOnlyMatches.length > 0 && hashMatches.length === 0;
       
-      console.log(`  - Already processed: ${isAlreadyProcessed}`);
-      console.log(`  - Has download entry: ${hasDownloadEntry}`);
+      console.log(`  - Identical-content matches: ${hashMatches.length}`);
+      console.log(`  - Path-only (edited) matches: ${pathOnlyMatches.length}`);
       console.log(`  - Has placeholder: ${hasPlaceholder}`);
+      console.log(`  - Is edit: ${isEdit}`);
       
-      if (matchingFiles.length > 0) {
-        console.log(`  - Found ${matchingFiles.length} matching file(s) in database:`);
-        matchingFiles.forEach((f, index) => {
-          console.log(`    ${index + 1}. Source: ${f.source}, Path: ${f.localPath}, Hash: ${f.fileHash.substring(0, 16)}..., ProcessedAt: ${f.processedAt}`);
-        });
-      }
-
-      // Skip if this file was downloaded or is being downloaded
-      if (hasDownloadEntry || hasPlaceholder) {
-        console.log(`✓ File was downloaded from Arweave, skipping: ${filePath}`);
+      // Mid-download placeholder — not a user file event
+      if (hasPlaceholder) {
+        console.log(`✓ File has an active download placeholder, skipping: ${filePath}`);
         return;
       }
       
-      // Skip if already processed (but only for upload source - downloads were handled above)
-      if (isAlreadyProcessed && matchingFiles.some(f => f.source === 'upload')) {
-        console.log(`✓ File already uploaded, skipping: ${filePath}`);
+      // Identical content already known (uploaded before, or downloaded from
+      // Arweave) — nothing to do
+      if (hashMatches.length > 0) {
+        const origin = hashMatches.some(f => f.source === 'download') ? 'downloaded from Arweave' : 'already uploaded';
+        console.log(`✓ Identical content ${origin}, skipping: ${filePath}`);
         return;
+      }
+      
+      if (isEdit) {
+        console.log(`✏️ Edited file detected (known path, new content) — queueing as a new revision: ${filePath}`);
       }
 
       // Double check if this file was recently downloaded
@@ -2014,21 +2019,27 @@ export class SyncManager {
       const conflictType = 'none'; // For now, assume no conflicts
       const conflictDetails = undefined;
       
-      // CRITICAL: Check if this file was previously downloaded BEFORE adding to pending uploads
+      // CRITICAL: Check if this exact CONTENT was previously downloaded BEFORE
+      // adding to pending uploads. SYNC-1: match by hash only — a path match
+      // with different content is an edit of a downloaded file and MUST
+      // re-upload.
       const allProcessedFiles = await this.databaseManager.getProcessedFiles();
       const downloadEntry = allProcessedFiles.find(f => 
-        (f.fileHash === hash || f.localPath === filePath) && f.source === 'download'
+        f.fileHash === hash && f.source === 'download'
       );
       
       if (downloadEntry) {
-        console.log(`✓ File was previously downloaded from Arweave, not adding to upload queue: ${filePath}`);
+        console.log(`✓ Identical content was downloaded from Arweave, not adding to upload queue: ${filePath}`);
         console.log(`  - Download entry: hash=${downloadEntry.fileHash.substring(0, 16)}..., source=${downloadEntry.source}`);
         return; // Don't add downloaded files to upload queue
       }
 
-      // ADDITIONAL SAFETY CHECK: Also check the downloads table directly
+      // ADDITIONAL SAFETY CHECK: Also check the downloads table directly.
+      // SYNC-1: only when this is NOT an edit — the downloads table has no
+      // content hash, and an edited file's content no longer matches what was
+      // downloaded to that path.
       const downloads = await this.databaseManager.getDownloads();
-      const downloadRecord = downloads.find(d => 
+      const downloadRecord = isEdit ? undefined : downloads.find(d => 
         d.localPath === filePath && 
         (d.status === 'downloading' || d.status === 'completed')
       );
@@ -2077,9 +2088,10 @@ export class SyncManager {
       // Create file version (without upload info yet, will be updated after upload)
       await this.versionManager.createNewVersion(filePath, changeType);
       
-      // Only add to processed files database if not already there
-      // (avoids duplicate entries for downloaded files)
-      if (!isAlreadyProcessed && !downloadEntry) {
+      // Register this exact content in processed_files unless it's already
+      // known (avoids duplicate entries; for edits this records the NEW hash
+      // so watcher event storms don't re-queue the same revision)
+      if (hashMatches.length === 0 && !downloadEntry) {
         await this.databaseManager.addProcessedFile(
           hash,
           fileName,
