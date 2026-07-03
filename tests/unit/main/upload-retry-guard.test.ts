@@ -34,6 +34,7 @@ describe('isRetryAllowed (MONEY-2)', () => {
         dbStatus: status,
         queueStatus: undefined,
         cancellationPending: false,
+        hasChargeEvidence: false,
       });
       expect(result.allowed).toBe(false);
     }
