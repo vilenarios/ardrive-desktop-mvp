@@ -49,6 +49,9 @@ interface DashboardProps {
   onDriveDeleted: () => void;
   onSyncProgressClear?: () => void;
   onRefreshUploads?: () => Promise<void>;
+  // MONEY-6: pulls fresh walletInfo via the IPC return value (the
+  // wallet-info-updated event channel is clobber-prone until UX-4)
+  onRefreshWalletInfo?: () => Promise<void>;
   toast?: {
     success: (message: string) => void;
     error: (message: string) => void;
@@ -68,6 +71,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onDriveDeleted,
   onSyncProgressClear,
   onRefreshUploads,
+  onRefreshWalletInfo,
   toast
 }) => {
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
@@ -621,8 +625,15 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleRefreshBalance = async () => {
     try {
-      // Force refresh wallet info to get updated balance
-      await window.electronAPI.wallet.getInfo(true);
+      // Force refresh wallet info to get updated balance. Prefer the
+      // return-value refresh (MONEY-6): a bare getInfo(true) relies on the
+      // wallet-info-updated event to update App's state, and that listener
+      // is dead after the first Turbo manager unmount (UX-4).
+      if (onRefreshWalletInfo) {
+        await onRefreshWalletInfo();
+      } else {
+        await window.electronAPI.wallet.getInfo(true);
+      }
     } catch (err) {
       console.error('Failed to refresh wallet balance:', err);
     }
@@ -633,9 +644,18 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Show Turbo Credits Manager if requested
   if (showTurboManager) {
     return (
-      <TurboCreditsManager 
+      <TurboCreditsManager
         walletInfo={walletInfo}
-        onClose={() => setShowTurboManager(false)}
+        onClose={() => {
+          setShowTurboManager(false);
+          // MONEY-6: refresh App's walletInfo by IPC return value on manager
+          // close — the wallet-info-updated event listener in App is dead
+          // after the first manager unmount (preload removeAllListeners
+          // clobber, UX-4), so without this pull the queue's blocked rows
+          // keep gating on the pre-top-up balance until restart.
+          onRefreshWalletInfo?.();
+        }}
+        onWalletRefresh={onRefreshWalletInfo}
       />
     );
   }

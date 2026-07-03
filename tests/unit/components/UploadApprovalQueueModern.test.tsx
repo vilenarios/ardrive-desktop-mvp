@@ -206,3 +206,139 @@ describe('UploadApprovalQueueModern cost display (MONEY-3)', () => {
     expect(screen.queryByText(/0\.0000 Credits/)).toBeNull();
   });
 });
+
+describe('Batch approval semantics (MONEY-6)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('Approve & Upload calls approve-all exactly once — no per-file follow-up', async () => {
+    const { fireEvent, waitFor } = await import('@testing-library/react');
+    renderQueue([
+      makeUpload({ estimatedTurboCost: 0.001, hasSufficientTurboBalance: true }),
+      makeUpload({ estimatedTurboCost: 0.002, hasSufficientTurboBalance: true }),
+      makeUpload({ estimatedTurboCost: 0.003, hasSufficientTurboBalance: true }),
+    ]);
+
+    fireEvent.click(screen.getByText('Approve & Upload'));
+
+    await waitFor(() => {
+      expect(defaultProps.onApproveAll).toHaveBeenCalledTimes(1);
+    });
+    // The audited bug: a follow-up loop re-approved every file individually
+    // after approve-all — one approval action must mean one approval per file
+    expect(defaultProps.onApproveUpload).not.toHaveBeenCalled();
+  });
+
+  it('balance-blocked rows stay skipped with a visible reason after batch approval', async () => {
+    const { fireEvent, waitFor } = await import('@testing-library/react');
+    renderQueue([
+      makeUpload({ estimatedTurboCost: 0.001, hasSufficientTurboBalance: true }),
+      makeUpload({
+        fileName: 'too-expensive.bin',
+        estimatedTurboCost: 9.9,
+        hasSufficientTurboBalance: false,
+      }),
+    ]);
+
+    fireEvent.click(screen.getByText('Approve & Upload'));
+
+    await waitFor(() => {
+      expect(defaultProps.onApproveAll).toHaveBeenCalledTimes(1);
+    });
+    // The blocked row was never individually pushed through (the old loop
+    // did exactly that, bypassing the batch's balance gating)
+    expect(defaultProps.onApproveUpload).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(/1 file skipped — insufficient Turbo Credits/)
+    ).toBeInTheDocument();
+  });
+});
+
+describe('Live balance staleness (MONEY-6 re-homed scope)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('a top-up reflected in walletInfo unblocks rows without a re-quote', () => {
+    // Stored flag says insufficient (DB-shaped 0), but the LIVE balance
+    // now covers the quote (user topped up and refreshed)
+    const row = makeUpload({
+      estimatedTurboCost: 0.01,
+      hasSufficientTurboBalance: 0 as any,
+    });
+
+    render(
+      <UploadApprovalQueueModern
+        {...defaultProps}
+        walletInfo={{ balance: '1.0', turboBalance: '0.02', turboWinc: '20000000000' }}
+        pendingUploads={[row]}
+      />
+    );
+
+    expect(screen.queryByText('Insufficient balance')).toBeNull();
+  });
+
+  it('a drained live balance blocks rows even when the stored flag says sufficient', () => {
+    const row = makeUpload({
+      estimatedTurboCost: 0.01,
+      hasSufficientTurboBalance: 1 as any, // stale: quoted when balance was healthy
+    });
+
+    render(
+      <UploadApprovalQueueModern
+        {...defaultProps}
+        walletInfo={{ balance: '1.0', turboBalance: '0.000001', turboWinc: '1000' }}
+        pendingUploads={[row]}
+      />
+    );
+
+    expect(screen.getByText('Insufficient balance')).toBeInTheDocument();
+  });
+
+  it('falls back to the stored flag when no live balance is available', () => {
+    const row = makeUpload({
+      estimatedTurboCost: 0.01,
+      hasSufficientTurboBalance: 0 as any,
+    });
+
+    render(
+      <UploadApprovalQueueModern
+        {...defaultProps}
+        walletInfo={{ balance: '1.0' }}
+        pendingUploads={[row]}
+      />
+    );
+
+    expect(screen.getByText('Insufficient balance')).toBeInTheDocument();
+  });
+
+  it('a later all-sufficient batch click clears the stale skipped banner', async () => {
+    const { fireEvent, waitFor } = await import('@testing-library/react');
+    const blocked = makeUpload({
+      fileName: 'expensive.bin',
+      estimatedTurboCost: 9.9,
+      hasSufficientTurboBalance: 0 as any,
+    });
+    const fine = makeUpload({ estimatedTurboCost: 0.001, hasSufficientTurboBalance: 1 as any });
+
+    const { rerender } = render(
+      <UploadApprovalQueueModern {...defaultProps} pendingUploads={[blocked, fine]} />
+    );
+    fireEvent.click(screen.getByText('Approve & Upload'));
+    expect(
+      await screen.findByText(/1 file skipped — insufficient Turbo Credits/)
+    ).toBeInTheDocument();
+
+    // The blocked row is gone (e.g. topped up + re-queued); a new batch click
+    // must clear the stale banner (qa-gate probe B, inverted)
+    rerender(
+      <UploadApprovalQueueModern {...defaultProps} pendingUploads={[fine]} />
+    );
+    fireEvent.click(screen.getByText('Approve & Upload'));
+
+    await waitFor(() => {
+      expect(screen.queryByText(/skipped — insufficient Turbo Credits/)).toBeNull();
+    });
+  });
+});

@@ -6,7 +6,7 @@
 // All Turbo/payment IPC calls are mocked — this suite can never spend funds.
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import TurboCreditsManager from '../../../src/renderer/components/TurboCreditsManager';
 import { WalletInfo } from '../../../src/types';
@@ -233,6 +233,31 @@ describe('TurboCreditsManager', () => {
 
       expect(mockElectronAPI.payment.removePaymentCompletedListener).toHaveBeenCalled();
       expect(mockElectronAPI.removeWalletInfoUpdatedListener).toHaveBeenCalled();
+    });
+
+    it('calls onWalletRefresh when payment-completed fires (MONEY-6: App must get fresh info by return value, not the dead event channel)', async () => {
+      const onWalletRefresh = vi.fn();
+      render(
+        <TurboCreditsManager
+          walletInfo={mockWalletInfo}
+          onClose={mockOnClose}
+          onWalletRefresh={onWalletRefresh}
+        />
+      );
+
+      // Capture the payment-completed callback the component registered
+      expect(mockElectronAPI.payment.onPaymentCompleted).toHaveBeenCalled();
+      const paymentCompletedCallback =
+        mockElectronAPI.payment.onPaymentCompleted.mock.calls[0][0];
+
+      // Simulate the main process announcing a completed payment
+      act(() => {
+        paymentCompletedCallback();
+      });
+
+      await waitFor(() => {
+        expect(onWalletRefresh).toHaveBeenCalled();
+      });
     });
   });
 

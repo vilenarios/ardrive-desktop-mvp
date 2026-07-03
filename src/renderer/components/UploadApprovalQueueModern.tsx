@@ -331,8 +331,17 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
     } else if (upload.estimatedTurboCost != null) {
       // Real Turbo quote from the payment service — always shown. If the
       // balance can't cover it, say so rather than hiding the real number.
+      // MONEY-6 staleness fix: prefer the LIVE balance (the walletInfo prop
+      // refreshes on top-up) over the flag stored at queue time — topping up
+      // must unblock rows without waiting for a re-quote. Falls back to the
+      // stored flag when no live balance is available.
       // (Truthy check: rows arrive DB-shaped over IPC with booleans as 0/1.)
-      if (upload.hasSufficientTurboBalance) {
+      const liveWinc = walletInfo?.turboWinc != null ? parseFloat(walletInfo.turboWinc) : NaN;
+      const costWinc = upload.estimatedTurboCost * 1e12;
+      const sufficient = !Number.isNaN(liveWinc)
+        ? liveWinc >= costWinc
+        : !!upload.hasSufficientTurboBalance;
+      if (sufficient) {
         return { method: 'turbo', cost: `${upload.estimatedTurboCost.toFixed(4)} Credits`, hasQuote: true };
       }
       // Known cost the balance cannot cover — approval of this row is
@@ -705,6 +714,7 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
                 {uploadStatus === 'failed' && (
                   <button
                     onClick={() => handleRetryUpload(upload.id)}
+                    title="Retry upload"
                     style={{
                       background: 'none',
                       border: 'none',
@@ -863,10 +873,10 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
             onClick={async () => {
               try {
                 // Rows with a real quote the balance cannot cover are
-                // SKIPPED with a visible reason (MONEY-1) — never submitted
-                if (blockedForBalanceCount > 0) {
-                  setBalanceSkippedCount(blockedForBalanceCount);
-                }
+                // SKIPPED with a visible reason (MONEY-1) — never submitted.
+                // Set unconditionally so a later all-sufficient click clears
+                // a stale banner (qa-gate finding).
+                setBalanceSkippedCount(blockedForBalanceCount);
 
                 const uploadsToProcess = approvableUploads;
 
@@ -877,14 +887,14 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
 
                 console.log(`Starting upload of ${uploadsToProcess.length} ${uploadsToProcess.length === 1 ? 'file' : 'files'}`);
 
+                // MONEY-6: one approval action → one approval per file.
+                // uploads:approve-all approves every eligible row with
+                // consistent running-balance gating; the old per-file
+                // follow-up loop re-approved rows approve-all had already
+                // handled and pushed through rows it had deliberately
+                // skipped for balance. (Per-file custom metadata was never
+                // actually delivered through that loop — UX-14.)
                 await onApproveAll();
-
-                for (const upload of uploadsToProcess) {
-                  if (!processingFiles.has(upload.id)) {
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    handleApproveUpload(upload.id);
-                  }
-                }
               } catch (error) {
                 console.error('Failed to approve all uploads:', error);
               }

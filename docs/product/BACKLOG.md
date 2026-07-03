@@ -114,7 +114,7 @@ Done 2026-07-03 (67db271, qa-gate PASS under zero-trust after implementer sessio
 Fix: "Approve & Upload" calls approve-all once (no per-file follow-up loop that bypasses balance checks); consistent balance gating between single and batch paths. (Dead radio already removed by MONEY-1.)
 Re-homed from MONEY-1 (2026-07-03, need sync-manager.ts access): :3392 synthetic `estimatedTurboCost: 0.000001` for metadata ops — store honest value; :1973 `|| undefined` zero-quote coercion. Plus staleness: top-up affordance doesn't refresh row quotes — blocked rows stay blocked until re-quote despite live main-side check.
 Acceptance: one approval action → one approval per file; skipped-for-balance files stay skipped with a visible reason.
-
+Done 2026-07-03 (c96d1a8, qa-gate FAIL→fix→PASS on Opus): approve-all runs once (no per-file loop); blocked/skipped rows show reasons; the top-up staleness re-fix routes wallet refresh through wallet.getInfo(true)'s RETURN VALUE (App.refreshWalletInfo, null-guarded) on Turbo-manager close + payment-completed — sidestepping the dead wallet-info-updated event channel (D1 clobber) until UX-4 rebuilds it. Production chain mutation-proven. Remnants → UX-4: the removeAllListeners clobber root fix + the missing-dep warning + double-fetch belt-and-suspenders.
 ### MONEY-7 · P1 · Phase 3 · `todo`
 **Harden the payment window.** Evidence: §1.8.
 Fix: pin allowed hosts for `payment:open-window`; success detection via `will-redirect`/`did-navigate` against the exact success URL; `closed` handler emits a cancel event; `sandbox: true` + `setWindowOpenHandler`; remove dead focus-refresh (main.ts:244-266).
@@ -285,6 +285,7 @@ Also (PRIV-2 qa-gate findings 2026-07-03): the specific unlock error plumbed thr
 ### UX-4 · P1 · Phase 3 · `todo`
 **Redesign preload event subscriptions.** Evidence: §5.4 (removeAllListeners clobbering family + StorageTab leak + App's uncleaned registrations).
 Fix: preload `on*` methods return an unsubscribe function bound to the specific wrapped listener; components clean up their own; delete `remove*Listener` global-nuke helpers.
+MONEY-6 QA finding 2026-07-03: D1 concrete instance — first TurboCreditsManager close kills App's wallet-info-updated listener for the session (all consumers dead); interim mitigation shipped in MONEY-6 (return-value refresh on manager close); root fix remains this item.
 Acceptance: visiting Turbo screen / Permaweb tab / upload queue no longer kills sibling listeners (regression test: balance updates still arrive after opening+closing Turbo manager).
 
 ### UX-5 · P1 · Phase 3 · `todo`
