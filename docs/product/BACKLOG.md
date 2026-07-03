@@ -96,9 +96,10 @@ Fix: fetch a real AR/USD rate (with cache + "as of" timestamp) or drop USD displ
 Acceptance: no hardcoded exchange rate or synthetic quote is displayed anywhere.
 Done 2026-07-03 (6aa174b + 29a5855, qa-gate FAIL→fix→PASS): ar-price-utils.ts deleted; honest "Estimate unavailable"/"Insufficient balance" states; ×1.1 fallback → null. QA caught a DB-shape coercion (sqlite integer booleans + raw row spread → fabricated "0.0000 Credits" banner) — fixed at the DB boundary (getPendingUploads normalization) + renderer; QA's empirical repro adopted as permanent tests (160+1 green). Left for MONEY-1: internal 1-winston/byte placeholder, approval semantics for insufficient-balance rows.
 
-### MONEY-4 · P0 · Phase 1 · `in-progress`
+### MONEY-4 · P0 · Phase 1 · `done`
 **Remove or implement Auto Top-Up.** Evidence: §1.11 (fake "saved" confirmation).
 Acceptance: no UI implies recurring charges are configured unless they are.
+Done 2026-07-03 (f548fbb, qa-gate PASS — all 4 tabs driven, defect-catching re-proven, CSS orphan audit both directions): fake Auto Top-Up UI fully removed per PM REMOVE decision (D-010); zero recurring-charge residue repo-wide (167+1 green). Successor finding: MONEY-11 (fabricated Usage Statistics zeros — now the Settings tab's only content).
 
 ### MONEY-5 · P1 · Phase 1 · `todo`
 **Remove the no-op conflict-resolution modal.** Evidence: §1.6. (Real conflict detection = Track C scope with SYNC; ship neither half until both exist.)
