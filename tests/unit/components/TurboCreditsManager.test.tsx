@@ -236,6 +236,60 @@ describe('TurboCreditsManager', () => {
     });
   });
 
+  describe('Auto Top-Up removal (MONEY-4)', () => {
+    // Matches "Auto Top-Up", "auto top-up", "Automatic Top-Up", "autoTopUp", …
+    const autoTopUpPattern = /auto(?:matic)?[\s-]*top[\s-]*up/i;
+
+    const getTabButtons = () =>
+      Array.from(document.querySelectorAll('.tcm-tab')) as HTMLButtonElement[];
+
+    it('renders no Auto Top-Up controls or save affordance on any tab', async () => {
+      renderComponent();
+
+      // Let the mount-time balance load settle before walking the tabs.
+      await screen.findByText('0.500000');
+
+      const tabs = getTabButtons();
+      expect(tabs.length).toBe(4);
+
+      for (const tab of tabs) {
+        fireEvent.click(tab);
+
+        // No Auto Top-Up copy anywhere in the rendered document
+        expect(document.body.textContent).not.toMatch(autoTopUpPattern);
+
+        // No toggle, threshold/amount settings inputs, or save affordance
+        expect(document.querySelector('.tcm-toggle')).toBeNull();
+        expect(document.querySelector('.tcm-setting-input')).toBeNull();
+        expect(document.querySelector('.tcm-save-btn')).toBeNull();
+        expect(document.querySelectorAll('input[type="checkbox"]').length).toBe(0);
+        expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument();
+      }
+    });
+
+    it('cannot show a "Saved!" confirmation because no save control exists', async () => {
+      renderComponent();
+      await screen.findByText('0.500000');
+
+      // Open the Settings tab, where the fake save confirmation used to live
+      const settingsTab = getTabButtons().find((b) => b.textContent?.includes('Settings'));
+      expect(settingsTab).toBeDefined();
+      fireEvent.click(settingsTab!);
+
+      // The tab still renders its remaining content...
+      expect(screen.getByText('Usage Statistics')).toBeInTheDocument();
+
+      // ...but there is no enable toggle that could reveal a save control,
+      // and nothing to click that could claim settings were saved.
+      expect(document.querySelectorAll('input[type="checkbox"]').length).toBe(0);
+      expect(document.querySelector('.tcm-toggle')).toBeNull();
+      expect(document.querySelector('.tcm-save-btn')).toBeNull();
+      expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument();
+      expect(document.querySelector('.tcm-saved-indicator')).toBeNull();
+      expect(screen.queryByText(/saved!?/i)).not.toBeInTheDocument();
+    });
+  });
+
   describe('Loading States', () => {
     it('should show a processing state while the checkout session is created', async () => {
       // Keep the checkout session pending to observe the loading state
