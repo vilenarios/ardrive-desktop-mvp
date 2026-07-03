@@ -222,7 +222,7 @@ Also (same gate): wallet-import flows re-point the DB without stopping sync (wal
 ### PRIV-0 · P0 · Phase 1 · `wont-fix`
 **Feature-flag private drives off for beta.** Obsolete: D-010 (2026-07-03) put private drives IN the beta — they stay enabled and get fixed (PRIV-1..7 rephased onto the critical path) instead of hidden.
 
-### PRIV-1 · P0 · Phase 2 · `todo`
+### PRIV-1 · P0 · Phase 2 · `in-progress`
 **Implement private download decryption.** Evidence: §3.1 (raw ciphertext written to sync folder). Upstream ardrive-core-js APIs may be extended if needed (D-016).
 Acceptance: round-trip UAT — upload to private drive, delete locally, re-download → plaintext bytes hash-equal the original.
 
