@@ -80,9 +80,10 @@ Fix: either commit wallet only after confirmation, or drop the placebo checkbox 
 
 ## MONEY — Payment & cost integrity
 
-### MONEY-1 · P0 · Phase 1 · `in-progress`
+### MONEY-1 · P0 · Phase 1 · `done`
 **Resolve the cosmetic AR/Turbo choice.** Evidence: §1.1. Per D-010 (Turbo-only beta): remove the AR payment option from the approval queue UI, stop AR balance validation on approve, record `uploadMethod: 'turbo'` truthfully, label uploads accordingly. Track B is now the D-013 direction (FEAT-2 Advanced-mode self-bundling replaces "real AR payments"); if planner changes are ever needed, ardrive-core-js is modifiable (D-016).
 Acceptance: UI offers no AR payment choice; DB `uploadMethod` matches actual execution; no AR-denominated balance gate on approval.
+Done 2026-07-03 (627c208 + d688d9e, qa-gate PASS — money boundary verified at the DB-write level via the REAL captured IPC handlers, mutation-checked): no AR choice representable in the queue; 'turbo' hardcoded at every addUpload site; AR gate deleted (0-AR wallets approve; live Turbo check authoritative); insufficient rows block/skip with visible reasons + top-up affordance; first main.ts handler test suite established (reusable pattern). Re-homed to MONEY-6: sync-manager :3392/:1973 money remnants + top-up row-refresh staleness.
 QA findings 2026-07-03 to resolve here: define what APPROVAL means for insufficient-Turbo-balance rows (currently routes to the 'ar' rail whose cost is undisplayed — MONEY-3 left the quote visible with an "Insufficient balance" hint, but approve still submits 'ar'); sync-manager.ts:3392 hardcodes synthetic `estimatedTurboCost: 0.000001` for metadata ops (renderer masks it as "Free"; make the stored value honest); sync-manager.ts:1973 `|| undefined` would coerce a legitimate zero quote; dead `totalArCost` accumulation and dead `calculateTurboCredits` (turbo-utils) can go.
 
 ### MONEY-2 · P0 · Phase 2 · `todo`
