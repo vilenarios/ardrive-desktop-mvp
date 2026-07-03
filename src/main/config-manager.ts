@@ -100,6 +100,13 @@ export class ConfigManager {
     return true;
   }
 
+  // DESIGN-2: theme preference lives on the global config (device/app-level,
+  // not per-profile) so it applies before any profile is active (onboarding).
+  async setThemePreference(theme: 'light' | 'dark' | 'system'): Promise<void> {
+    this.globalConfig.theme = theme;
+    await this.saveGlobalConfig();
+  }
+
   // Legacy clear methods removed - use removeDriveMapping instead
 
   // Migration removed - legacy fields no longer supported

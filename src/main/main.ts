@@ -2526,6 +2526,18 @@ class ArDriveApp {
       return await configManager.markFirstRunComplete();
     });
 
+    // DESIGN-2: persist the ThemeProvider's manual light/dark/system override
+    ipcMain.handle('config:set-theme', async (_, theme: unknown) => {
+      try {
+        const validated = InputValidator.validateThemePreference(theme);
+        await configManager.setThemePreference(validated);
+        return { success: true };
+      } catch (error) {
+        console.error('[Config] Failed to set theme preference:', error);
+        throw new Error(error instanceof Error ? error.message : 'Failed to set theme preference');
+      }
+    });
+
     ipcMain.handle('config:clear-drive', async () => {
       // Clear sync folder
       await configManager.setSyncFolder('');

@@ -5,6 +5,8 @@ export interface AppConfig {
   lastActiveDriveId?: string;
   lastActiveDriveMappingId?: string;
   driveMappings?: DriveSyncMapping[];
+  /** DESIGN-2: manual theme override. 'system' (default) follows the OS preference. */
+  theme?: 'light' | 'dark' | 'system';
 }
 
 export interface DriveSyncMapping {

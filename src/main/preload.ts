@@ -155,6 +155,8 @@ const api = {
       ipcRenderer.invoke('config:clear-drive'),
     clearFolder: () =>
       ipcRenderer.invoke('config:clear-folder'),
+    setTheme: (theme: 'light' | 'dark' | 'system') =>
+      ipcRenderer.invoke('config:set-theme', theme),
   },
 
   // Dialog operations

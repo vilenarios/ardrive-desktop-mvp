@@ -1,5 +1,9 @@
 /* ArDrive Desktop - Apple-Style Design System */
 
+/* Design token layer (DESIGN-2) — MUST be imported first: everything below
+ * bridges legacy variable names to these tokens. See docs/product/DESIGN-SYSTEM.md */
+@import './styles/theme.css';
+
 /* Import component-specific styles */
 @import './styles/turbo-credits.css';
 @import './styles/info-button.css';
@@ -9,118 +13,169 @@
 @import './styles/dashboard-tabs.css';
 @import './styles/upload-queue-modern.css';
 
+/*
+ * BRIDGE LAYER (DESIGN-2): every legacy custom property below is kept for
+ * source-compat with styles/*.css and ~39 components' inline style={{}} that
+ * still reference these old names. Each one now points at the new semantic
+ * token in styles/theme.css instead of an off-brand literal, so the whole
+ * app renders in the ArDrive palette (light+dark) without touching those
+ * files. DESIGN-3..7 will migrate each surface to the new names directly and
+ * delete its slice of this bridge as it goes (per DESIGN-SYSTEM.md §8.4).
+ *
+ * Scale tokens (spacing/radius/shadow/type-size/line-height/font-weight) are
+ * intentionally NOT re-aliased here: their legacy values differ numerically
+ * from the new §3–5 scale (e.g. old --radius-lg: 1rem vs new 8px), and
+ * remapping them now would visibly reflow/resize existing UI — out of scope
+ * for the token/theme foundation (no visual regression is a DESIGN-2
+ * acceptance criterion). They stay as literal legacy values until each
+ * surface is ported in DESIGN-3..7.
+ */
 :root {
-  /* ArDrive Brand Colors - Primary Red Scale */
-  --ardrive-primary: #dc2626;        /* Main brand color */
-  --ardrive-primary-50: #fef2f2;     /* Lightest tint for backgrounds */
-  --ardrive-primary-100: #fee2e2;    /* Light tint */
-  --ardrive-primary-200: #fecaca;    /* Light-medium tint */
-  --ardrive-primary-300: #fca5a5;    /* Medium-light tint */
-  --ardrive-primary-400: #f87171;    /* Medium tint */
-  --ardrive-primary-500: #ef4444;    /* Medium shade */
-  --ardrive-primary-600: #dc2626;    /* Primary (base) */
-  --ardrive-primary-700: #b91c1c;    /* Dark shade (hover) */
-  --ardrive-primary-800: #991b1b;    /* Darker shade */
-  --ardrive-primary-900: #7f1d1d;    /* Darkest shade */
-  
+  /* ArDrive Brand Colors - Primary Red Scale (bridged to --brand ladder) */
+  --ardrive-primary: var(--brand);
+  --ardrive-primary-50: var(--brand-surface);
+  --ardrive-primary-100: var(--brand-surface);
+  --ardrive-primary-200: var(--brand);
+  --ardrive-primary-300: var(--focus-ring);
+  --ardrive-primary-400: var(--brand);
+  --ardrive-primary-500: var(--brand);
+  --ardrive-primary-600: var(--brand);
+  --ardrive-primary-700: var(--brand-hover);
+  --ardrive-primary-800: var(--brand-active);
+  --ardrive-primary-900: var(--brand-active);
+
   /* Legacy aliases for backward compatibility - will phase out */
-  --ardrive-primary-hover: var(--ardrive-primary-700);
-  --ardrive-primary-light: var(--ardrive-primary-100);
-  --primary-50: var(--ardrive-primary-50);
-  --primary-100: var(--ardrive-primary-100);
-  --primary-600: var(--ardrive-primary-600);
-  
-  /* Semantic Colors - Updated to match ArDrive Style Guide */
-  --ardrive-success: #10b981;        /* Green for success states (matches style guide) */
-  --ardrive-warning: #f59e0b;        /* Orange for warnings */
-  --ardrive-danger: #dc2626;         /* Use primary red for errors (style guide aligned) */
-  --ardrive-info: #3b82f6;           /* Blue for information (matches style guide) */
-  
-  /* Error color scale (danger alias) */
-  --error: var(--ardrive-danger);
-  --error-50: var(--ardrive-primary-50);
-  --error-100: var(--ardrive-primary-100);
-  --error-200: var(--ardrive-primary-200);
-  --error-300: var(--ardrive-primary-300);
-  --error-400: var(--ardrive-primary-400);
-  --error-500: var(--ardrive-danger);
-  --error-600: var(--ardrive-primary-600);
-  --error-700: var(--ardrive-primary-700);
-  --error-800: var(--ardrive-primary-800);
-  --error-900: var(--ardrive-primary-900);
-  
-  /* Success Colors - ArDrive Style Guide Green */
-  --success-50: #ecfdf5;
-  --success-100: #d1fae5;
-  --success-200: #a7f3d0;
-  --success-300: #6ee7b7;
-  --success-400: #34d399;
-  --success-500: #10b981;   /* Style guide green */
-  --success-600: #059669;
-  --success-700: #047857;
-  --success-800: #065f46;
-  --success-900: #064e3b;
-  
-  --danger-50: #fef2f2;
-  --danger-100: #fee2e2;
-  --danger-200: #fecaca;
-  --danger-300: #fca5a5;
-  --danger-400: #f87171;
-  --danger-500: #ef4444;
-  --danger-600: #dc2626;
-  --danger-700: #b91c1c;
-  --danger-800: #991b1b;
-  --danger-900: #7f1d1d;
-  
-  --warning-50: #fffbeb;
-  --warning-100: #fef3c7;
-  --warning-200: #fde68a;
-  --warning-300: #fcd34d;
-  --warning-400: #fbbf24;
-  --warning-500: #f59e0b;
-  --warning-600: #d97706;
-  --warning-700: #b45309;
-  --warning-800: #92400e;
-  --warning-900: #78350f;
-  
-  /* Info Colors - ArDrive Style Guide Blue */
-  --info-50: #eff6ff;
-  --info-100: #dbeafe;
-  --info-200: #bfdbfe;
-  --info-300: #93c5fd;
-  --info-400: #60a5fa;
-  --info-500: #3b82f6;   /* Style guide blue */
-  --info-600: #2563eb;
-  --info-700: #1d4ed8;
-  --info-800: #1e40af;
-  --info-900: #1e3a8a;
-  
-  /* Neutral Colors - ArDrive Style Guide Aligned */
-  --gray-50: #fafafa;     /* Slightly warmer gray from style guide */
-  --gray-100: #f4f4f5;   /* Updated to match style guide backgrounds */
-  --gray-200: #e4e4e7;   /* Better contrast for borders */
-  --gray-300: #d4d4d8;   /* Refined medium gray */
-  --gray-400: #a1a1aa;   /* Style guide placeholder text */
-  --gray-500: #71717a;   /* Body text color */
-  --gray-600: #52525b;   /* Secondary text */
-  --gray-700: #3f3f46;   /* Primary text */
-  --gray-800: #27272a;   /* Dark text */
-  --gray-900: #18181b;   /* Darkest text */
-  
+  --ardrive-primary-hover: var(--brand-hover);
+  --ardrive-primary-light: var(--brand-surface);
+  --ardrive-primary-dark: var(--brand-active);
+  --ardrive-primary-rgb: 211, 23, 33; /* #D31721 as r,g,b for rgba(var(--ardrive-primary-rgb), a) call sites */
+  --primary-50: var(--brand-surface);
+  --primary-100: var(--brand-surface);
+  --primary-600: var(--brand);
+
+  /* Semantic Colors - bridged to new status tokens */
+  --ardrive-success: var(--success);
+  --ardrive-secondary: var(--success); /* legacy name for the same "positive/green" role */
+  --ardrive-secondary-light: var(--success-surface);
+  --ardrive-warning: var(--warning);
+  --ardrive-danger: var(--danger);
+  --ardrive-danger-light: var(--danger-surface);
+  --ardrive-info: var(--info);
+  --success-rgb: 24, 169, 87; /* #18A957 as r,g,b for rgba(var(--success-rgb), a) call sites */
+
+  /* Error color scale (danger family - previously piggybacked on the primary
+   * ladder because old --ardrive-danger === old --ardrive-primary by
+   * coincidence; brand and danger are now distinct hues, so point at danger) */
+  --error: var(--danger);
+  --error-50: var(--danger-surface);
+  --error-100: var(--danger-surface);
+  --error-200: var(--danger);
+  --error-300: var(--danger);
+  --error-400: var(--danger);
+  --error-500: var(--danger);
+  --error-600: var(--danger-fg);
+  --error-700: var(--danger-fg);
+  --error-800: var(--danger-fg);
+  --error-900: var(--danger-fg);
+
+  /* Success tint ladder */
+  --success-50: var(--success-surface);
+  --success-100: var(--success-surface);
+  --success-200: var(--success);
+  --success-300: var(--success);
+  --success-400: var(--success);
+  --success-500: var(--success);
+  --success-600: var(--success-fg);
+  --success-700: var(--success-fg);
+  --success-800: var(--success-fg);
+  --success-900: var(--success-fg);
+
+  /* Danger tint ladder */
+  --danger-50: var(--danger-surface);
+  --danger-100: var(--danger-surface);
+  --danger-200: var(--danger);
+  --danger-300: var(--danger);
+  --danger-400: var(--danger);
+  --danger-500: var(--danger);
+  --danger-600: var(--danger-fg);
+  --danger-700: var(--danger-fg);
+  --danger-800: var(--danger-fg);
+  --danger-900: var(--danger-fg);
+
+  /* Warning tint ladder */
+  --warning-50: var(--warning-surface);
+  --warning-100: var(--warning-surface);
+  --warning-200: var(--warning);
+  --warning-300: var(--warning);
+  --warning-400: var(--warning);
+  --warning-500: var(--warning);
+  --warning-600: var(--warning-fg);
+  --warning-700: var(--warning-fg);
+  --warning-800: var(--warning-fg);
+  --warning-900: var(--warning-fg);
+
+  /* Info tint ladder */
+  --info-50: var(--info-surface);
+  --info-100: var(--info-surface);
+  --info-200: var(--info);
+  --info-300: var(--info);
+  --info-400: var(--info);
+  --info-500: var(--info);
+  --info-600: var(--info-fg);
+  --info-700: var(--info-fg);
+  --info-800: var(--info-fg);
+  --info-900: var(--info-fg);
+
+  /* Un-prefixed Tailwind-style ladders (blue/red/green/yellow) some
+   * components reference directly for the same info/danger/success/warning
+   * roles — same tint formula as above. */
+  --blue-50: var(--info-surface);
+  --blue-100: var(--info-surface);
+  --blue-200: var(--info);
+  --blue-300: var(--info);
+  --blue-600: var(--info-fg);
+  --blue-700: var(--info-fg);
+  --blue-800: var(--info-fg);
+  --red-50: var(--danger-surface);
+  --red-200: var(--danger);
+  --red-300: var(--danger);
+  --red-500: var(--danger);
+  --red-600: var(--danger-fg);
+  --red-700: var(--danger-fg);
+  --green-600: var(--success);
+  --green-700: var(--success);
+  --yellow-50: var(--warning-surface);
+  --yellow-200: var(--warning);
+  --yellow-600: var(--warning-fg);
+
+  /* Neutral Colors - bridged to the new surface/text/border scale, mapped
+   * per this ladder's own original intent (see each value's prior comment) */
+  --gray-50: var(--surface); /* was page/section background */
+  --gray-100: var(--surface-inset); /* was hover fill / secondary background */
+  --gray-200: var(--border); /* was default border color */
+  --gray-300: var(--border-strong); /* was medium/hover border */
+  --gray-400: var(--text-disabled); /* was placeholder text */
+  --gray-500: var(--text-tertiary); /* was body text color */
+  --gray-600: var(--text-secondary); /* was secondary text */
+  --gray-700: var(--text-primary); /* was primary text */
+  --gray-800: var(--text-primary); /* was dark text */
+  --gray-900: var(--text-primary); /* was darkest text */
+
   /* Style Guide Specific Colors */
-  --ardrive-background: #fafafa;           /* Main app background */
-  --ardrive-surface: #ffffff;             /* Card/panel backgrounds */
-  --ardrive-border: #e4e4e7;              /* Default borders */
-  --ardrive-border-hover: #d4d4d8;        /* Hover state borders */
-  --ardrive-text-primary: #18181b;        /* Primary text */
-  --ardrive-text-secondary: #71717a;      /* Secondary text */
-  --ardrive-text-muted: #a1a1aa;          /* Muted/placeholder text */
-  
-  /* Typography */
-  --font-system: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
-  --font-mono: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
-  
-  /* Font Sizes - Per Style Guide */
+  --ardrive-background: var(--surface);
+  --ardrive-surface: var(--surface-raised);
+  --ardrive-border: var(--border);
+  --ardrive-border-hover: var(--border-strong);
+  --ardrive-text-primary: var(--text-primary);
+  --ardrive-text-secondary: var(--text-secondary);
+  --ardrive-text-muted: var(--text-disabled);
+
+  /* Typography — bridge the old Apple-system name to the new system stack
+   * (D-024); --font-mono is intentionally NOT redeclared here so the
+   * system-monospace stack from styles/theme.css wins unshadowed. */
+  --font-system: var(--font-sans);
+
+  /* Font Sizes - Per Style Guide (legacy scale, left as literal — see note above) */
   --text-xs: 0.75rem;   /* 12px - Secondary labels */
   --text-sm: 0.875rem;  /* 14px - Body text (default) */
   --text-base: 1rem;    /* 16px - Primary body */
@@ -128,19 +183,19 @@
   --text-xl: 1.25rem;   /* 20px - Card titles */
   --text-2xl: 1.5rem;   /* 24px - Section headings */
   --text-3xl: 1.875rem; /* 30px - Page headings */
-  
+
   /* Font Weights */
   --font-normal: 400;
   --font-medium: 500;
   --font-semibold: 600;
   --font-bold: 700;
-  
+
   /* Line Heights */
   --leading-tight: 1.25;
   --leading-normal: 1.5;
   --leading-relaxed: 1.75;
-  
-  /* Spacing */
+
+  /* Spacing (legacy scale, left as literal — see note above) */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -150,20 +205,21 @@
   --space-8: 2rem;
   --space-10: 2.5rem;
   --space-12: 3rem;
-  
-  /* Border Radius */
+
+  /* Border Radius (legacy scale, left as literal — see note above) */
   --radius-sm: 0.375rem;
   --radius: 0.5rem;
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
-  
-  /* Shadows */
+
+  /* Shadows (legacy scale, left as literal — see note above) */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-2xl: 0 24px 48px var(--shadow-ink); /* was undefined (broken) — modal/dialog drop shadow, now theme-aware */
 }
 
 * {
@@ -178,7 +234,7 @@ html, body {
   height: 100%;
   font-family: var(--font-system);
   font-size: var(--text-sm); /* 14px - Default body text per style guide */
-  font-weight: var(--font-normal);
+  font-weight: 500; /* ArDrive base body weight is 500, not 400 (D-024 §2.1) */
   line-height: var(--leading-normal);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

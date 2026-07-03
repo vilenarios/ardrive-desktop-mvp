@@ -240,6 +240,16 @@ export class InputValidator {
   }
 
   /**
+   * Validates a theme preference (DESIGN-2)
+   */
+  static validateThemePreference(value: any, fieldName: string = 'theme'): 'light' | 'dark' | 'system' {
+    if (value !== 'light' && value !== 'dark' && value !== 'system') {
+      throw new ValidationError(`${fieldName} must be one of 'light', 'dark', or 'system'`, fieldName);
+    }
+    return value;
+  }
+
+  /**
    * Validates a positive number
    */
   static validatePositiveNumber(
