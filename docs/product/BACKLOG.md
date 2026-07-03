@@ -357,7 +357,7 @@ Acceptance: a thrown error in main produces an inspectable report with app versi
 **Repo hygiene.** Evidence: §6.10. Delete 8 dead components + 2 unreachable (≈5k lines, list in AUDIT §5.9); delete unreferenced scripts (build-installers/build-simple/test-build/quick-test-*/build-windows-simple) and `scripts/manual-tests/`; drop patch-package or add a patch; move `@types/*` to devDependencies. QA finding 2026-07-03 (MONEY-5 gate): the dead legacy UploadApprovalQueue.tsx still contains a complete conflict-resolution modal (13 refs) and `ConflictResolution` in src/types/index.ts:149 survives only to serve it — delete together. SYNC-2 gate adds: sync-manager's private downloadMissingFiles/downloadMissingFilesWithProgress/downloadIndividualFile (:3056-:3190) are unreachable ungated synced-writers — delete to keep the writer sweep trivially clean.
 Note 2026-07-02: root reorganization done — `nul` deleted; vendored docs → `docs/vendor/`; images → `docs/branding/`; stale plans → `docs/archive/`; workflow docs → `docs/developer/`; `test-scripts/` → `scripts/manual-tests/`. Remaining: dead-component/script deletion (needs Phil's confirmation) and dependency moves.
 
-### INFRA-7 · P1 · Phase 4 · `todo`
+### INFRA-7 · P1 · Phase 4 · `in-progress` (branch fix/INFRA-7-db-migrations)
 **Database migration framework.** Evidence: §6.11 ("no migrations needed", schemaVersion=3). Released apps cannot recreate tables.
 Fix: versioned migration runner keyed on `currentSchemaVersion`; baseline v3; every future schema change ships a migration.
 Acceptance: opening a v3 profile DB with a v4 app migrates data losslessly (test with fixture DB).
