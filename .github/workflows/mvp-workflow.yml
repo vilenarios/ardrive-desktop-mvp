@@ -34,8 +34,40 @@ on:
   #   branches: [main]
 
 jobs:
+  # INFRA-3: required quality gates. Runs on a cheap Linux runner and gates
+  # every build — typecheck (src AND tests), lint, and the full test suite
+  # must pass before any packaging job starts.
+  quality:
+    name: Quality gates
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Typecheck (src)
+      run: npm run typecheck
+
+    - name: Typecheck (tests)
+      run: npm run typecheck:tests
+
+    - name: Lint
+      run: npm run lint
+
+    - name: Tests
+      run: npx vitest --run
+
   build:
     name: Build ${{ matrix.os }}
+    needs: quality
     runs-on: ${{ matrix.os }}
     
     # Platform selection: the matrix context is NOT available in a job-level
@@ -65,10 +97,8 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Run tests
-      run: npm test
-      continue-on-error: true  # Don't fail build if tests fail (MVP flexibility)
-
+    # Tests run as a REQUIRED step in the quality job (INFRA-3) — the old
+    # continue-on-error test step here is gone.
     - name: Build app
       run: npm run build
 
