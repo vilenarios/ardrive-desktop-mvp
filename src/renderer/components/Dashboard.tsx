@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { AppConfig, DriveInfo, DriveInfoWithStatus, WalletInfo, SyncStatus, FileUpload, PendingUpload, ConflictResolution, Profile, SyncProgress } from '../../types';
+import { AppConfig, DriveInfo, DriveInfoWithStatus, WalletInfo, SyncStatus, FileUpload, PendingUpload, Profile, SyncProgress } from '../../types';
 import UploadApprovalQueueModern from './UploadApprovalQueueModern';
 import TurboCreditsManager from './TurboCreditsManager';
 import FileMetadataModal from './FileMetadataModal';
@@ -618,10 +618,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const handleResolveConflict = async (resolution: ConflictResolution) => {
-    console.log('Conflict resolution:', resolution);
-  };
-
   const handleRefreshBalance = async () => {
     try {
       // Force refresh wallet info to get updated balance
@@ -917,7 +913,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                     onRejectUpload={handleRejectUpload}
                     onApproveAll={handleApproveAll}
                     onRejectAll={handleRejectAll}
-                    onResolveConflict={handleResolveConflict}
                     onRefreshBalance={handleRefreshBalance}
                     onRefreshPendingUploads={loadPendingUploads}
                     onRefreshUploads={onRefreshUploads}

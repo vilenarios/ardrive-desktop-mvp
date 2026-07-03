@@ -5,7 +5,7 @@ import {
   Folder, FileText, Edit3, Move, Eye, EyeOff, Trash2,
   Info, DollarSign, CreditCard, ArrowRight
 } from 'lucide-react';
-import { PendingUpload, ConflictResolution } from '../../types';
+import { PendingUpload } from '../../types';
 import { CustomMetadata, MetadataTemplate, FileWithMetadata, MetadataEditContext } from '../../types/metadata';
 import { isTurboFree, formatFileSize } from '../utils/turbo-utils';
 import { getMimeTypeFromExtension } from '../utils/mime-utils';
@@ -20,7 +20,6 @@ interface UploadApprovalQueueModernProps {
   onRejectUpload: (uploadId: string) => void;
   onApproveAll: () => void;
   onRejectAll: () => void;
-  onResolveConflict: (resolution: ConflictResolution) => void;
   onRefreshBalance?: () => void;
   onRefreshPendingUploads?: () => void;
   onRefreshUploads?: () => void;
@@ -47,14 +46,12 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
   onRejectUpload,
   onApproveAll,
   onRejectAll,
-  onResolveConflict,
   onRefreshPendingUploads,
   onRefreshUploads,
   onRefreshBalance,
   walletInfo
 }) => {
   const [selectedUploads, setSelectedUploads] = useState<Set<string>>(new Set());
-  const [showConflictResolution, setShowConflictResolution] = useState<string | null>(null);
 
   // Metadata state
   const [fileMetadata, setFileMetadata] = useState<Map<string, CustomMetadata>>(new Map());
@@ -676,24 +673,6 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
                   </button>
                 )}
                 
-                {uploadStatus !== 'uploading' && uploadStatus !== 'uploaded' && upload.conflictType !== 'none' && (
-                  <button
-                    onClick={() => setShowConflictResolution(upload.id)}
-                    style={{
-                      padding: '4px 8px',
-                      backgroundColor: 'var(--warning-600)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 'var(--radius-sm)',
-                      fontSize: '12px',
-                      fontWeight: '500',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Resolve
-                  </button>
-                )}
-                
                 {uploadStatus !== 'uploading' && uploadStatus !== 'uploaded' && upload.conflictType === 'none' && (
                   <button
                     onClick={() => onRejectUpload(upload.id)}
@@ -940,96 +919,6 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
         </div>
       </div>
 
-      {/* Conflict Resolution Modal */}
-      {showConflictResolution && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div className="card" style={{ maxWidth: '500px', margin: 'var(--space-4)' }}>
-            <h3 style={{ marginBottom: 'var(--space-4)' }}>Resolve Conflict</h3>
-            {(() => {
-              const upload = pendingUploads.find(u => u.id === showConflictResolution);
-              if (!upload) return null;
-              
-              return (
-                <div>
-                  <div style={{ marginBottom: 'var(--space-4)' }}>
-                    <div className="font-semibold">{upload.fileName}</div>
-                    <div className="text-sm text-gray-600">{upload.conflictDetails}</div>
-                  </div>
-                  
-                  <div style={{ marginBottom: 'var(--space-4)' }}>
-                    <div className="text-sm font-semibold" style={{ marginBottom: 'var(--space-2)' }}>
-                      Choose an action:
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-                      <button 
-                        className="button secondary"
-                        onClick={() => {
-                          onResolveConflict({ uploadId: upload.id, resolution: 'keep_local' });
-                          setShowConflictResolution(null);
-                        }}
-                        style={{ justifyContent: 'flex-start', textAlign: 'left' }}
-                      >
-                        <Upload size={16} style={{ marginRight: 'var(--space-1)' }} />
-                        Keep Local (upload this version)
-                      </button>
-                      <button 
-                        className="button secondary"
-                        onClick={() => {
-                          onResolveConflict({ uploadId: upload.id, resolution: 'use_remote' });
-                          setShowConflictResolution(null);
-                        }}
-                        style={{ justifyContent: 'flex-start', textAlign: 'left' }}
-                      >
-                        ⬇️ Use Remote (download remote version) - Free
-                      </button>
-                      <button 
-                        className="button secondary"
-                        onClick={() => {
-                          onResolveConflict({ uploadId: upload.id, resolution: 'keep_both' });
-                          setShowConflictResolution(null);
-                        }}
-                        style={{ justifyContent: 'flex-start', textAlign: 'left' }}
-                      >
-                        📁 Keep Both (rename local file)
-                      </button>
-                      <button 
-                        className="button secondary"
-                        onClick={() => {
-                          onResolveConflict({ uploadId: upload.id, resolution: 'skip' });
-                          setShowConflictResolution(null);
-                        }}
-                        style={{ justifyContent: 'flex-start', textAlign: 'left' }}
-                      >
-                        ⏭️ Skip (don&apos;t sync this file) - Free
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
-                    <button 
-                      className="button secondary"
-                      onClick={() => setShowConflictResolution(null)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
