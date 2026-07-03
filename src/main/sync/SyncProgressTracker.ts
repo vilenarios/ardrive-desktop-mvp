@@ -8,6 +8,17 @@ export class SyncProgressTracker implements ISyncProgressTracker {
   private MIN_EMIT_INTERVAL = 500; // 500ms between updates per item
   
   constructor() {
+    this.ensureStarted();
+  }
+
+  /**
+   * (Re)arms the flush interval. SYNC-4: stopSync destroys the tracker but
+   * the SyncManager object graph keeps the same instance, so a subsequent
+   * startSync must be able to bring it back to life — otherwise throttled
+   * progress queues forever and never reaches the renderer.
+   */
+  ensureStarted(): void {
+    if (this.flushInterval) return;
     // Flush pending emits every 250ms
     this.flushInterval = setInterval(() => {
       this.flushPendingEmits();

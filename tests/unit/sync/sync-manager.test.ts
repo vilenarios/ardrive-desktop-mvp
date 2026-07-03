@@ -279,6 +279,59 @@ describe('SyncManager', () => {
     });
   });
 
+  describe('Stop -> start lifecycle (SYNC-4)', () => {
+    it('should keep sync progress reaching the renderer after stop -> start', async () => {
+      await syncManager.startSync(testDriveId, testRootFolderId);
+      await syncManager.stopSync();
+
+      // Restart: this must re-arm the destroyed progress tracker
+      const restarted = await syncManager.startSync(testDriveId, testRootFolderId);
+      expect(restarted).toBe(true);
+
+      mockWebContentsSend.mockClear();
+      syncManager['emitSyncProgress']({ phase: 'files', description: 'post-restart probe' });
+
+      // Real timers: the tracker flushes every 250ms
+      await new Promise((resolve) => setTimeout(resolve, 700));
+
+      expect(mockWebContentsSend).toHaveBeenCalledWith('sync:progress', {
+        phase: 'files',
+        description: 'post-restart probe',
+      });
+    });
+
+    it('should re-arm the download manager intervals after stop -> start', async () => {
+      await syncManager.startSync(testDriveId, testRootFolderId);
+      await syncManager.stopSync();
+
+      // destroy() cleared both intervals
+      expect(syncManager['downloadManager']['progressFlushInterval']).toBeNull();
+      expect(syncManager['downloadManager']['memoryCleanupInterval']).toBeNull();
+
+      await syncManager.startSync(testDriveId, testRootFolderId);
+
+      expect(syncManager['downloadManager']['progressFlushInterval']).not.toBeNull();
+      expect(syncManager['downloadManager']['memoryCleanupInterval']).not.toBeNull();
+    });
+
+    it('should keep progress alive across a drive switch (switchDrive)', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([testMapping, otherMapping]);
+      await syncManager.startSync(testDriveId, testRootFolderId);
+
+      const switched = await syncManager.switchDrive(otherDriveId, otherRootFolderId);
+      expect(switched).toBe(true);
+
+      mockWebContentsSend.mockClear();
+      syncManager['emitSyncProgress']({ phase: 'files', description: 'post-switch probe' });
+      await new Promise((resolve) => setTimeout(resolve, 700));
+
+      expect(mockWebContentsSend).toHaveBeenCalledWith('sync:progress', {
+        phase: 'files',
+        description: 'post-switch probe',
+      });
+    });
+  });
+
   describe('Error Scenarios', () => {
     it('should surface database failures and return to idle', async () => {
       mockDatabaseManager.getDriveMappings.mockRejectedValue(new Error('Database error'));
