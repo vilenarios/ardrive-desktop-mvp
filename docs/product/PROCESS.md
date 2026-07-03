@@ -43,6 +43,12 @@ Three roles, one loop. This doc is the contract between them.
 - **Regression floor**: the full test suite runs at every gate; any regression anywhere fails the gate regardless of the item under review. Every merged P0/P1 grows the suite, so the floor rises as we go.
 - **User data**: no agent touches real profile data under `userData/`. UAT uses disposable test profiles.
 
+## Multi-session coordination
+
+- **BACKLOG.md is the claim ledger.** Any session (PM-driven or a parallel session Phil runs) claims an item by committing its status flip to `in-progress`. Before dispatching, the PM checks item status and recent `git log` for claims. Never double-claim.
+- **File-overlap rule extends across sessions**: an item whose files overlap a claimed item waits (main.ts remains the biggest serialization point).
+- **Direct instructions from Phil to any agent win** over that agent's standing rails; the agent notes the instruction in its report and the PM reconciles the record afterward. Route follow-ups on *finished* items through the PM to keep one writer per checkout.
+
 ## Escalation to Phil (PM must stop and ask)
 
 - Anything that changes or contradicts a D-### decision, or needs a new product decision (ROADMAP open questions).

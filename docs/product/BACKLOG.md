@@ -51,6 +51,7 @@ Acceptance: navigation to external origins in the main window is blocked; CSP pr
 
 ### SEC-8 · P2 · Track D · `todo`
 **Adopt secure-logger; cut console noise.** Evidence: §6.8 (909 main + 238 renderer console calls; secure-logger has zero importers).
+QA findings 2026-07-03 to fold in: turbo-manager.ts:289/306 log the full checkout-session object (payment URL/id — hygiene, not key material); harden `safeIdString` in arfs-result-summary.ts with a `keyData`-shape guard to make the whitelist shape-proof.
 Acceptance: main-process logging goes through secure-logger with redaction; no secrets (keys, passwords, seed material) representable in logs.
 
 ### SEC-9 · P2 · Track D · `todo`
@@ -216,6 +217,7 @@ Acceptance: locked private drive at boot → visible "locked — unlock to sync"
 
 ### PRIV-6 · P1 · Phase 2 · `todo`
 **Private move/rename (and hide) paths.** Evidence: §3.7/§1.7 (only `*Public*` ArFS calls exist). Pairs with SYNC-5's hide implementation; upstream ardrive-core-js work allowed (D-016).
+QA finding 2026-07-03: sync-manager.ts:1559/1608 log raw rename/move results — safe today only because public results omit `key` (version-fragile); when touching these paths, route through `summarizeArFSResult` (SEC-1's whitelist util).
 
 ### PRIV-7 · P2 · Phase 3 · `todo`
 **Don't gate drive unlock on the 8-char wallet-password validator.** Evidence: §3.10 (drives from other clients with shorter passwords can never unlock).

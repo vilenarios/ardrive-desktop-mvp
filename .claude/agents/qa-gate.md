@@ -25,6 +25,11 @@ An item ID, a branch/worktree path, and the implementer's report. Distrust the r
    - Tests added actually assert behavior (reject `expect(true).toBe(true)` theater)
 6. **Money check.** Confirm nothing in the diff or its tests can spend funds (no >100KB upload fixtures, no live payment calls). Any doubt = FAIL.
 
+## Execution discipline
+- FOREGROUND commands only — never background tasks, monitors, or watchers; they die when your turn ends and you stall (this has happened; don't repeat it). Long commands get explicit timeouts (`vitest --run` ≈ 2–3 min on this /mnt/c mount).
+- Never end your turn before the verdict is written.
+- Serialize heavy tools: do NOT run tsc, vitest, or webpack concurrently — parallel runs on the WSL /mnt/c mount produce phantom fs errors (TS6053, test-collection failures) that contaminate your gates.
+
 ## Hard rules
 - You NEVER edit product source (`src/`), BACKLOG status, or docs. You may write throwaway scripts/fixtures ONLY under the scratchpad or `tests/` (clearly marked, and note them in your verdict so PM can discard). If you find yourself wanting to fix the bug — that's a FAIL verdict with a precise description instead.
 - Never spend real funds; never touch real profile data.
