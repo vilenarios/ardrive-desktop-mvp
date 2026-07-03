@@ -100,3 +100,9 @@ Phil's clarifications on D-018:
 - **CORE-1**: "compare against our GraphQL in ardrive-web" — the web app's queries are the owner-scoped reference implementation, including its pattern for owner-unknown discovery. Answers ROADMAP open question 5.
 - **CORE-3/FEAT-3**: "eventually the desktop should give the user the ability to create/view snapshots, just like the web app" — snapshot writing is in scope (CORE-3 API), with a desktop create/view UI (new item FEAT-3; creation is paid → routed through the upload approval queue). Answers ROADMAP open question 6.
 - **CORE-2**: "we actually started an incremental sync branch in ardrive-core-js" — first task is locating/assessing that branch rather than greenfielding.
+
+## D-020 · Solana support derives an Arweave wallet from the Solana wallet (ardrive-web pattern) · CONFIRMED · 2026-07-03
+
+Phil: "For Solana support we should do what we do for the ardrive app — derive an Arweave wallet from the Solana wallet. Then we have best of both worlds. Like ArNS requires a Solana wallet." (Final clause recorded verbatim.)
+
+Resolves the FEAT-1 design blocker (ROADMAP open question 2): the Solana wallet is the user-facing identity/payment rail (Turbo), and a deterministic Arweave JWK derived from it powers everything ArFS — drive-key derivation, signing, interop — unchanged. Reference implementation: ardrive-web's existing Solana→Arweave derivation (mirror it exactly for cross-app wallet compatibility — the same Solana wallet must yield the same Arweave wallet in both apps). Upstream home for the derivation if shared: ardrive-core-js (D-016).

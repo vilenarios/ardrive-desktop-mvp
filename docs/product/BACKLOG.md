@@ -407,8 +407,8 @@ Acceptance: cold listing of a snapshotted large drive is dramatically fewer quer
 ## FEAT — Major feature work
 
 ### FEAT-1 · P1 · Track B · `deferred`
-**Solana-default wallet onboarding with Turbo.** New users get a Solana wallet by default, paying via Turbo (turbo-sdk supports Solana signing/top-ups; sibling repo modifiable per D-016). OPEN DESIGN QUESTION (ROADMAP #2): ArFS private-drive key derivation for non-Arweave wallets — needs an ardrive-core-js decision before implementation starts.
-Acceptance: new-user flow creates/imports a Solana wallet, tops up Turbo, and syncs a public drive end-to-end.
+**Solana-default wallet onboarding with Turbo.** New users get a Solana wallet by default, paying via Turbo (turbo-sdk supports Solana signing/top-ups; sibling repo modifiable per D-016). Design RESOLVED per D-020: derive a deterministic Arweave wallet FROM the Solana wallet, mirroring ardrive-web's derivation exactly (same Solana wallet → same Arweave wallet in both apps) — ArFS drive keys/signing work unchanged on the derived JWK. First task: locate ardrive-web's derivation code and pin it as the interop reference (test vector: known Solana key → expected Arweave address in both apps).
+Acceptance: new-user flow creates/imports a Solana wallet, tops up Turbo, and syncs public AND private drives end-to-end; derived Arweave address matches ardrive-web's for the same Solana wallet.
 
 ### FEAT-2 · P2 · Track B · `deferred`
 **"Advanced mode": Arweave wallet + AR tokens + self-bundled uploads (lite bundler).** Per D-013: an opt-in mode where the user holds an Arweave wallet with AR tokens and the app builds/signs/posts its own ANS-104 bundles (arbundles is already a dependency). Scope question open (ROADMAP #4): per-file bundles vs batching with receipts.

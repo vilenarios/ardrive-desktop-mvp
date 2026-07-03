@@ -66,10 +66,9 @@ Ship via `build:testers` + GitHub Releases (unsigned, D-004) to Phil's Discord t
 ## Open questions (need product input)
 
 1. **Beta success metrics** — what defines a successful beta (e.g., N drives synced with zero data-integrity reports, upload success rate, crash-free sessions %)? Telemetry (INFRA-5) should be designed against these. *(Unanswered from the original list.)*
-2. **Solana + private drives** — ArFS drive keys derive from an Arweave JWK; what's the intended derivation for Solana-default users (D-013)? Needs an ardrive-core-js design decision before FEAT-1 starts.
 3. **Hide semantics in the UI** — when a user deletes locally and we hide on ArFS (D-011): should the Permaweb view show hidden files with an "unhide" affordance, and what copy communicates permanence best?
 4. **Advanced-mode bundler scope** (FEAT-2) — is "lite bundler" per-file ANS-104 bundles signed by the user's wallet, or batch bundling with local receipts? Shapes turbo-sdk/arbundles reuse.
 
 ## Answered (moved to DECISIONS.md)
 
-Gateway strategy → D-012 · Delete semantics → D-011 · Tester pool/feedback → D-017 · Ethereum → D-013 · Size ceiling → D-014 · ArNS/avatars → D-015 · Repo strategy → D-016 · Scope → D-010 · Owner-unknown discovery → D-019 (mirror ardrive-web's GQL) · Snapshot writing → D-019 (yes — create/view UI, FEAT-3).
+Gateway strategy → D-012 · Delete semantics → D-011 · Tester pool/feedback → D-017 · Ethereum → D-013 · Size ceiling → D-014 · ArNS/avatars → D-015 · Repo strategy → D-016 · Scope → D-010 · Owner-unknown discovery → D-019 (mirror ardrive-web's GQL) · Snapshot writing → D-019 (yes — create/view UI, FEAT-3). · Solana+private-drives derivation → D-020 (derive Arweave wallet from Solana wallet, ardrive-web pattern).
