@@ -109,7 +109,7 @@ Done 2026-07-03 (f548fbb, qa-gate PASS — all 4 tabs driven, defect-catching re
 Acceptance: no UI offers conflict choices that are discarded.
 Done 2026-07-03 (67db271, qa-gate PASS under zero-trust after implementer session died — defect-catching re-proven, completeness sweep clean): modal, Resolve button, handler, and prop chain removed; passive conflict displays remain (unreachable, conflictType hardcoded 'none'); detection stubs/DB fields preserved for Track C. Track C note: conflicted rows will render with NO actions until the real UI lands — rework the gating then.
 
-### MONEY-6 · P1 · Phase 2 · `in-progress`
+### MONEY-6 · P1 · Phase 2 · `done`
 **Fix approval-queue semantics.** Evidence: §1.5.
 Fix: "Approve & Upload" calls approve-all once (no per-file follow-up loop that bypasses balance checks); consistent balance gating between single and batch paths. (Dead radio already removed by MONEY-1.)
 Re-homed from MONEY-1 (2026-07-03, need sync-manager.ts access): :3392 synthetic `estimatedTurboCost: 0.000001` for metadata ops — store honest value; :1973 `|| undefined` zero-quote coercion. Plus staleness: top-up affordance doesn't refresh row quotes — blocked rows stay blocked until re-quote despite live main-side check.
