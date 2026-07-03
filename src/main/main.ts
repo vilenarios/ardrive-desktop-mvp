@@ -164,7 +164,8 @@ class ArDriveApp {
               driveName: primaryMapping.driveName,
               timestamp: new Date().toISOString()
             });
-            this.syncManager.setSyncFolder(config.syncFolder);
+            // SYNC-7: the mapping's folder is the source of truth at boot too
+            this.syncManager.setSyncFolder(primaryMapping.localFolderPath || config.syncFolder);
             console.log('🔵 [AUTO-SYNC] About to call startSync with silent=true');
             await this.syncManager.startSync(
               primaryMapping.driveId,
@@ -1688,12 +1689,15 @@ class ArDriveApp {
         throw new Error(`Sync folder "${syncFolder}" does not exist or is not accessible`);
       }
       
-      // Switch the drive in sync manager
+      // Switch the drive in sync manager (switchDrive re-points the watcher
+      // at the new mapping's folder — SYNC-7)
       const success = await this.syncManager.switchDrive(validatedDriveId, targetDrive.rootFolderId);
       
       if (success) {
         // Update active drive in config
         await configManager.setActiveDrive(validatedDriveId, driveMapping.id);
+        // SYNC-7: heal the legacy config mirror so UI folder displays agree
+        await configManager.setSyncFolder(driveMapping.localFolderPath);
       }
       
       return { success, driveInfo: targetDrive };
@@ -1747,14 +1751,9 @@ class ArDriveApp {
       const config = await configManager.getConfig();
       console.log('Config for sync:', config);
       
-      if (!config.syncFolder) {
-        throw new Error('No sync folder configured. Please set up sync first.');
-      }
-      
-      console.log('Using sync folder:', config.syncFolder);
-      
-      // Ensure sync folder is set in sync manager
-      this.syncManager.setSyncFolder(config.syncFolder);
+      // SYNC-7: the folder is set AFTER the active mapping is resolved below —
+      // the mapping's localFolderPath is the source of truth, config.syncFolder
+      // is a legacy mirror.
       
       // Ensure ArDrive instance is available
       let arDrive = this.walletManager.getArDrive();
@@ -1799,11 +1798,25 @@ class ArDriveApp {
         throw new Error(`Private drive "${primaryMapping.driveName}" is locked. Please unlock it before starting sync.`);
       }
       
+      // SYNC-7: single source of truth — watch the active mapping's folder
+      const syncFolderSource = primaryMapping.localFolderPath || config.syncFolder;
+      if (!syncFolderSource) {
+        throw new Error('No sync folder configured. Please set up sync first.');
+      }
+      
       // Validate sync folder exists
       try {
-        await fs.access(primaryMapping.localFolderPath);
+        await fs.access(syncFolderSource);
       } catch (error) {
-        throw new Error(`Sync folder "${primaryMapping.localFolderPath}" does not exist or is not accessible`);
+        throw new Error(`Sync folder "${syncFolderSource}" does not exist or is not accessible`);
+      }
+      
+      this.syncManager.setSyncFolder(syncFolderSource);
+      
+      // Heal the legacy config mirror so every config.syncFolder reader
+      // (Overview/Storage tabs, Settings) agrees with what is actually watched
+      if (config.syncFolder !== syncFolderSource) {
+        await configManager.setSyncFolder(syncFolderSource);
       }
       
       // Get private key data for private drive operations

@@ -391,6 +391,16 @@ export class SyncManager {
     // Clear all state from previous drive
     await this.clearAllDriveState();
     
+    // SYNC-7: the active mapping's localFolderPath is the single source of
+    // truth — re-point the watcher and upload target at the NEW drive's
+    // folder. The old flow kept watching the previous drive's folder while
+    // uploading to the new drive.
+    const mappings = await this.databaseManager.getDriveMappings();
+    const newMapping = mappings.find(m => m.driveId === newDriveId);
+    if (newMapping?.localFolderPath) {
+      this.setSyncFolder(newMapping.localFolderPath);
+    }
+    
     // Start sync with new drive
     return this.startSync(newDriveId, newRootFolderId);
   }
