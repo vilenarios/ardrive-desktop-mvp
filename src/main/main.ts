@@ -378,13 +378,19 @@ class ArDriveApp {
         {
           label: globalStatus?.isActive ? '⏸ Pause Sync' : '▶️ Resume Sync',
           click: async () => {
-            if (globalStatus?.isActive) {
-              await this.syncManager.stopSync();
-            } else {
-              const drives = await this.walletManager.listDrives();
-              if (drives && drives.length > 0) {
-                await this.syncManager.startSync(drives[0].id, drives[0].rootFolderId, drives[0].name);
+            try {
+              if (globalStatus?.isActive) {
+                await this.syncManager.stopSync();
+              } else {
+                const drives = await this.walletManager.listDrives();
+                if (drives && drives.length > 0) {
+                  await this.syncManager.startSync(drives[0].id, drives[0].rootFolderId, drives[0].name);
+                }
               }
+            } catch (trayError) {
+              // PRIV-5 (qa-gate finding): a locked drive here was an
+              // unhandled rejection in main
+              console.error('Tray sync toggle failed:', trayError);
             }
             setTimeout(() => this.updateTrayMenu(), 1000);
           }

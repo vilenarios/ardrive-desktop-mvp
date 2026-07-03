@@ -231,6 +231,18 @@ export class SyncManager {
     }
 
     try {
+      // PRIV-5: a locked private drive must fail loudly BEFORE any metadata
+      // work — the old flow cleared the metadata cache, listed nothing (the
+      // lock error was swallowed downstream), and reported a successful
+      // EMPTY sync.
+      const lockCheckMappings = await this.databaseManager.getDriveMappings();
+      const activeMapping = lockCheckMappings.find(m => m.driveId === driveId);
+      if (activeMapping?.drivePrivacy === 'private' && !driveKeyManager.isUnlocked(driveId)) {
+        throw new Error(
+          `Private drive "${activeMapping.driveName}" is locked — unlock it to sync`
+        );
+      }
+      
       console.log('🚀 About to perform full drive sync...');
       // Step 1: Complete full drive sync (no file watcher yet)
       await this.performFullDriveSync(silent);
@@ -252,6 +264,11 @@ export class SyncManager {
       console.error('Failed to start sync:', error);
       this.syncState = 'idle';
       this.isActive = false;
+      // PRIV-5 (qa-gate finding): a failed start must not leave the failed
+      // drive as the engine's nominal target — a lingering locked target let
+      // sync:manual empty-wipe it later.
+      this.driveId = null;
+      this.rootFolderId = null;
       throw error;
     }
   }
@@ -568,6 +585,19 @@ export class SyncManager {
     console.log('Force downloading existing drive files...');
     if (!this.arDrive || !this.rootFolderId || !this.syncFolderPath) {
       throw new Error('Sync not properly initialized');
+    }
+    
+    // PRIV-5 (qa-gate finding): manual sync on a locked private drive must
+    // fail loudly too — the metadata failure was swallowed below and the
+    // already-cleared cache made the drive look empty.
+    if (this.driveId) {
+      const mappings = await this.databaseManager.getDriveMappings();
+      const mapping = mappings.find(m => m.driveId === this.driveId);
+      if (mapping?.drivePrivacy === 'private' && !driveKeyManager.isUnlocked(this.driveId)) {
+        throw new Error(
+          `Private drive "${mapping.driveName}" is locked — unlock it to sync`
+        );
+      }
     }
     
     // Make sure DownloadManager is not in silent mode for manual operations
@@ -975,8 +1005,10 @@ export class SyncManager {
         stack: error instanceof Error ? error.stack : undefined
       });
       
-      // Don't fail completely - continue with sync even if metadata sync fails
-      console.log('Continuing with sync despite metadata sync issues...');
+      // PRIV-5 (qa-gate finding): never "continue anyway" — a swallowed
+      // metadata failure here (locked drive, gateway) reported a successful
+      // manual sync over an already-cleared cache (empty drive lie).
+      throw error;
     }
   }
 

@@ -958,7 +958,12 @@ export class DownloadManager {
       }
       
     } catch (error) {
+      // PRIV-5: never swallow listing failures — a locked private drive (or
+      // any listing error) previously fell through to an EMPTY item list,
+      // which upstream recorded as a successful empty sync (and the metadata
+      // cache had already been cleared). Partial listings are lies; abort.
       console.error(`Failed to list contents of folder ${folderId}:`, error);
+      throw error;
     }
     
     return items;

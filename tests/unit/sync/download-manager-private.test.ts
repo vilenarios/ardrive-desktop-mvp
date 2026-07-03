@@ -286,3 +286,60 @@ describe('Manifest-named files in private drives (qa-gate fix round)', () => {
     expect(mockStreamingDownload).not.toHaveBeenCalled();
   });
 });
+
+describe('Listing failures propagate (PRIV-5)', () => {
+  const buildManager = (arDrive: any, mockDb: any) => {
+    const progressTracker = {
+      emitSyncProgress: vi.fn(), emitUploadProgress: vi.fn(),
+      emitDownloadProgress: vi.fn(), destroy: vi.fn(), reset: vi.fn(), ensureStarted: vi.fn(),
+    };
+    const fileStateManager = {
+      setDownloadPromise: vi.fn(), clearDownload: vi.fn(), isDownloading: vi.fn(() => false),
+      clearAllProcessing: vi.fn(), markProcessing: vi.fn(), isProcessing: vi.fn(() => false),
+      clearProcessing: vi.fn(), addRecentDownload: vi.fn(), isRecentDownload: vi.fn(() => false),
+    };
+    return new DownloadManager(
+      mockDb, fileStateManager as any, progressTracker as any,
+      arDrive, DRIVE_ID, ROOT_FOLDER_ID, SYNC_PATH
+    );
+  };
+
+  const privateMapping = {
+    id: 'mapping-1', driveId: DRIVE_ID, driveName: 'Secret Drive',
+    drivePrivacy: 'private', rootFolderId: ROOT_FOLDER_ID,
+    localFolderPath: SYNC_PATH, isActive: true,
+  };
+
+  it('a locked drive fails the metadata sync instead of yielding an empty listing', async () => {
+    const mockDb = createMockDatabaseManager() as any;
+    mockDb.getDriveMappings.mockResolvedValue([privateMapping]);
+    vi.mocked(driveKeyManager.getDriveKey).mockReturnValue(undefined);
+    const manager = buildManager({ listPrivateFolder: vi.fn() }, mockDb);
+
+    try {
+      // Old behavior: resolved successfully with zero items ("empty drive")
+      await expect(manager.syncDriveMetadata()).rejects.toThrow(/Private drive is locked/);
+      // Nothing was upserted as an empty listing
+      expect(mockDb.upsertDriveMetadata).not.toHaveBeenCalled();
+    } finally {
+      manager.destroy();
+    }
+  });
+
+  it('a mid-listing failure aborts the sync instead of recording a partial drive', async () => {
+    const mockDb = createMockDatabaseManager() as any;
+    mockDb.getDriveMappings.mockResolvedValue([privateMapping]);
+    vi.mocked(driveKeyManager.getDriveKey).mockReturnValue({ keyData: Buffer.from('k') } as any);
+    const arDrive = {
+      listPrivateFolder: vi.fn().mockRejectedValue(new Error('gateway 502')),
+    };
+    const manager = buildManager(arDrive, mockDb);
+
+    try {
+      await expect(manager.syncDriveMetadata()).rejects.toThrow('gateway 502');
+      expect(mockDb.upsertDriveMetadata).not.toHaveBeenCalled();
+    } finally {
+      manager.destroy();
+    }
+  });
+});

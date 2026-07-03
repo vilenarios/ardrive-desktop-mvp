@@ -247,9 +247,11 @@ Note 2026-07-03: done — merged from `fix/PRIV-3-create-private` (479b0be + fin
 **Fix key persistence serialization.** Evidence: §3.4-3.5. `key.keyData.toString('base64')` on save; `new EntityKey(Buffer.from(..., 'base64'))` (+ driveSignatureType for VersionedDriveKey) on load; App.tsx must forward `persistKey`; wire the write-only DB prefs (or drop them); implement plan steps 5 (session restore) and 6 (settings UI) from docs/archive/SELECTIVE_DRIVE_PERSISTENCE_PLAN.md. The parked partial implementation lives on branch `wip/drive-key-persistence` (commit c8a1469) — review before reusing.
 Acceptance: unlock with "remember" → restart → drive auto-unlocks and decrypts listings; unlock without → restart → drive locked.
 
-### PRIV-5 · P1 · Phase 2 · `in-progress`
+### PRIV-5 · P1 · Phase 2 · `done`
 **Locked drives must not sync as "empty".** Evidence: §3.7 (swallowed listing error; boot auto-sync has no lock check).
 Acceptance: locked private drive at boot → visible "locked — unlock to sync" state; no silent empty sync.
+Note 2026-07-03: done — merged from `fix/PRIV-5-locked-sync` (54d4c93 + findings 9759f06) after qa-gate PASS (static — boot GUI not drivable; negative control proved 3/4 tests pin the audited silent-empty behavior). startSync lock pre-flight (single choke point, before the cache wipe) + listing failures now abort instead of yielding empty/partial listings; folded gate findings: manual-sync (sync:manual/redownload-all) lock pre-flight + no more 'continuing anyway' swallow; failed starts clear the nominal drive target; tray toggle catches rejections.
+Gate follow-ups filed: clear-cache-before-list window (list-then-swap, SYNC-9/SYNC-15 family); recursion log cascade (cosmetic); dead legacy syncDriveMetadata at sync-manager.ts:~3032 still contains the resurrectable silent-locked-skip — DELETE with INFRA-6; App boot swallow of non-primary locked mismatch → SYNC-9.
 
 ### PRIV-6 · P1 · Phase 2 · `todo`
 **Private move/rename (and hide) paths.** Evidence: §3.7/§1.7 (only `*Public*` ArFS calls exist). Pairs with SYNC-5's hide implementation; upstream ardrive-core-js work allowed (D-016).
