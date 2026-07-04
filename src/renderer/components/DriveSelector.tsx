@@ -57,24 +57,30 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
     setIsOpen(false);
   };
 
-  const handleUnlockSuccess = async (password: string): Promise<boolean> => {
-    if (!selectedLockedDrive) return false;
+  const handleUnlockSuccess = async (
+    password: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!selectedLockedDrive) return { success: false, error: 'No drive selected.' };
 
     try {
-      // drive:unlock returns a {success, drive?/error?} envelope — reading it
-      // as a boolean made {success:false} look like a successful unlock
-      // (audit §5.3). PRIV-2: only a verified unlock selects the drive.
+      // drive:unlock returns the IpcResult envelope (UX-3). Reading it as a
+      // boolean made {success:false} look like a successful unlock (audit §5.3).
+      // PRIV-2: only a verified unlock selects the drive; on failure the
+      // envelope's `error` (wrong password vs. network) reaches the modal.
       const result = await window.electronAPI.drive.unlock(selectedLockedDrive.id, password);
-      const unlocked = !!(result && (result as { success?: boolean }).success);
-      if (unlocked) {
+      if (result.success) {
         onDriveSelect(selectedLockedDrive.id);
         setShowUnlockModal(false);
         setSelectedLockedDrive(null);
+        return { success: true };
       }
-      return unlocked;
+      return { success: false, error: result.error };
     } catch (error) {
       console.error('Failed to unlock drive:', error);
-      return false;
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to unlock drive. Please try again.',
+      };
     }
   };
 

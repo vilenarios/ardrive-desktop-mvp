@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { AppConfig, DriveInfo, DriveInfoWithStatus, WalletInfo, SyncStatus, FileUpload, PendingUpload, Profile, SyncProgress } from '../../types';
+import { IpcResult } from '../../types/ipc';
 import UploadApprovalQueueModern from './UploadApprovalQueueModern';
 import TurboCreditsManager from './TurboCreditsManager';
 import FileMetadataModal from './FileMetadataModal';
@@ -371,7 +372,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     const loadDrives = async () => {
       try {
         setIsDrivesLoading(true);
-        const mappedDrives = await window.electronAPI.drive.getMapped();
+        const mappedDrives = extractMappedDrives(await window.electronAPI.drive.getMapped());
         // Get drives with status info for private drive support
         const drivesWithStatus = extractDrivesWithStatus(await window.electronAPI.drive.listWithStatus());
         
@@ -397,14 +398,24 @@ const Dashboard: React.FC<DashboardProps> = ({
     loadDrives();
   }, []);
 
-  // drive:listWithStatus returns a {success, data} envelope (main.ts) while
-  // drive:getMapped returns a raw array — unwrap defensively, same pattern as
-  // App.initializeApp. Without this, .find() on the wrapper TypeErrors and
-  // (post-UX-1) surfaces a false "Failed to load drives" toast on every mount.
-  const extractDrivesWithStatus = (result: unknown): DriveInfoWithStatus[] => {
+  // UX-3: both drive:listWithStatus and drive:getMapped now return the
+  // IpcResult envelope. Unwrap to the data array; on a failed envelope (or any
+  // legacy raw shape) fall back to [] so a fetch error never surfaces as a
+  // .find()/.map() TypeError or a false "Failed to load drives" toast (UX-1).
+  const extractDrivesWithStatus = (
+    result: IpcResult<DriveInfoWithStatus[]> | unknown
+  ): DriveInfoWithStatus[] => {
     if (!result) return [];
     if (Array.isArray(result)) return result;
     const wrapped = result as { success?: boolean; data?: DriveInfoWithStatus[] };
+    if (wrapped.success && Array.isArray(wrapped.data)) return wrapped.data;
+    return [];
+  };
+
+  const extractMappedDrives = (result: IpcResult<DriveInfo[]> | unknown): DriveInfo[] => {
+    if (!result) return [];
+    if (Array.isArray(result)) return result;
+    const wrapped = result as { success?: boolean; data?: DriveInfo[] };
     if (wrapped.success && Array.isArray(wrapped.data)) return wrapped.data;
     return [];
   };
@@ -444,15 +455,15 @@ const Dashboard: React.FC<DashboardProps> = ({
       
       // Switch the drive
       const result = await window.electronAPI.drive.switchTo(driveId);
-      
+
       if (result.success) {
-        toast?.success(`Successfully switched to "${result.driveInfo.name}"`);
+        toast?.success(`Successfully switched to "${result.data.name}"`);
         // Reload the app to reinitialize with the new drive
         setTimeout(() => {
           window.location.reload();
         }, 1000); // Brief delay to show success message
       } else {
-        throw new Error('Failed to switch drive');
+        throw new Error(result.error || 'Failed to switch drive');
       }
     } catch (error) {
       console.error('Failed to switch drive:', error);
@@ -475,7 +486,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleDriveCreated = async (newDrive: DriveInfo) => {
     try {
       // Refresh drives list with status info
-      const mappedDrives = await window.electronAPI.drive.getMapped();
+      const mappedDrives = extractMappedDrives(await window.electronAPI.drive.getMapped());
       const drivesWithStatus = extractDrivesWithStatus(await window.electronAPI.drive.listWithStatus());
       
       // Merge mapped drives with status info
@@ -502,7 +513,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleExistingDriveAdded = async (addedDrive: DriveInfo) => {
     try {
       // Refresh drives list with status info
-      const mappedDrives = await window.electronAPI.drive.getMapped();
+      const mappedDrives = extractMappedDrives(await window.electronAPI.drive.getMapped());
       const drivesWithStatus = extractDrivesWithStatus(await window.electronAPI.drive.listWithStatus());
       
       // Merge mapped drives with status info

@@ -162,7 +162,8 @@ describe('drive:unlock — accepts EXISTING short passwords (PRIV-7)', () => {
 
     const result = (await invoke('drive:unlock', DRIVE_ID, SHORT_PASSWORD)) as {
       success: boolean;
-      drive?: { id: string };
+      // UX-3: the decrypted drive rides in the envelope `data` field (was `drive`).
+      data?: { id: string };
       error?: string;
     };
 
@@ -170,7 +171,7 @@ describe('drive:unlock — accepts EXISTING short passwords (PRIV-7)', () => {
     // pre-fix this call never happened (rejected at validatePassword).
     expect(h.walletManagerInstance.unlockPrivateDrive).toHaveBeenCalledWith(DRIVE_ID, SHORT_PASSWORD);
     expect(result.success).toBe(true);
-    expect(result.drive).toEqual(expect.objectContaining({ id: DRIVE_ID }));
+    expect(result.data).toEqual(expect.objectContaining({ id: DRIVE_ID }));
     expect(result.error).toBeUndefined();
   });
 
@@ -194,6 +195,25 @@ describe('drive:unlock — accepts EXISTING short passwords (PRIV-7)', () => {
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/Invalid password/);
     // No decrypted drive leaked back on failure.
+    expect(h.syncManagerInstance.setArDrive).not.toHaveBeenCalled();
+  });
+
+  it('(b2) propagates a NETWORK/gateway verification failure distinctly (UX-3)', async () => {
+    // UX-3: the envelope must carry the SPECIFIC failure reason so the modal can
+    // distinguish a network problem from a wrong password (was flattened to a
+    // hardcoded 'Invalid password' before). unlockPrivateDrive (PRIV-2) already
+    // separates them; the enveloped handler must not lose that distinction.
+    const NETWORK_ERR = 'Could not verify the password (network or gateway error). Please try again.';
+    h.walletManagerInstance.unlockPrivateDrive.mockResolvedValue({ success: false, error: NETWORK_ERR });
+
+    const result = (await invoke('drive:unlock', DRIVE_ID, SHORT_PASSWORD)) as {
+      success: boolean;
+      error?: string;
+    };
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe(NETWORK_ERR);
+    expect(result.error).not.toMatch(/Invalid password/);
     expect(h.syncManagerInstance.setArDrive).not.toHaveBeenCalled();
   });
 

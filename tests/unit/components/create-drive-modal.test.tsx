@@ -1,8 +1,8 @@
 // PRIV-3: private drive creation charged the user, then the modal read `.id`
 // off the {success, data} envelope and reported failure — no mapping, no
-// folder, money spent (audit §3.3). These tests pin the corrected envelope
-// handling for BOTH handler shapes (private = envelope, public = raw drive;
-// UX-3 later unifies them) and the mapping/active-drive flow on success.
+// folder, money spent (audit §3.3). UX-3 unified BOTH handlers (public and
+// private) onto the same IpcResult envelope; these tests pin the corrected
+// envelope handling and the mapping/active-drive flow on success.
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -43,7 +43,8 @@ describe('CreateDriveModal (PRIV-3 envelope + mapping flow)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockElectronAPI.driveMappings.add.mockResolvedValue(true);
-    mockElectronAPI.drive.setActive.mockResolvedValue(true);
+    // UX-3: drive:setActive returns the IpcResult envelope
+    mockElectronAPI.drive.setActive.mockResolvedValue({ success: true });
   });
 
   const fillPrivateForm = () => {
@@ -61,7 +62,7 @@ describe('CreateDriveModal (PRIV-3 envelope + mapping flow)', () => {
   };
 
   it('private creation success: unwraps the envelope, adds mapping, sets active', async () => {
-    // Real handler shape: drive:create-private returns {success, data}
+    // UX-3 handler shape: drive:create-private returns {success, data}
     mockElectronAPI.drive.createPrivate.mockResolvedValue({
       success: true,
       data: createdDrive,
@@ -111,10 +112,11 @@ describe('CreateDriveModal (PRIV-3 envelope + mapping flow)', () => {
     expect(defaultProps.onClose).not.toHaveBeenCalled();
   });
 
-  it('public creation still works with the raw drive shape', async () => {
-    // Real handler shape: drive:create returns the drive object directly
+  it('public creation works with the unified envelope shape', async () => {
+    // UX-3 handler shape: drive:create now returns {success, data} like the
+    // private path (previously it returned the raw drive object).
     const publicDrive = { ...createdDrive, privacy: 'public', name: 'Open Data' };
-    mockElectronAPI.drive.create.mockResolvedValue(publicDrive);
+    mockElectronAPI.drive.create.mockResolvedValue({ success: true, data: publicDrive });
 
     render(<CreateDriveModal {...defaultProps} />);
     fireEvent.change(

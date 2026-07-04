@@ -115,9 +115,14 @@ export const StorageTab: React.FC<StorageTabProps> = ({
     
     try {
       // Fetch real data from permaweb (force refresh if manual)
-      const permawebFiles = await window.electronAPI.drive.getPermawebFiles(drive.id, isManualRefresh);
+      // UX-3: IpcResult envelope
+      const permawebResult = await window.electronAPI.drive.getPermawebFiles(drive.id, isManualRefresh);
+      if (!permawebResult.success) {
+        throw new Error(permawebResult.error || 'Failed to load files.');
+      }
+      const permawebFiles = permawebResult.data;
       console.log('Loaded permaweb files:', permawebFiles, 'Manual refresh:', isManualRefresh);
-      
+
       // Check if drive is empty or newly created
       if (!permawebFiles || permawebFiles.length === 0) {
         setIsNewDrive(true);

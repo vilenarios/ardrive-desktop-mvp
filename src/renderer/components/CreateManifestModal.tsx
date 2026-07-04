@@ -50,13 +50,14 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
       setError(null);
       console.log('Loading folder tree for drive:', driveId);
       
-      const folderTree = await window.electronAPI.drive.getFolderTree(driveId);
+      // UX-3: IpcResult envelope
+      const folderTreeResult = await window.electronAPI.drive.getFolderTree(driveId);
+      if (!folderTreeResult.success) {
+        throw new Error(folderTreeResult.error || 'Failed to load folder tree.');
+      }
+      const folderTree = folderTreeResult.data;
       console.log('Received folder tree:', folderTree);
-      console.warn('MANIFEST DEBUG - Folder tree received:', folderTree);
-      console.warn('MANIFEST DEBUG - Type of folderTree:', typeof folderTree);
-      console.warn('MANIFEST DEBUG - Is Array?', Array.isArray(folderTree));
-      console.warn('MANIFEST DEBUG - Length:', folderTree?.length);
-      
+
       if (!folderTree || folderTree.length === 0) {
         console.log('No folders found in the drive');
         setError('No folders found in this drive. Please create folders first.');
@@ -121,12 +122,15 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
       // Get folder information and estimate cost
       const selectedFolderNode = folders.find(f => f.id === selectedFolder);
       
-      // Get actual file count from backend
-      const folderStats = await window.electronAPI.drive.countFolderFiles(driveId, selectedFolder);
-      
-      setFolderInfo({ 
-        fileCount: folderStats.fileCount, 
-        estimatedCost: folderStats.estimatedCost 
+      // Get actual file count from backend (UX-3: IpcResult envelope)
+      const folderStatsResult = await window.electronAPI.drive.countFolderFiles(driveId, selectedFolder);
+      if (!folderStatsResult.success) {
+        throw new Error(folderStatsResult.error || 'Failed to estimate cost.');
+      }
+
+      setFolderInfo({
+        fileCount: folderStatsResult.data.fileCount,
+        estimatedCost: folderStatsResult.data.estimatedCost
       });
       setShowConfirmation(true);
     } catch (err: any) {
@@ -148,9 +152,13 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
         manifestName
       });
 
-      toast?.success(`Manifest created successfully! (${result.fileCount} files)`);
-      
-      onSuccess(result.manifestUrl);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to create manifest');
+      }
+
+      toast?.success(`Manifest created successfully! (${result.data.fileCount} files)`);
+
+      onSuccess(result.data.manifestUrl);
       onClose();
     } catch (err: any) {
       console.error('Failed to create manifest:', err);

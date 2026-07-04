@@ -151,10 +151,13 @@ describe('Dashboard toast feedback (UX-1)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockElectronAPI.drive.getMapped.mockResolvedValue([driveA, otherDrive]);
-    // Real handler shape: drive:listWithStatus returns a {success, data}
-    // envelope (main.ts:894), NOT a raw array — qa-gate caught the first
-    // version of this suite mocking the wrong shape.
+    // UX-3: both drive:getMapped and drive:listWithStatus return the {success,
+    // data} envelope. (The legacy-raw-array test below overrides listWithStatus
+    // to exercise the defensive fallback that survives the migration.)
+    mockElectronAPI.drive.getMapped.mockResolvedValue({
+      success: true,
+      data: [driveA, otherDrive],
+    });
     mockElectronAPI.drive.listWithStatus.mockResolvedValue({
       success: true,
       data: [driveA, otherDrive],
@@ -188,9 +191,10 @@ describe('Dashboard toast feedback (UX-1)', () => {
   });
 
   it('shows info and success toasts for a successful drive switch', async () => {
+    // UX-3: switchTo returns the switched-to drive in the envelope `data` field.
     mockElectronAPI.drive.switchTo.mockResolvedValue({
       success: true,
-      driveInfo: { name: 'Other Drive' },
+      data: { name: 'Other Drive' },
     });
 
     await renderDashboard();
@@ -254,10 +258,12 @@ describe('Dashboard toast feedback (UX-1)', () => {
   });
 
   it('still loads the drive list when listWithStatus returns a raw array (legacy shape)', async () => {
+    // Defensive fallback: extractDrivesWithStatus still tolerates a raw array
+    // even though the migrated handler returns an envelope.
     mockElectronAPI.drive.listWithStatus.mockResolvedValue([driveA, otherDrive]);
     mockElectronAPI.drive.switchTo.mockResolvedValue({
       success: true,
-      driveInfo: { name: 'Other Drive' },
+      data: { name: 'Other Drive' },
     });
 
     await renderDashboard();

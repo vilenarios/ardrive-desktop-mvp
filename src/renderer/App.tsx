@@ -201,7 +201,8 @@ const App: React.FC = () => {
         
         // Check if it's a locked private drive
         if (activeDrive && activeDrive.privacy === 'private') {
-          const isUnlocked = await window.electronAPI.drive.isUnlocked(activeDrive.id);
+          const isUnlockedResult = await window.electronAPI.drive.isUnlocked(activeDrive.id);
+          const isUnlocked = isUnlockedResult.success && isUnlockedResult.data;
           if (!isUnlocked) {
             console.log('Primary drive is private and locked, showing welcome back screen');
             setIsReturningUser(true);
@@ -337,15 +338,11 @@ const App: React.FC = () => {
     // Listen for drive updates
     window.electronAPI.onDriveUpdate(async () => {
       const drivesResult = await window.electronAPI.drive.listWithStatus();
-      
-      // Extract drives from result
-      let drivesList = [];
-      if (drivesResult) {
-        if (drivesResult.success && drivesResult.data) {
-          drivesList = drivesResult.data;
-        } else if (Array.isArray(drivesResult)) {
-          drivesList = drivesResult;
-        }
+
+      // Extract drives from result (UX-3: IpcResult envelope)
+      let drivesList: DriveInfoWithStatus[] = [];
+      if (drivesResult && drivesResult.success && drivesResult.data) {
+        drivesList = drivesResult.data;
       }
       
       if (drivesList && drivesList.length > 0) {
@@ -379,34 +376,25 @@ const App: React.FC = () => {
       
       console.log('[handleWalletImported] Raw drive list result:', driveListResult);
       
-      // Extract drives from the result
-      let driveList = [];
+      // Extract drives from the result (UX-3: IpcResult envelope)
+      let driveList: DriveInfoWithStatus[] = [];
       if (driveListResult) {
-        // Handle both wrapped and unwrapped responses
         if (driveListResult.success && driveListResult.data) {
-          // Wrapped response from IPC handler
           driveList = driveListResult.data;
-        } else if (Array.isArray(driveListResult)) {
-          // Direct array response
-          driveList = driveListResult;
         } else if (!driveListResult.success) {
           console.error('[handleWalletImported] Failed to list drives:', driveListResult.error);
         }
       }
-      
-      // If still no drives, try fallback
+
+      // If still no drives, try fallback (drive.list returns base DriveInfo —
+      // no lock status; downstream treats a missing isLocked as unlocked).
       if (!driveList || driveList.length === 0) {
         try {
           console.log('[handleWalletImported] Trying fallback to regular drive.list()');
           const fallbackDrives = await window.electronAPI.drive.list();
           console.log('[handleWalletImported] Fallback drives:', fallbackDrives);
-          if (fallbackDrives) {
-            // Handle both wrapped and unwrapped responses for fallback too
-            if (fallbackDrives.success && fallbackDrives.data) {
-              driveList = fallbackDrives.data;
-            } else if (Array.isArray(fallbackDrives)) {
-              driveList = fallbackDrives;
-            }
+          if (fallbackDrives && fallbackDrives.success && fallbackDrives.data) {
+            driveList = fallbackDrives.data as DriveInfoWithStatus[];
           }
         } catch (fallbackError) {
           console.error('[handleWalletImported] Fallback also failed:', fallbackError);
@@ -471,9 +459,10 @@ const App: React.FC = () => {
         console.log('Private drive selected, checking if it needs unlock');
         
         // Check if the drive is already unlocked
-        const isUnlocked = await window.electronAPI.drive.isUnlocked(selectedDrive.id);
+        const isUnlockedResult = await window.electronAPI.drive.isUnlocked(selectedDrive.id);
+        const isUnlocked = isUnlockedResult.success && isUnlockedResult.data;
         console.log('Drive unlock status:', isUnlocked);
-        
+
         if (!isUnlocked) {
           console.log('Private drive is locked, showing unlock modal');
           // Store the selected drive and show unlock modal
@@ -484,7 +473,10 @@ const App: React.FC = () => {
       }
       
       // Select the drive and set it up for syncing
-      await window.electronAPI.drive.select(selectedDrive.id);
+      const selectResult = await window.electronAPI.drive.select(selectedDrive.id);
+      if (!selectResult.success) {
+        throw new Error(selectResult.error || 'Failed to select drive');
+      }
       setDrive(selectedDrive);
       
       // Check if a drive mapping exists for this drive
@@ -592,24 +584,24 @@ const App: React.FC = () => {
     setAppState('wallet-setup');
   };
 
-  const handlePrivateDriveUnlock = async (password: string): Promise<boolean> => {
-    if (!selectedPrivateDrive) return false;
-    
+  const handlePrivateDriveUnlock = async (password: string): Promise<{ success: boolean; error?: string }> => {
+    if (!selectedPrivateDrive) return { success: false, error: 'No drive selected.' };
+
     try {
       console.log('Attempting to unlock private drive:', selectedPrivateDrive.name);
       const result = await window.electronAPI.drive.unlock(selectedPrivateDrive.id, password);
-      
+
       if (result && result.success) {
         console.log('Private drive unlocked successfully');
-        
-        // Update the drive with decrypted info if provided
-        let updatedDrive = selectedPrivateDrive;
-        if (result.drive) {
-          console.log('Drive decrypted - actual name:', result.drive.name);
+
+        // Update the drive with decrypted info if provided (envelope `data`)
+        let updatedDrive: DriveInfoWithStatus = selectedPrivateDrive as DriveInfoWithStatus;
+        if (result.data) {
+          console.log('Drive decrypted - actual name:', result.data.name);
           // Merge the decrypted info with existing DriveInfoWithStatus properties
           updatedDrive = {
             ...selectedPrivateDrive,
-            ...result.drive,
+            ...result.data,
             isLocked: false, // Drive is now unlocked
             emojiFingerprint: (selectedPrivateDrive as DriveInfoWithStatus).emojiFingerprint
           };
@@ -626,7 +618,10 @@ const App: React.FC = () => {
         setShowPrivateDriveUnlock(false);
         
         // Continue to sync folder setup directly (skip redundant unlock check)
-        await window.electronAPI.drive.select(updatedDrive.id);
+        const selectResult = await window.electronAPI.drive.select(updatedDrive.id);
+        if (!selectResult.success) {
+          throw new Error(selectResult.error || 'Failed to select drive');
+        }
         setDrive(updatedDrive);
         
         // Check if a drive mapping exists for this drive
@@ -669,15 +664,21 @@ const App: React.FC = () => {
           }
         }
         
-        return true;
+        return { success: true };
       } else {
-        console.error('Failed to unlock drive:', result?.error);
-        // The error will be shown in the modal
-        return false;
+        // UX-3: surface the SPECIFIC unlock error (wrong password vs.
+        // network/gateway verification failure) so the modal can show it
+        // instead of a hardcoded 'Invalid password'.
+        const error = result && !result.success ? result.error : undefined;
+        console.error('Failed to unlock drive:', error);
+        return { success: false, error };
       }
     } catch (error) {
       console.error('Error unlocking drive:', error);
-      return false;
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to unlock drive. Please try again.',
+      };
     }
   };
 
