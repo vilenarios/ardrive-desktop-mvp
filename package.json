@@ -24,6 +24,7 @@
     "typecheck:tests": "tsc -p tsconfig.tests.json",
     "test": "vitest",
     "smoke": "node tests/e2e/smoke.js",
+    "smoke:screens": "node tests/e2e/screenshots.js",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
     "test:watch": "vitest --watch",
