@@ -70,6 +70,15 @@ uploaded or spent, in a *payment* settings tab.
 **Fix:** wire to real usage counters, or replace with the app's existing
 `TurboComingSoonTab` empty-state pattern instead of fake zeros.
 
+**DONE (DESIGN-5 pass).** Investigated: "Files Uploaded"/"Data Stored" have a
+real source (`files.getUploads()` → `uploads` table, `status='completed'`,
+`fileSize`) reachable today with no new backend plumbing — wired both to it.
+"Credits Used" has no real source anywhere (turbo-manager only exposes the
+current balance, never a spend ledger, and `uploads` has no cost column) — that
+tile was removed rather than invented. Covered by a new test in
+`tests/unit/components/TurboCreditsManager.test.tsx` (`Usage statistics are
+real, not fabricated (TRUST-1)`).
+
 ### TRUST-2 — "Enterprise Ready" claims features that don't exist in this MVP
 `src/renderer/components/turbo/TurboAboutTab.tsx:88-97` · **broken**
 Claims "built-in compliance features, audit trails, and team management" — none of
@@ -77,6 +86,11 @@ which exist in this single-profile-at-a-time desktop app. Sits next to true clai
 ("Files under 100KB are free"); one falsifiable claim discredits the honest ones
 around it.
 **Fix:** cut the card, or move it to `TurboComingSoonTab` explicitly labeled roadmap.
+
+**DONE (DESIGN-5 pass).** Cut the "Enterprise Ready" card entirely (compliance/
+audit-trail/team-management claims don't exist in this single-profile MVP).
+Also softened the adjacent hero subtitle's "enterprise-grade reliability" —
+same overclaim family sitting one line above the cut card.
 
 ### TRUST-3 — Seed-phrase validation shows a factually wrong error, and fires while the user is still typing
 `src/renderer/components/WalletSetup.tsx:693-727`, `src/renderer/styles.css:474` ·
@@ -119,6 +133,10 @@ one click away from the separate, literal AR wallet balance in `UserMenu`. A
 non-crypto user has no way to tell these are different things.
 **Fix:** label as "Credits (≈ AR)" or show fiat-primary/AR-equivalent-secondary, and
 add an `InfoButton` here (see INFO coverage table).
+
+**DONE (DESIGN-5 pass).** Unit relabeled "AR" → "Credits"; added an `InfoButton`
+next to the balance label explaining Credits are a separate, card-purchased
+balance from the AR wallet. Also fixed INFO-6 in the same file (see below).
 
 ---
 
@@ -190,6 +208,15 @@ label inside these cards inherits `--text-primary`, which is `#FAFAFA` in dark t
 `var(--overlay)` for scrims, `var(--input-bg)`/`var(--text-primary)` for inputs —
 the same recipe already applied to the three DESIGN-7 drive modals (`modal.css`'s own
 header comment documents this exact fix, "F7," having already been done there).
+
+**PARTIAL — DESIGN-5 pass fixed its slice.** `DownloadQueueTab.tsx:307` and
+`UploadApprovalQueueModern.tsx:827` (both listed above) are fixed, along with
+all 11 `turbo-credits.css` sites (header, close button, balance card, tabs,
+every section wrapper, quick-buy options, inputs — including the two
+invisible-text inputs, `.tcm-amount-input`/`.tcm-currency-select select`, which
+now have an explicit `color` token). The `styles.css` Wallet Export modal,
+`DriveAndSyncSetup.tsx`, `SyncFolderSetup.tsx`, `ProfileManagement.tsx`, and the
+two dead-code sites are outside this pass's file ownership and remain open.
 
 ### DARK-2 — `.button.secondary` renders invisible white-on-white text in dark mode
 **Status: DONE (DESIGN-8, Foundation lane).** `.button.secondary` now uses
@@ -300,6 +327,10 @@ different, older app sitting next to an otherwise-polished dashboard.
 component never got a §5A polish pass. See RESTYLE-9 for the hover-handler count.
 **Fix:** port to semantic token names as part of finishing DESIGN-5.
 
+**DONE.** Component rewritten onto real CSS classes (`upload-queue-modern.css`)
+using semantic tokens throughout; zero legacy `--gray-*`/`--ardrive-*` names or
+inline color literals remain in the file.
+
 ### RESTYLE-2 — Primary button hover-glow uses the old pre-rebrand red, not brand red
 `src/renderer/components/UploadApprovalQueueModern.tsx:933` · **inconsistent**
 `boxShadow: '0 4px 12px rgba(220, 38, 38, 0.2)'` — `rgb(220,38,38)` is `#dc2626`, the
@@ -307,6 +338,8 @@ Tailwind red `DESIGN-SYSTEM.md` §1 explicitly replaced with `--brand`/`#D31721`
 other primary-button glow in the restyled surfaces uses the correct brand red; this
 one quietly glows a different red.
 **Fix:** `boxShadow: 0 4px 12px rgba(var(--brand-rgb), 0.2)`.
+
+**DONE.** `.approve-all-btn:hover` now uses `rgba(var(--brand-rgb), 0.28)`.
 
 ### RESTYLE-3 — No column headers on the one screen where users compare cost vs. size
 `src/renderer/components/UploadApprovalQueueModern.tsx:595` · **inconsistent**
@@ -317,11 +350,18 @@ one screen where a user decides whether to spend money, they can't tell which nu
 is size vs. cost without reading full rows.
 **Fix:** add a header row, matching `StorageTab`'s convention.
 
+**DONE.** Added a `.upload-queue-header-row` (File / Size / Cost / Status)
+above the file list.
+
 ### RESTYLE-4 — Insufficient-balance message mixes two alert hues in one sentence
 `src/renderer/components/UploadApprovalQueueModern.tsx:659-663` · **inconsistent**
 Amber (`--warning-600`) message text next to a brand-red "top up" link — two different
 alert colors in one two-line message reads visually uncoordinated.
 **Fix:** keep the message on one hue; underline the link instead of recoloring it red.
+
+**DONE.** Both the per-row and skipped-for-balance "top up" links now render in
+`--warning-fg` (underlined), matching the surrounding message instead of
+switching to brand red.
 
 ### RESTYLE-5 — Download Queue tab is entirely un-restyled and has no search/filter
 `src/renderer/components/dashboard/DownloadQueueTab.tsx` (whole file) ·
@@ -336,6 +376,13 @@ the visual/interaction layer up to the Storage-tab standard).
 **Fix:** restyle onto real CSS classes + tokens, add search/filter to match
 Activity/Storage.
 
+**DONE.** Ported onto a new `download-queue.css` + real classes (no more inline
+`style={{}}`); the `calc(100vh - 400px)` magic number replaced with the
+flex/`min-height:0`/`overflow-y:auto` pattern `activity-tab.css` already uses;
+added a local search input + status filter (contained entirely to this
+component's own state — does not wire Dashboard.tsx's separate dead
+search/filter state, see RESTYLE-8 below, which remains open).
+
 ### RESTYLE-6 — Turbo Credits Manager reads as a different, older app
 `src/renderer/styles/turbo-credits.css` (whole file) · **inconsistent**
 No accent-top bar on `.tcm-section` (every other restyled surface has one), no
@@ -345,6 +392,12 @@ No accent-top bar on `.tcm-section` (every other restyled surface has one), no
 branded, not the least. (White-background specifics already covered in DARK-1.)
 **Fix:** apply the same accent-bar/elevation/radius treatment `settings.css`/
 `modal.css` already use.
+
+**DONE.** Whole file ported to semantic tokens; balance card (the single most
+important number on this screen) gets a 4px `--accent` top bar + `--elevation-2`;
+cards use `--radius-lg`; the decorative header `Zap` icon recolored from
+`--ardrive-warning` (amber, a status hue) to `--accent` (also closes one of
+DSI-2's four sites, see Theme 6 below).
 
 ### RESTYLE-7 — `CreateManifestModal` never got the DESIGN-7 shared modal-shell treatment
 `src/renderer/components/CreateManifestModal.tsx:253-274,456-475` · **inconsistent**
@@ -385,6 +438,13 @@ Sites:
 **Fix:** move every instance to a `:hover` CSS rule (e.g. `.upload-row:hover`,
 `.download-card:hover`, `.manifest-folder-row:hover`, `.profile-add-btn:hover`).
 Mechanical, low-risk, same fix shape everywhere.
+
+**PARTIAL — DESIGN-5 pass closed its two files.** All 7
+`UploadApprovalQueueModern.tsx` sites and the 1 `DownloadQueueTab.tsx` site are
+now CSS `:hover`/`:active`/`:focus-visible` rules (`.refresh-button`,
+`.file-action-btn--*`, `.retry-failed-btn`, `.clear-all-btn`, `.approve-all-btn`,
+`.download-card`). `CreateManifestModal.tsx` and `ProfileManagement.tsx` are
+outside this pass's ownership and remain open.
 
 ---
 
@@ -461,6 +521,11 @@ has the highest concentration of unexplained concepts in the app (see INFO-5).
 **Fix:** wire the already-imported component up on both surfaces — see the coverage
 table below for exact copy.
 
+**PARTIAL — DESIGN-5 pass closed the Upload Queue half.**
+`UploadApprovalQueueModern.tsx` now renders two `InfoButton`s (Turbo Credits
+balance label; Total Upload Cost). `StorageTab.tsx` is outside this pass's
+ownership and remains open.
+
 ### INFO-2 — Three different, inconsistent mechanisms deliver the same "explain this" job
 **inconsistent** `InfoButton` (click-triggered, keyboard-accessible) coexists with:
 native HTML `title=` attributes (hover-only, no keyboard/touch access, unstyled) at
@@ -500,6 +565,13 @@ uploads require approval at all.
 **Fix:** wire the already-imported `InfoButton` (see INFO-1) on the cost banner and
 add one line explaining the approval queue's purpose on first view.
 
+**DONE (mostly).** The cost-banner `InfoButton` explains what Turbo Credits are,
+the free-tier cutoff, and that uploads always go through Turbo (never a direct
+AR payment); a second `InfoButton` on "Total Upload Cost" explains what
+"estimate unavailable" means and that approving still uploads the file. Did not
+add a separate standalone sentence explaining the approval-queue concept itself
+— judged the two cost bubbles sufficient without adding more banner clutter.
+
 ### INFO-6 — "Winston" raw protocol jargon exposed with zero explanation
 `src/renderer/components/turbo/TurboBalanceCard.tsx:53` · **broken (jargon leak)**
 Winston is Arweave's smallest unit (like a satoshi) — an internal protocol term with
@@ -507,6 +579,10 @@ no meaning to any user without prior Arweave knowledge. Directly violates "unfam
 crypto concepts must be explained."
 **Fix:** drop the stat from the primary card (put it behind "show technical details"),
 or add the `InfoButton` copy in the coverage table.
+
+**DONE.** Kept the Winston figure (useful for power users) and added the
+coverage table's suggested `InfoButton` copy next to its label instead of
+removing it.
 
 ### INFO-7 — ArNS mentioned with a bare CTA and no in-app explanation
 `src/renderer/components/UserMenu.tsx:189-201` · **copy-clarity /
@@ -537,11 +613,11 @@ explanation already exists · `Weak` = some copy exists but isn't accessible/com
 | Concept | Surface(s) | Status | Suggested `InfoButton` copy |
 |---|---|---|---|
 | **Permanence / irreversibility** | Welcome tagline (`WalletSetup.tsx:296-298`), `CreateDriveModal.tsx` (absent), `AddExistingDriveModal.tsx` (absent), Activity stream (no "Permanent" chip on completed uploads), Overview Rename quick action (cost modal explains it only after commitment) | **Missing** almost everywhere it matters most — the one place it's said at all is a single unelaborated sentence on the welcome screen | *"Once uploaded to Arweave, files can't be edited or deleted — by you or anyone else, including ArDrive. That's the whole point: your files outlive any single company or server."* |
-| **Turbo Credits** (what it is, vs. AR) | `UserMenu.tsx:279-282` nav item (missing), Upload Queue balance row (imported `InfoButton` unused), `TurboAboutTab` (have, good) | **Have** in one place, **missing** at every point of entry | *"Turbo Credits are prepaid, instant-upload credits you buy with a card — no crypto wallet required."* |
-| **Free upload under 100 KiB** (100 × 1024 bytes, confirmed `turbo-utils.ts:5-6`) | Upload Queue "FREE" badge (`:654-655`, unexplained), Overview rename-cost modal (have, good: *"This operation is under 100KB and qualifies for free upload via Turbo"*) | **Have** in Overview, **missing** in Upload Queue | *"Files under 100 KiB upload free via Turbo Credits."* |
+| **Turbo Credits** (what it is, vs. AR) | `UserMenu.tsx:279-282` nav item (missing), Upload Queue balance row (**DONE — DESIGN-5 pass: `InfoButton` now wired**), `TurboAboutTab` (have, good), `TurboBalanceCard` (**DONE — DESIGN-5 pass**) | **Have** in three places now; **missing** only at the `UserMenu` nav item (outside this pass's ownership) | *"Turbo Credits are prepaid, instant-upload credits you buy with a card — no crypto wallet required."* |
+| **Free upload under 100 KiB** (100 × 1024 bytes, confirmed `turbo-utils.ts:5-6`) | Upload Queue "FREE" badge (**DONE — DESIGN-5 pass**, mentioned in the balance-row `InfoButton` copy), Overview rename-cost modal (have, good: *"This operation is under 100KB and qualifies for free upload via Turbo"*) | **Have** in both Overview and Upload Queue now | *"Files under 100 KiB upload free via Turbo Credits."* |
 | **Permaweb** | Storage tab — literally titled "Permaweb" in the nav, `InfoButton` imported but never rendered | **Missing** — the tab name is undefined jargon | *"Permaweb = Arweave's permanent web. Every file here is stored forever — it can be hidden from view but never truly deleted."* |
 | **Hidden ≠ deleted** | Storage tab badge (`:836-844`, excellent copy, delivered via native `title=` only), Activity tab (plain inline text, no chip), Download Queue "make cloud-only" (nothing) | **Weak** — right words, wrong/inconsistent widget | Promote Storage's existing copy into a real `InfoButton`; give Activity the same pill treatment. |
-| **cloud_only** ("make cloud-only" / cancel download) | Storage tab menu (native `title=` only), `DownloadQueueTab.tsx:440` button (nothing) | **Missing/weak** | *"Cloud-only files stay stored permanently on Arweave but won't take up space on this device."* |
+| **cloud_only** ("make cloud-only" / cancel download) | Storage tab menu (native `title=` only), `DownloadQueueTab.tsx:440` button (**DONE — DESIGN-5 pass: `InfoButton` added to the tab header**, not strictly a "cost/credit" concept but cheap and in-scope for a file this pass owns) | **Have** in Download Queue; Storage tab menu still native `title=` (outside this pass's ownership) | *"Cloud-only files stay stored permanently on Arweave but won't take up space on this device."* |
 | **Manifest (ArFS)** | `OverviewTab.tsx:480-493` quick action (nothing), `CreateManifestModal.tsx:284-286` title (no bubble; one paragraph at `:312-324` explains it but isn't a tooltip and never says "permanent") | **Missing/partial** | *"A manifest publishes an index of every file in this folder as one shareable webpage — anyone with the link can browse your files without installing ArDrive."* |
 | **Tx IDs / "view on Arweave"** | `OverviewTab.tsx:384-396` Drive ID row (copy button, no explanation), `OverviewTab.tsx:466-478` Export Metadata (CSV of tx IDs, unexplained), Activity/Storage detail modals (raw values + external links) | **Missing** | *"This is the permanent Arweave transaction ID — a receipt you can use to verify or view this file directly on the network, forever."* |
 | **Private vs. public drive** | `WelcomeBackScreen.tsx:264-274,301-309` badges (unexplained), `CreateDriveModal.tsx:220-247` (two-word subtitles only, no permanence framing), `OverviewTab.tsx:345` vs `:359` (Lucide icon then raw-emoji fallback, inconsistent) | **Missing** almost everywhere except thin two-word hints | Public: *"Anyone with the link can view these files, forever. Don't use this for anything sensitive."* Private: *"Files are encrypted with your password before they ever leave your device. ArDrive never sees or stores this password."* |
@@ -550,8 +626,8 @@ explanation already exists · `Weak` = some copy exists but isn't accessible/com
 | **Gateway** | Backend fully wired (`src/main/gateway.ts`, `config:set-gateway` IPC); no UI anywhere | **Missing entirely** (see INFO-3 — the control itself doesn't exist yet) | *"Gateway — the server ArDrive uses to reach the Arweave network. Default: turbo-gateway.com. Change this only if uploads or downloads are failing."* |
 | **Profiles** | `ProfileManagement.tsx`, `ProfileSwitcher.tsx`, `UserMenu.tsx` "Manage Profiles" | **Missing** — never defined for a first-time user | *"A profile is a separate encrypted wallet + settings on this device. Use multiple profiles to keep different Arweave accounts fully isolated."* |
 | **Wallet address** | `AddressDisplay.tsx:11` (label only: "Your Arweave Address (public)"), `UserMenu.tsx` profile row | **Weak** — decent label, no bubble | *"This is your public wallet address — safe to share. It's used to receive AR tokens and to prove you own your uploads. It is not a secret."* |
-| **AR vs. Turbo** | `TurboAboutTab.tsx` comparison table (have, good — but undercut by the TRUST-2 "Enterprise Ready" overclaim sitting right next to it), `TurboBalanceCard` (conflates them, see TRUST-6) | **Have**, but trust-undermined | Fix TRUST-2/TRUST-6 first; the explanatory copy itself is fine. |
-| **Winston** | `TurboBalanceCard.tsx:53` | **Missing** (see INFO-6) | *"Winston is the smallest unit of AR — like a satoshi for Bitcoin. 1 AR = 10^12 Winston."* |
+| **AR vs. Turbo** | `TurboAboutTab.tsx` comparison table (have, good — **TRUST-2 overclaim removed, DESIGN-5 pass**), `TurboBalanceCard` (**DONE — DESIGN-5 pass: TRUST-6 relabel + InfoButton fixes the conflation**) | **Have**, trust restored | Fix TRUST-2/TRUST-6 first; the explanatory copy itself is fine. |
+| **Winston** | `TurboBalanceCard.tsx:53` | **DONE — DESIGN-5 pass** (see INFO-6) | *"Winston is the smallest unit of AR — like a satoshi for Bitcoin. 1 AR = 10^12 Winston."* |
 
 ---
 
@@ -604,6 +680,13 @@ decoratively teaches users to distrust the "something's wrong" signal.
 for the decorative Turbo icon; `--icon-mid`/`--icon-high` for neutral settings icons;
 a quieter selection indicator (not red) for "this is chosen" vs. "this is dangerous."
 
+**PARTIAL — DESIGN-5 pass closed the turbo-credits.css site.** `.tcm-header-icon`
+recolored from `--ardrive-warning` to `--accent`. Also applied the same
+"in-progress = info, not brand-red" fix to `DownloadQueueTab.tsx`'s downloading
+spinner (not one of this item's originally-listed 4 sites, but the same class
+of bug in a file this pass owns). `StorageTab.tsx`, `settings.css`, and
+`CreateDriveModal.tsx` are outside this pass's ownership and remain open.
+
 ### DSI-3 — Raw emoji mixed into the lucide-react icon system (2 sites)
 **inconsistent**
 - `OverviewTab.tsx:345` vs `:359` — uses the Lucide `Lock`/`Globe` component in the
@@ -617,6 +700,12 @@ a quieter selection indicator (not red) for "this is chosen" vs. "this is danger
 **Fix:** drop the emoji fallback in Overview; replace the comparison-table emoji with
 matched lucide icons (`Clock`, `Zap`, `CreditCard`, `Coins`, `DollarSign`,
 `TrendingUp`, `Check`, `X`, `Wrench`, `Target`), colored via status tokens.
+
+**PARTIAL — DESIGN-5 pass closed the TurboAboutTab.tsx site.** All 12 emoji in
+the comparison table (plus the 💡 in "Smart Economics") replaced with the
+suggested lucide icons via `currentColor`, inheriting the table's existing
+per-column semantic coloring. `OverviewTab.tsx`'s lock/globe emoji fallback is
+outside this pass's ownership and remains open.
 
 ### DSI-4 — Three parallel "status pill" implementations for one concept
 `common/StatusPill.tsx` (used only in Upload Queue), `.detail-badge-*` classes

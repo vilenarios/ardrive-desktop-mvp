@@ -22,6 +22,9 @@ const mockElectronAPI = {
     createCheckoutSession: vi.fn(),
     topUpWithTokens: vi.fn(),
   },
+  files: {
+    getUploads: vi.fn(),
+  },
   payment: {
     openWindow: vi.fn(),
     onPaymentCompleted: vi.fn(),
@@ -79,6 +82,10 @@ describe('TurboCreditsManager', () => {
       },
     });
     mockElectronAPI.payment.openWindow.mockResolvedValue({ success: true, data: undefined });
+    // TRUST-1: TurboSettingsTab derives its usage stats from real uploads
+    // history rather than displaying invented numbers. Default to empty so
+    // unrelated tests aren't affected; overridden below where it matters.
+    mockElectronAPI.files.getUploads.mockResolvedValue({ success: true, data: [] });
   });
 
   it('should render the Turbo Credits header and back button', async () => {
@@ -329,6 +336,47 @@ describe('TurboCreditsManager', () => {
       expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument();
       expect(document.querySelector('.tcm-saved-indicator')).toBeNull();
       expect(screen.queryByText(/saved!?/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Usage statistics are real, not fabricated (TRUST-1)', () => {
+    const getTabButtons = () =>
+      Array.from(document.querySelectorAll('.tcm-tab')) as HTMLButtonElement[];
+
+    const openSettingsTab = async () => {
+      renderComponent();
+      await screen.findByText('0.500000');
+      const settingsTab = getTabButtons().find((b) => b.textContent?.includes('Settings'));
+      fireEvent.click(settingsTab!);
+    };
+
+    it('never renders a "Credits Used" tile (no real spend ledger exists to back it)', async () => {
+      await openSettingsTab();
+
+      expect(await screen.findByText('Usage Statistics')).toBeInTheDocument();
+      expect(screen.queryByText('Credits Used')).not.toBeInTheDocument();
+      expect(screen.queryByText('0 AR')).not.toBeInTheDocument();
+    });
+
+    it('derives Files Uploaded / Data Stored from real completed uploads, not hardcoded zeros', async () => {
+      // DB rows cross IPC raw (status is a plain string column here) —
+      // exercise a mix of statuses to confirm only 'completed' rows count.
+      mockElectronAPI.files.getUploads.mockResolvedValue({
+        success: true,
+        data: [
+          { id: '1', fileName: 'a.txt', fileSize: 1024, status: 'completed' },
+          { id: '2', fileName: 'b.txt', fileSize: 2048, status: 'completed' },
+          { id: '3', fileName: 'c.txt', fileSize: 5000, status: 'pending' },
+          { id: '4', fileName: 'd.txt', fileSize: 9999, status: 'failed' },
+        ],
+      });
+
+      await openSettingsTab();
+
+      expect(await screen.findByText('Files Uploaded')).toBeInTheDocument();
+      // Only the 2 completed rows count: 2 files, 3 KB total (1024 + 2048 bytes).
+      expect(await screen.findByText('2')).toBeInTheDocument();
+      expect(screen.getByText('3 KB')).toBeInTheDocument();
     });
   });
 

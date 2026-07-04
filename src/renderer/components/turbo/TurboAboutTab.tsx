@@ -1,5 +1,8 @@
 import React from 'react';
-import { Zap, DollarSign, Gift, Shield, TrendingUp, Users } from 'lucide-react';
+import {
+  Zap, DollarSign, Gift, Shield, TrendingUp,
+  Clock, Coins, CreditCard, Equal, Check, X, Wrench, Target, Lightbulb
+} from 'lucide-react';
 import { ExpandableSection } from '../common/ExpandableSection';
 import { InfoButton } from '../common/InfoButton';
 
@@ -12,8 +15,8 @@ const TurboAboutTab: React.FC = () => {
           <div className="tcm-about-hero-content">
             <h2>Why Turbo Credits?</h2>
             <p className="tcm-about-subtitle">
-              The easiest way to store files permanently on Arweave with instant uploads, 
-              predictable pricing, and enterprise-grade reliability.
+              The easiest way to store files permanently on Arweave with instant uploads
+              and predictable, pay-as-you-go pricing.
             </p>
           </div>
           <div className="tcm-turbo-badge">Recommended</div>
@@ -80,19 +83,8 @@ const TurboAboutTab: React.FC = () => {
               </div>
               <h4>Economies of Scale</h4>
               <p>
-                Turbo pools uploads from thousands of users to get better Arweave rates. 
+                Turbo pools uploads from thousands of users to get better Arweave rates.
                 You benefit from enterprise-level pricing without enterprise-level complexity.
-              </p>
-            </div>
-            
-            <div className="tcm-benefit-card">
-              <div className="tcm-benefit-icon">
-                <Users size={24} />
-              </div>
-              <h4>Enterprise Ready</h4>
-              <p>
-                Built-in compliance features, audit trails, and team management. Scale from 
-                personal use to enterprise deployments with the same simple interface.
               </p>
             </div>
           </div>
@@ -118,53 +110,53 @@ const TurboAboutTab: React.FC = () => {
             
             <div className="tcm-comparison-row">
               <div>Upload Speed</div>
-              <div>⏳ 10-60 minutes</div>
-              <div>⚡ Instant</div>
+              <div><Clock size={14} /> 10-60 minutes</div>
+              <div><Zap size={14} /> Instant</div>
             </div>
-            
+
             <div className="tcm-comparison-row">
               <div>Payment Options</div>
-              <div>🪙 AR tokens only</div>
-              <div>💳 Credit card + AR tokens</div>
+              <div><Coins size={14} /> AR tokens only</div>
+              <div><CreditCard size={14} /> Credit card + AR tokens</div>
             </div>
-            
+
             <div className="tcm-comparison-row">
               <div>Small Files (&lt; 100KB)</div>
-              <div>💰 Costs AR</div>
-              <div>🆓 Completely free</div>
+              <div><DollarSign size={14} /> Costs AR</div>
+              <div><Gift size={14} /> Completely free</div>
             </div>
-            
+
             <div className="tcm-comparison-row">
               <div>Price Volatility</div>
-              <div>📈 Fluctuates with AR price</div>
-              <div>📊 Fixed fiat pricing</div>
+              <div><TrendingUp size={14} /> Fluctuates with AR price</div>
+              <div><Equal size={14} /> Fixed fiat pricing</div>
             </div>
-            
+
             <div className="tcm-comparison-row">
               <div>Bulk Discounts</div>
-              <div>❌ Pay per transaction</div>
-              <div>✅ Economies of scale</div>
+              <div><X size={14} /> Pay per transaction</div>
+              <div><Check size={14} /> Economies of scale</div>
             </div>
-            
+
             <div className="tcm-comparison-row">
               <div>Setup Complexity</div>
-              <div>🔧 Manage AR wallet</div>
-              <div>🎯 Just works</div>
+              <div><Wrench size={14} /> Manage AR wallet</div>
+              <div><Target size={14} /> Just works</div>
             </div>
-            
+
             <div className="tcm-comparison-row">
               <div>Data Permanence</div>
-              <div>✅ 200+ years</div>
-              <div>✅ 200+ years</div>
+              <div><Check size={14} /> 200+ years</div>
+              <div><Check size={14} /> 200+ years</div>
             </div>
           </div>
         </ExpandableSection>
       </div>
-      
+
       {/* Economic Benefits */}
       <div className="tcm-section">
         <div className="tcm-economics-card">
-          <h3>💡 Smart Economics</h3>
+          <h3><Lightbulb size={18} /> Smart Economics</h3>
           <div className="tcm-economics-content">
             <div className="tcm-economics-point">
               <strong>Bulk Purchasing Power:</strong> Turbo aggregates demand from thousands 
