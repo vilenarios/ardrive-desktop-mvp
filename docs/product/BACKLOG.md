@@ -138,8 +138,8 @@ Acceptance: a file grown after approval is not uploaded at the larger size witho
 ### MONEY-12 · P1 · Track B · `todo`
 **Upstream: AbortSignal support in ardrive-core-js upload/create APIs.** Filed per D-016 as MONEY-2's merge condition: `uploadAllEntities`, `createPublicFolder`, `createPrivateFolder` accept no AbortSignal (ardrive-core-js lib/ardrive.d.ts), so a single already-launched paid call cannot be halted mid-flight — MONEY-2's checkpoints stop everything not yet launched. True cancel-in-flight needs core to thread a signal into its gateway/turbo requests.
 
-### MONEY-13 · P1 · Phase 3 · `todo`
-**AR balance renders as NaN during a gateway 429.** Found via on-chain UAT 2026-07-04. `arweave.js` `wallets.getBalance` swallows an HTTP 429 rate-limit — it resolves with the raw 429 HTML body as the "winston" string, so `winstonToAr` yields `NaN` and error-keyed retries never fire. The app's AR-balance path (`wallet-manager-secure.getWalletInfo`) then displays **NaN AR** during rate-limiting.
+### MONEY-13 · P1 · Phase 3 · `in-progress`
+**AR balance renders as NaN during a gateway 429.** Found via on-chain UAT 2026-07-04. Claimed 2026-07-04 (overnight loop, branch fix/MONEY-13-nan-balance, Sonnet). `arweave.js` `wallets.getBalance` swallows an HTTP 429 rate-limit — it resolves with the raw 429 HTML body as the "winston" string, so `winstonToAr` yields `NaN` and error-keyed retries never fire. The app's AR-balance path (`wallet-manager-secure.getWalletInfo`) then displays **NaN AR** during rate-limiting.
 Acceptance: a 429 / non-numeric response from the balance endpoint never renders as NaN; the UI shows a transient "unavailable"/retry state instead; validate numeric + retry on error bodies; behavioral test with a mocked non-numeric response.
 
 ### MONEY-11 · P2 · Track D · `todo`
