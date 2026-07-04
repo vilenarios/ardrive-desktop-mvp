@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, HardDrive, Globe, Lock, AlertCircle, FolderOpen, CheckCircle } from 'lucide-react';
 import { DriveInfo } from '../../types';
+import { InfoButton } from './common/InfoButton';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface AddExistingDriveModalProps {
   isOpen: boolean;
@@ -22,6 +24,10 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // A11Y-3: Escape closes, backdrop click closes, focus trapped, focus
+  // returns to the trigger on close — shared with the other 3 drive modals.
+  const { containerRef, handleBackdropClick } = useModalA11y<HTMLDivElement>(isOpen, onClose);
 
   useEffect(() => {
     if (isOpen) {
@@ -108,8 +114,8 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="drive-modal-overlay">
-      <div className="drive-modal-panel size-lg">
+    <div className="drive-modal-overlay" onClick={handleBackdropClick}>
+      <div className="drive-modal-panel size-lg" ref={containerRef}>
         {/* Header */}
         <div className="drive-modal-header">
           <h2 className="drive-modal-title">
@@ -145,13 +151,24 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
         {/* Drive List */}
         {!isLoading && availableDrives.length > 0 && (
           <>
-            <p style={{
+            {/* A <div>, not a <p>: InfoButton renders a <div> root, and a
+                <div> isn't valid phrasing content inside a <p>. */}
+            <div style={{
               fontSize: '14px',
               color: 'var(--text-secondary)',
-              marginBottom: 'var(--space-4)'
+              marginBottom: 'var(--space-4)',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 'var(--space-1)'
             }}>
-              Select a drive to add to this device. It will be synced to a subfolder in your current sync location.
-            </p>
+              <span>
+                Select a drive to add to this device. It will be synced to a subfolder in
+                your current sync location, and files will sync both ways between the two.
+              </span>
+              {/* INFO-8 / COPY-6: what a drive actually is, and that the local
+                  folder mirrors it bidirectionally, was explained nowhere. */}
+              <InfoButton tooltip="A drive is your own permanent storage space on Arweave — like a top-level folder that lives on the network forever. This local folder is just a mirror of it: files sync both ways, so a local delete or a remote change can propagate to the other side." />
+            </div>
 
             <div className="drive-list">
               {availableDrives.map((drive) => (

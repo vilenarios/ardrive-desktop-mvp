@@ -1,0 +1,62 @@
+/* CreateManifestModal (DESIGN-8, drives lane) — minimal, a11y-only additions.
+ *
+ * CreateManifestModal never got the DESIGN-7 shared modal-shell treatment
+ * (RESTYLE-7) — it still renders with inline style={{}} objects rather than
+ * the .drive-modal-* classes in modal.css. That full restyle/token-migration
+ * pass is a separate, larger backlog item owned by a different lane; it is
+ * deliberately NOT done here.
+ *
+ * What *is* in this lane's scope: the folder-tree rows were `<div onClick>`
+ * with no `tabIndex`/keyboard handling and no focus style at all — 100%
+ * mouse-only, a genuine keyboard trap (a keyboard user could not select a
+ * folder in this modal at all). Fixing that means giving the rows a real
+ * role/tabIndex, which in turn needs a CSS hover/focus-visible treatment
+ * (can't express `:focus-visible` via inline styles) — hence this file,
+ * scoped to exactly that plus the header close button's focus ring.
+ *
+ * Imported directly by CreateManifestModal.tsx rather than added to
+ * styles.css's shared @import chain, since that file is out of this lane's
+ * ownership.
+ */
+
+.manifest-folder-row {
+  background-color: transparent;
+  transition: background-color var(--motion-base) var(--ease-standard);
+}
+
+.manifest-folder-row:hover:not(.is-selected) {
+  background-color: var(--surface-inset);
+}
+
+.manifest-folder-row.is-selected {
+  background-color: var(--brand-surface);
+}
+
+.manifest-folder-row:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.manifest-close-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  color: var(--icon-mid);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
+}
+
+.manifest-close-button:hover {
+  background-color: var(--surface-inset);
+  color: var(--icon-high);
+}
+
+.manifest-close-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}

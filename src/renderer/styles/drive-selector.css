@@ -17,7 +17,11 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  min-width: 200px;
+  /* POLISH-11: was 200px, truncating names mid-word ("Private Drive ...")
+   * with ~250px of unused header space to spare. Widened, with a max-width
+   * so the header itself never balloons for one long drive name. */
+  min-width: 240px;
+  max-width: 320px;
   padding: var(--space-2) var(--space-3);
   background: var(--surface-raised);
   border: 1px solid var(--border);
@@ -76,7 +80,6 @@
   position: absolute;
   top: 100%;
   left: 0;
-  right: 0;
   margin-top: var(--space-1);
   background: var(--surface-overlay);
   border: 1px solid var(--border);
@@ -85,7 +88,14 @@
   z-index: 1000;
   max-height: 300px;
   overflow-y: auto;
-  min-width: 200px;
+  /* POLISH-11: previously `left:0; right:0` forced the dropdown to exactly
+   * the trigger button's width, so a drive name longer than the button
+   * still truncated even though the dropdown had room to be wider.
+   * Decoupled: never narrower than the button (min-width: 100%), but free
+   * to grow with its content up to a sane cap. */
+  min-width: 100%;
+  width: max-content;
+  max-width: 360px;
   /* reuse the existing dropdown-fade-in keyframe (styles.css, user-menu) */
   animation: dropdown-fade-in var(--motion-moderate) var(--ease-out);
 }
@@ -144,26 +154,48 @@
   font-size: 12px;
 }
 
+/* POLISH-12: public-vs-private is arguably the single most consequential
+ * fact about a drive; it was rendered at 14px / 60% opacity, barely
+ * visible. Full opacity now — a security-relevant signal shouldn't be the
+ * most subtle thing on the row. */
 .drive-selector-lock-icon {
   color: var(--icon-mid);
-  opacity: 0.6;
   flex-shrink: 0;
 }
 
 .drive-selector-lock-icon.is-locked {
   color: var(--warning-fg);
-  opacity: 0.9;
 }
 
 .drive-selector-globe-icon {
   color: var(--icon-mid);
-  opacity: 0.6;
   flex-shrink: 0;
 }
 
 /* PRIV-4: remember/forget toggle rendered under an unlocked private drive's
  * option button — reuses the option row's padding/typography scale so it
- * reads as a sub-row rather than a separate menu item. */
+ * reads as a sub-row rather than a separate menu item.
+ *
+ * INFO-2: the "what does remembering do" explanation used to live only in
+ * a native title= (hover-only, no keyboard/touch access). It's now a real
+ * InfoButton rendered alongside the toggle — as a *sibling*, not nested
+ * inside the toggle's own <button>, since a button can't contain another
+ * button. This wrapper lays the two out as one row. */
+.drive-selector-remember-row {
+  display: flex;
+  align-items: center;
+}
+
+.drive-selector-remember-row .drive-selector-remember-toggle {
+  flex: 1;
+  min-width: 0;
+}
+
+.drive-selector-remember-row .info-button-container {
+  margin-right: var(--space-2);
+  flex-shrink: 0;
+}
+
 .drive-selector-remember-toggle {
   display: flex;
   align-items: center;

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Lock, Eye, EyeOff, AlertCircle, Key } from 'lucide-react';
 import { DriveInfoWithStatus } from '../../types';
+import { InfoButton } from './common/InfoButton';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface PrivateDriveUnlockModalProps {
   drive: DriveInfoWithStatus;
@@ -64,26 +66,29 @@ export const PrivateDriveUnlockModal: React.FC<PrivateDriveUnlockModalProps> = (
     if (e.key === 'Enter' && password.trim() && !loading) {
       handleUnlock();
     }
-    if (e.key === 'Escape') {
-      onCancel();
-    }
+    // A11Y-3: Escape used to be wired only here, on the password <input>'s
+    // onKeyDown, so it stopped working the moment focus moved to the
+    // checkbox or the eye-toggle button. useModalA11y now handles Escape
+    // (and backdrop-click, focus-trap, and focus-return) for the whole
+    // panel regardless of which element has focus.
   };
+
+  // A11Y-3: shared modal a11y — Escape/backdrop-click close, focus trapped,
+  // focus returns to the trigger (e.g. the locked drive's row) on close.
+  const { containerRef, handleBackdropClick } = useModalA11y<HTMLDivElement>(isOpen, onCancel);
 
   if (!isOpen) return null;
 
   return (
     <div
       className="modal-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onCancel();
-        }
-      }}
+      onClick={handleBackdropClick}
     >
       <div
         className="modal-content has-accent-bar"
         style={{ maxWidth: '420px', maxHeight: '90vh', overflow: 'auto' }}
         onClick={(e) => e.stopPropagation()}
+        ref={containerRef}
       >
         {/* Header */}
         <div
@@ -136,12 +141,26 @@ export const PrivateDriveUnlockModal: React.FC<PrivateDriveUnlockModalProps> = (
           textAlign: 'center',
           background: 'var(--surface-inset)'
         }}>
-          <div style={{
-            fontSize: '24px',
-            marginBottom: 'var(--space-2)',
-            lineHeight: 1
-          }}>
-            {drive.emojiFingerprint}
+          {/* POLISH-14: the emoji sequence has no text fallback if glyphs
+              fail to render (observed as tofu boxes in some environments),
+              and no explanation anywhere of what it's for. An accessible
+              name + InfoButton fix both regardless of font/glyph support. */}
+          <div
+            role="img"
+            aria-label="Drive visual fingerprint — should look identical every time you unlock this drive"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 'var(--space-1)',
+              fontSize: '24px',
+              marginBottom: 'var(--space-2)',
+              lineHeight: 1,
+              fontFamily: '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif'
+            }}
+          >
+            <span>{drive.emojiFingerprint || 'Fingerprint unavailable'}</span>
+            <InfoButton tooltip="This emoji sequence is a visual fingerprint of your drive's encryption key. It should look identical every time you unlock this drive — if it changes, stop and don't enter your password." />
           </div>
           <div style={{
             fontSize: '16px',

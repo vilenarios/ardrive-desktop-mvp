@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { X, HardDrive, Globe, Lock, AlertCircle, Eye, EyeOff, ShieldAlert } from 'lucide-react';
+import { X, HardDrive, Globe, Lock, AlertCircle, Eye, EyeOff, ShieldAlert, Zap } from 'lucide-react';
+import { InfoButton } from './common/InfoButton';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface CreateDriveModalProps {
   isOpen: boolean;
@@ -24,6 +26,10 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [driveNameError, setDriveNameError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  // A11Y-3: Escape closes, backdrop click closes, focus is trapped inside the
+  // panel, and focus returns to whatever triggered the modal on close.
+  const { containerRef, handleBackdropClick } = useModalA11y<HTMLDivElement>(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -172,13 +178,16 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
   };
 
   return (
-    <div className="drive-modal-overlay">
-      <div className="drive-modal-panel size-md">
+    <div className="drive-modal-overlay" onClick={handleBackdropClick}>
+      <div className="drive-modal-panel size-md" ref={containerRef}>
         {/* Header */}
         <div className="drive-modal-header">
           <h2 className="drive-modal-title">
             <HardDrive size={24} />
             Create New Drive
+            {/* INFO-8: "what is a drive" had no explanation reachable from
+                the one screen that creates one. */}
+            <InfoButton tooltip="A drive is your own permanent storage space on Arweave — like a top-level folder that lives on the network forever. This local folder is just a mirror of it; you can move or delete the folder without affecting the drive." />
           </h2>
           <button
             className="drive-modal-close"
@@ -200,52 +209,91 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
 
         {/* Drive Name Input */}
         <div className="form-group" style={{ marginBottom: 'var(--space-6)' }}>
-          <label>Drive Name</label>
+          <label htmlFor="create-drive-name">Drive Name</label>
           <input
+            id="create-drive-name"
             type="text"
             className={driveNameError ? 'is-invalid' : ''}
             value={driveName}
             onChange={handleDriveNameChange}
             placeholder="Enter drive name (e.g., Personal Files, Work Documents)"
           />
-          <small style={driveNameError ? { color: 'var(--danger-fg)' } : undefined}>
+          {/* POLISH-15: warn as the 32-char limit approaches, matching the
+              near-limit treatment DriveAndSyncSetup already applies to its
+              own drive-name field (there: driveName.length > 28). */}
+          <small
+            style={{
+              color: driveNameError
+                ? 'var(--danger-fg)'
+                : driveName.length > 28
+                  ? 'var(--warning-fg)'
+                  : undefined
+            }}
+          >
             {driveNameError || `${driveName.length}/32 characters`}
           </small>
         </div>
 
         {/* Drive Privacy Selection */}
-        <div className="form-group" style={{ marginBottom: 'var(--space-6)' }}>
-          <label>Drive Privacy</label>
+        <div className="form-group" style={{ marginBottom: 'var(--space-2)' }}>
+          <label id="create-drive-privacy-label" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            Drive Privacy
+          </label>
 
-          <div className="drive-privacy-options">
-            <button
-              className={`drive-privacy-option ${drivePrivacy === 'private' ? 'is-selected' : ''}`}
-              onClick={() => {
-                setDrivePrivacy('private');
-                setPasswordError(null);
-              }}
-              disabled={isCreating}
-            >
-              <Lock size={20} />
-              <div className="drive-privacy-option-title">Private</div>
-              <div className="drive-privacy-option-desc">End-to-end encrypted</div>
-            </button>
+          <div className="drive-privacy-options" role="group" aria-labelledby="create-drive-privacy-label">
+            <div className="drive-privacy-option-wrap">
+              <button
+                type="button"
+                className={`drive-privacy-option ${drivePrivacy === 'private' ? 'is-selected' : ''}`}
+                onClick={() => {
+                  setDrivePrivacy('private');
+                  setPasswordError(null);
+                }}
+                disabled={isCreating}
+                aria-pressed={drivePrivacy === 'private'}
+              >
+                <Lock size={20} />
+                <div className="drive-privacy-option-title">Private</div>
+                <div className="drive-privacy-option-desc">End-to-end encrypted, forever</div>
+              </button>
+              <InfoButton
+                className="drive-privacy-option-info"
+                tooltip="Files are encrypted with your password before they ever leave your device. ArDrive never sees or stores this password — if you forget it, no one can recover access to this drive."
+              />
+            </div>
 
-            <button
-              className={`drive-privacy-option ${drivePrivacy === 'public' ? 'is-selected' : ''}`}
-              onClick={() => {
-                setDrivePrivacy('public');
-                setPassword('');
-                setConfirmPassword('');
-                setPasswordError(null);
-              }}
-              disabled={isCreating}
-            >
-              <Globe size={20} />
-              <div className="drive-privacy-option-title">Public</div>
-              <div className="drive-privacy-option-desc">Anyone can view</div>
-            </button>
+            <div className="drive-privacy-option-wrap">
+              <button
+                type="button"
+                className={`drive-privacy-option ${drivePrivacy === 'public' ? 'is-selected' : ''}`}
+                onClick={() => {
+                  setDrivePrivacy('public');
+                  setPassword('');
+                  setConfirmPassword('');
+                  setPasswordError(null);
+                }}
+                disabled={isCreating}
+                aria-pressed={drivePrivacy === 'public'}
+              >
+                <Globe size={20} />
+                <div className="drive-privacy-option-title">Public</div>
+                <div className="drive-privacy-option-desc">Anyone can view, forever</div>
+              </button>
+              <InfoButton
+                className="drive-privacy-option-info"
+                tooltip="Anyone with the link can view these files, forever, once uploaded. Don't use a public drive for anything sensitive."
+              />
+            </div>
           </div>
+          {/* COPY-1/COPY-2: neither privacy option said anything about
+              permanence, and nothing disclosed that the choice is locked in
+              after creation. COPY-6: sync direction was hardcoded and never
+              surfaced anywhere in the UI. */}
+          <p className="drive-privacy-permanence-note">
+            Once uploaded to Arweave, files in this drive can&apos;t be edited or deleted — by
+            you or anyone else. This privacy choice can&apos;t be changed after the drive is
+            created. Files will sync both ways between this drive and your local folder.
+          </p>
         </div>
 
         {/* Password Fields for Private Drives */}
@@ -263,9 +311,10 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
 
             {/* Password Input */}
             <div className="form-group">
-              <label>Drive Password</label>
+              <label htmlFor="create-drive-password">Drive Password</label>
               <div style={{ position: 'relative' }}>
                 <input
+                  id="create-drive-password"
                   type={showPassword ? 'text' : 'password'}
                   className={passwordError ? 'is-invalid' : ''}
                   value={password}
@@ -291,9 +340,10 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
 
             {/* Confirm Password Input */}
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label>Confirm Password</label>
+              <label htmlFor="create-drive-confirm-password">Confirm Password</label>
               <div style={{ position: 'relative' }}>
                 <input
+                  id="create-drive-confirm-password"
                   type={showConfirmPassword ? 'text' : 'password'}
                   className={passwordError ? 'is-invalid' : ''}
                   value={confirmPassword}
@@ -324,6 +374,20 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
             </div>
           </div>
         )}
+
+        {/* COPY-3: drive creation showed zero cost/balance information —
+            unlike CreateManifestModal / the rename-drive flow, which both
+            disclose "FREE with Turbo Credits" upfront. Drive + root-folder
+            records are tiny (well under the Turbo free-tier threshold), so
+            this is always free in this app — Turbo is the only upload path
+            wired up for drive creation, there's no AR-direct fallback. */}
+        <div className="modal-banner is-neutral">
+          <Zap size={16} />
+          <span>
+            Creating a drive doesn&apos;t cost any AR — the drive and folder records are
+            tiny, so they&apos;re covered automatically by Turbo Credits at no charge.
+          </span>
+        </div>
 
         {/* Action Buttons */}
         <div className="drive-modal-footer">

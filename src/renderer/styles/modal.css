@@ -159,8 +159,22 @@
   gap: var(--space-3);
 }
 
-.drive-privacy-option {
+/* Wraps each card + its InfoButton so the button isn't nested inside the
+ * card's own <button> (invalid HTML — two nested interactive controls). */
+.drive-privacy-option-wrap {
+  position: relative;
+  display: flex;
   flex: 1;
+}
+
+.drive-privacy-option-info {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+}
+
+.drive-privacy-option {
+  width: 100%;
   padding: var(--space-4);
   border: 2px solid var(--border);
   border-radius: var(--radius-md);
@@ -194,13 +208,18 @@
   opacity: 0.6;
 }
 
+/* DSI-2: this card's "selected" state used to borrow --brand (brand red).
+ * On this exact screen that reads as a third red signal alongside the
+ * amber permanent-password warning and the red primary CTA — nothing on
+ * the screen read calm/neutral. "Chosen" and "dangerous" are different
+ * concepts; give chosen a quiet, non-alert treatment instead. */
 .drive-privacy-option.is-selected {
-  border-color: var(--brand);
-  background: var(--brand-surface);
+  border-color: var(--text-primary);
+  background: var(--surface-inset);
 }
 
 .drive-privacy-option.is-selected svg {
-  color: var(--brand);
+  color: var(--text-primary);
 }
 
 .drive-privacy-option-title {
@@ -212,6 +231,14 @@
 .drive-privacy-option-desc {
   font-size: var(--text-body-sm);
   color: var(--text-secondary);
+}
+
+/* COPY-1/COPY-2: permanence + "can't change this later" disclosure */
+.drive-privacy-permanence-note {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-body-sm);
+  color: var(--text-tertiary);
+  line-height: 1.4;
 }
 
 /* Scrollable drive list (AddExistingDriveModal) */
