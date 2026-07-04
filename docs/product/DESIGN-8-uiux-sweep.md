@@ -549,15 +549,15 @@ balance label; Total Upload Cost). `StorageTab.tsx` is outside this pass's
 ownership and remains open.
 
 ### INFO-2 — Three different, inconsistent mechanisms deliver the same "explain this" job
-**Status: PARTIALLY DONE (DESIGN-8, dashboard content-tabs lane).** Fixed the
-`StorageTab.tsx` sites named here: the Hidden badge's `title=` is now a real
-`InfoButton` with the same copy (`.hidden-badge-group` wrapper in
-`storage-tab.css`), and the per-row sync-status icons keep their native
-`title=` (a reasonable per-row hover nicety, not the primary explanation
-mechanism) but their *meanings* now live in one always-reachable InfoButton
-legend in the controls row instead of nowhere-accessible-by-keyboard.
-`DriveSelector.tsx` and `UserMenu.tsx` are out of this lane's file ownership —
-left untouched for whichever lane owns those components.
+**Status: PARTIALLY DONE (DESIGN-8 — dashboard + Settings/Gateway lanes).**
+Dashboard lane fixed the `StorageTab.tsx` sites: the Hidden badge's `title=` is
+now a real `InfoButton` (`.hidden-badge-group` in `storage-tab.css`), and the
+per-row sync-status icon *meanings* now live in one always-reachable InfoButton
+legend in the controls row. Settings/Gateway lane fixed the `UserMenu.tsx`
+sites: the AR Balance and Turbo Credits hand-rolled hover-only `.balance-tooltip`
+widgets are now `<InfoButton>` (keyboard-accessible), and the dead
+`.balance-tooltip`/`.export-tooltip`/`.menu-tooltip-content` CSS is removed from
+`user-menu.css`. `DriveSelector.tsx:181-192` remains for the drives lane.
 **inconsistent** `InfoButton` (click-triggered, keyboard-accessible) coexists with:
 native HTML `title=` attributes (hover-only, no keyboard/touch access, unstyled) at
 `DriveSelector.tsx:181-192` (Remember-this-drive toggle) and `StorageTab.tsx:836-844`
@@ -571,6 +571,20 @@ that's broken, not the words.
 reusing the existing copy where it's already good.
 
 ### INFO-3 — Gateway setting has zero UI despite a fully wired backend
+**Status: DONE (DESIGN-8, Settings+Gateway lane).** Added a "Gateway" section
+to `Settings.tsx` (between Sync Folder and Account Export): a labeled text
+input pre-filled with the persisted `config.gatewayHost` (or empty, showing
+the `turbo-gateway.com` placeholder), a "Save Gateway" action, a "Reset to
+Default" action (disabled once the field already reads the default), inline
+error/success feedback, and an `InfoButton` using this doc's own suggested
+copy. Persistence reuses the **existing** `config:set-gateway` IPC handler
+and `config.setGateway` preload method (both already existed, already
+enveloped per D-005, already validated via
+`InputValidator.validateGatewayHost`) — no new IPC handler was needed or
+added. New behavioral tests: `tests/unit/components/settings-gateway.test.tsx`
+(placeholder/prefill, successful save, `{success:false}` validator-error
+surfaced in place, client-side empty-host guard, reset-to-default, and the
+disabled-when-already-default state).
 `src/main/gateway.ts`, `config:set-gateway` IPC, `AppConfig.gatewayHost` all exist;
 no control anywhere in `Settings.tsx` · **missing-info-bubble** (the whole control is
 missing, not just its bubble) Per SYNC-17, the backend is done; there's no way for a
@@ -579,6 +593,10 @@ user to ever see or change it from the UI.
 default action, and an `InfoButton` (see coverage table).
 
 ### INFO-4 — Dashboard header has zero explanatory tooltips
+**Status: PARTIALLY DONE.** The "AR/Turbo balances (via `UserMenu`) have no
+tooltips" half is resolved by INFO-2's `UserMenu.tsx` fix above (now
+`InfoButton`, not zero). The Sync button and drive selector (`Dashboard.tsx`)
+are **owned by the dashboard lane** — untouched here.
 `src/renderer/components/Dashboard.tsx:700-753` · **missing-info-bubble** Sync button,
 drive selector, and the AR/Turbo balances (via `UserMenu`) have no tooltips at all. A
 first-run, non-crypto user sees a red "Sync" button and two currency figures with no
@@ -616,6 +634,11 @@ coverage table's suggested `InfoButton` copy next to its label instead of
 removing it.
 
 ### INFO-7 — ArNS mentioned with a bare CTA and no in-app explanation
+**Status: DONE (DESIGN-8, Settings+Gateway lane).** Added the suggested
+`InfoButton` alongside the "Get your ArNS name" button (now wrapped in a
+`.arns-prompt-row`, `user-menu.css`). Also added an `InfoButton` on the
+wallet-address row (coverage-table "Wallet address" concept, previously
+**Weak**) using that row's suggested copy.
 `src/renderer/components/UserMenu.tsx:189-201` · **copy-clarity /
 missing-info-bubble** Links out to `arns.ar.io` with zero context for what ArNS is —
 a crypto-native user knows; a Dropbox-migrant user does not.
@@ -644,8 +667,8 @@ explanation already exists · `Weak` = some copy exists but isn't accessible/com
 | Concept | Surface(s) | Status | Suggested `InfoButton` copy |
 |---|---|---|---|
 | **Permanence / irreversibility** | Welcome tagline (`WalletSetup.tsx:296-298`), `CreateDriveModal.tsx` (absent), `AddExistingDriveModal.tsx` (absent), Activity stream (no "Permanent" chip on completed uploads), Overview Rename quick action (cost modal explains it only after commitment) | **Missing** almost everywhere it matters most — the one place it's said at all is a single unelaborated sentence on the welcome screen | *"Once uploaded to Arweave, files can't be edited or deleted — by you or anyone else, including ArDrive. That's the whole point: your files outlive any single company or server."* |
-| **Turbo Credits** (what it is, vs. AR) | `UserMenu.tsx:279-282` nav item (missing), Upload Queue balance row (**DONE — DESIGN-5 pass: `InfoButton` now wired**), `TurboAboutTab` (have, good), `TurboBalanceCard` (**DONE — DESIGN-5 pass**) | **Have** in three places now; **missing** only at the `UserMenu` nav item (outside this pass's ownership) | *"Turbo Credits are prepaid, instant-upload credits you buy with a card — no crypto wallet required."* |
-| **Free upload under 100 KiB** (100 × 1024 bytes, confirmed `turbo-utils.ts:5-6`) | Upload Queue "FREE" badge (**DONE — DESIGN-5 pass**, mentioned in the balance-row `InfoButton` copy), Overview rename-cost modal (have, good: *"This operation is under 100KB and qualifies for free upload via Turbo"*) | **Have** in both Overview and Upload Queue now | *"Files under 100 KiB upload free via Turbo Credits."* |
+| **Turbo Credits** (what it is, vs. AR) | `UserMenu.tsx` Balances row (**DONE — Settings/Gateway lane**), Upload Queue balance row (**DONE — DESIGN-5 pass**), `TurboAboutTab` (have, good), `TurboBalanceCard` (**DONE — DESIGN-5 pass**); `UserMenu.tsx:279-282` nav item still missing (an `InfoButton` can't nest inside that full-width `<button>` without a layout change) | **Have** in four places now | *"Turbo Credits are prepaid, instant-upload credits you buy with a card — no crypto wallet required."* |
+| **Free upload under 100 KiB** (100 × 1024 bytes, confirmed `turbo-utils.ts:5-6`) | Upload Queue "FREE" badge (**DONE — DESIGN-5 pass**, in the balance-row `InfoButton` copy), Overview rename-cost modal (have, good: *"This operation is under 100KB and qualifies for free upload via Turbo"*) | **Have** in both Overview and Upload Queue now | *"Files under 100 KiB upload free via Turbo Credits."* |
 | **Permaweb** | Storage tab — literally titled "Permaweb" in the nav, `InfoButton` imported but never rendered | **Missing** — the tab name is undefined jargon | *"Permaweb = Arweave's permanent web. Every file here is stored forever — it can be hidden from view but never truly deleted."* |
 | **Hidden ≠ deleted** | Storage tab badge (`:836-844`, excellent copy, delivered via native `title=` only), Activity tab (plain inline text, no chip), Download Queue "make cloud-only" (nothing) | **Weak** — right words, wrong/inconsistent widget | Promote Storage's existing copy into a real `InfoButton`; give Activity the same pill treatment. |
 | **cloud_only** ("make cloud-only" / cancel download) | Storage tab menu (native `title=` only), `DownloadQueueTab.tsx:440` button (**DONE — DESIGN-5 pass: `InfoButton` added to the tab header**, not strictly a "cost/credit" concept but cheap and in-scope for a file this pass owns) | **Have** in Download Queue; Storage tab menu still native `title=` (outside this pass's ownership) | *"Cloud-only files stay stored permanently on Arweave but won't take up space on this device."* |
@@ -654,10 +677,10 @@ explanation already exists · `Weak` = some copy exists but isn't accessible/com
 | **Private vs. public drive** | `WelcomeBackScreen.tsx:264-274,301-309` badges (unexplained), `CreateDriveModal.tsx:220-247` (two-word subtitles only, no permanence framing), `OverviewTab.tsx:345` vs `:359` (Lucide icon then raw-emoji fallback, inconsistent) | **Missing** almost everywhere except thin two-word hints | Public: *"Anyone with the link can view these files, forever. Don't use this for anything sensitive."* Private: *"Files are encrypted with your password before they ever leave your device. ArDrive never sees or stores this password."* |
 | **Drive fingerprint** (emoji sequence) | `WelcomeBackScreen.tsx:292-299`, `PrivateDriveUnlockModal.tsx:139-145` — also renders as tofu boxes on some fonts with no text fallback | **Missing entirely** | *"This emoji sequence is a visual fingerprint of your drive's encryption key. It should look identical every time you unlock this drive — if it changes, stop and don't enter your password."* |
 | **Remember-this-drive** (key persistence) | `DriveSelector.tsx:181-192` (native `title=` only), `PrivateDriveUnlockModal.tsx:220-225` (have, good, explained inline with an opt-out) | **Have** in one place, **weak/inaccessible** in the other | Reuse the good copy: *"Your drive's decryption key is stored encrypted on this device, so you won't be asked for this password again here. Turn off anytime."* |
-| **Gateway** | Backend fully wired (`src/main/gateway.ts`, `config:set-gateway` IPC); no UI anywhere | **Missing entirely** (see INFO-3 — the control itself doesn't exist yet) | *"Gateway — the server ArDrive uses to reach the Arweave network. Default: turbo-gateway.com. Change this only if uploads or downloads are failing."* |
-| **Profiles** | `ProfileManagement.tsx`, `ProfileSwitcher.tsx`, `UserMenu.tsx` "Manage Profiles" | **Missing** — never defined for a first-time user | *"A profile is a separate encrypted wallet + settings on this device. Use multiple profiles to keep different Arweave accounts fully isolated."* |
-| **Wallet address** | `AddressDisplay.tsx:11` (label only: "Your Arweave Address (public)"), `UserMenu.tsx` profile row | **Weak** — decent label, no bubble | *"This is your public wallet address — safe to share. It's used to receive AR tokens and to prove you own your uploads. It is not a secret."* |
-| **AR vs. Turbo** | `TurboAboutTab.tsx` comparison table (have, good — **TRUST-2 overclaim removed, DESIGN-5 pass**), `TurboBalanceCard` (**DONE — DESIGN-5 pass: TRUST-6 relabel + InfoButton fixes the conflation**) | **Have**, trust restored | Fix TRUST-2/TRUST-6 first; the explanatory copy itself is fine. |
+| **Gateway** | `Settings.tsx` "Gateway" section (**DONE — Settings/Gateway lane**, reusing the existing `config:set-gateway` IPC — no new handler) | **Have** — see INFO-3 | *"Gateway — the server ArDrive uses to reach the Arweave network. Default: turbo-gateway.com. Change this only if uploads or downloads are failing."* |
+| **Profiles** | `ProfileManagement.tsx`, `ProfileSwitcher.tsx`, `UserMenu.tsx` "Switch Profile" (action now wired — see POLISH-20 — but still no concept bubble; nested-button constraint) | **Missing** — never defined for a first-time user | *"A profile is a separate encrypted wallet + settings on this device. Use multiple profiles to keep different Arweave accounts fully isolated."* |
+| **Wallet address** | `AddressDisplay.tsx:11` (label only), `UserMenu.tsx` profile row (**DONE — Settings/Gateway lane**) | **Have** in `UserMenu`; `AddressDisplay.tsx` still label-only | *"This is your public wallet address — safe to share. It's used to receive AR tokens and to prove you own your uploads. It is not a secret."* |
+| **AR vs. Turbo** | `TurboAboutTab.tsx` comparison table (have, good — **TRUST-2 overclaim removed, DESIGN-5 pass**), `TurboBalanceCard` (**DONE — DESIGN-5 pass: TRUST-6 relabel + InfoButton**) | **Have**, trust restored | Fix TRUST-2/TRUST-6 first; the explanatory copy itself is fine. |
 | **Winston** | `TurboBalanceCard.tsx:53` | **DONE — DESIGN-5 pass** (see INFO-6) | *"Winston is the smallest unit of AR — like a satoshi for Bitcoin. 1 AR = 10^12 Winston."* |
 
 ---
@@ -684,23 +707,24 @@ single answer for "how do I show an error."
 `--danger-surface` and delete the `--error-*`/`--red-*` aliases once callers move.
 
 ### DSI-2 — Brand red / status hues used for benign, non-alert UI (4 sites)
-**Status: PARTIALLY DONE (DESIGN-8, Foundation lane).** Fixed one additional
-shared/token-level instance this pass turned up: `styles.css`'s
-`.sync-progress-bar` (the fill inside `SyncProgressDisplay.tsx`, rendered from
+**Status: PARTIALLY DONE (DESIGN-8 — Foundation + dashboard + Settings/Gateway + DESIGN-5 lanes).**
+Foundation lane fixed a bonus shared/token-level instance: `styles.css`'s
+`.sync-progress-bar` (`SyncProgressDisplay.tsx`, rendered from
 `DriveAndSyncSetup.tsx`) used `var(--ardrive-primary)` (brand red) for an
 ordinary "sync in progress" bar — remapped to `var(--info)`, matching the
-already-correct `.progress-fill.download` convention elsewhere in the file.
-The `StorageTab.tsx` site below is **DONE (DESIGN-8, dashboard content-tabs
-lane)**: "downloading"/"uploading" now resolve through a new `STATUS_META`
-map (`StorageTab.tsx`, module scope) to `var(--info-600)` instead of
-`var(--ardrive-primary-600)`; the same map also fixed the file-details
-modal's status pill (`StorageTab.tsx` "Status:" row), which used to collapse
-every non-"synced" status — including "error" — to the same neutral gray,
-hiding a real failure behind a color that read as "nothing's wrong." The
-remaining 3 sites (`turbo-credits.css`, `settings.css`, `CreateDriveModal.tsx`)
-are **per-component CSS/inline-styles owned by other lanes** — out of this
-lane's strict file ownership, left untouched per instructions ("if unsure,
-leave and note it").
+already-correct `.progress-fill.download` convention.
+Dashboard lane fixed the `StorageTab.tsx` site: "downloading"/"uploading" now
+resolve through a new `STATUS_META` map to `var(--info-600)`, and the same map
+fixed the file-details status pill (`StorageTab.tsx` "Status:" row), which used
+to collapse every non-"synced" status — including "error" — into neutral gray,
+hiding a real failure.
+Settings/Gateway lane fixed `settings.css:141-145`'s `.settings-icon`
+(`var(--ardrive-primary)` → `var(--icon-mid)`) — every section icon is neutral
+now, alongside the still-correctly-red primary buttons.
+DESIGN-5 lane recolored the `turbo-credits.css` header Zap icon
+(`--ardrive-warning` → `--accent`). Remaining: the `CreateDriveModal.tsx`
+aesthetic note — now addressed by the drives lane (DSI-2 remap of
+`.drive-privacy-option.is-selected` off brand red).
 **inconsistent** Status hues are reserved for actual state signals; using them
 decoratively teaches users to distrust the "something's wrong" signal.
 - ~~`StorageTab.tsx:485-503` — "downloading"/"uploading" (ordinary, expected states) use
@@ -1115,6 +1139,22 @@ reads ambiguous ("63% of what?") out of context. *(Bundle with Lane A.)*
 **Fix:** add a word, e.g. "63% uploaded."
 
 ### POLISH-20 — Settings and profile management are two disconnected entry points
+**Status: DONE (DESIGN-8, Settings+Gateway lane) — via a different, arguably
+better root fix than the one originally proposed.** Investigating the "add a
+deep-link" fix turned up the real cause: `UserMenu.tsx` already received
+`onSwitchProfile`/`onAddProfile`/`profileCount` props from `Dashboard.tsx`
+(wired to a real `handleSwitchProfile`/`ProfileSwitcher` flow there) — but
+never rendered a single control that called them. `ProfileSwitcher` was
+unreachable dead code app-wide; `Users`/`Plus`/`Edit` icon imports sat unused
+in `UserMenu.tsx` alongside it. Rather than adding a new deep-link *from*
+Settings, wired a "Switch Profile" menu item directly into `UserMenu.tsx`'s
+final menu section, immediately above "Settings" — same dropdown, one row
+apart, zero new props or cross-component wiring needed (everything required
+was already threaded down, just unused). `onAddProfile`/`onCreateDrive`
+remain unused (a separate "Add Profile" action would duplicate
+`ProfileSwitcher`'s own add-profile affordance; `onCreateDrive` is a
+drive-management action, judged out of this lane's Settings/Gateway/UserMenu
+scope) — flagged here rather than wired speculatively.
 `Settings.tsx` (whole file) vs. `UserMenu.tsx:212-221` · **polish**
 (information-architecture) No cross-link between "Settings" (sync folder/export/
 about) and "Manage Profiles" (separate `ProfileSwitcher` action) — a Dropbox-caliber
@@ -1155,10 +1195,10 @@ sites.
 |---|---|---|---|
 | **A — DESIGN-5 restyle** | Finish the Upload Approval Queue + Download Queue + Turbo Credits Manager restyle: legacy→semantic tokens, column headers, off-brand glow, balance-message color, dead search/filter wiring, CreateManifestModal's modal-shell port + debug-log removal. Sweeps in: POLISH-16/17/18/19 (same files). | RESTYLE-1..8 (8) + 4 polish sweep-ins | **Bigger** — largest lane by file-touch count; RESTYLE-9 (hover-handler fix) can be done here in the same pass since it's the same files |
 | **B — Dark-mode + `styles.css` dead-block purge** | Token-swap every hardcoded `white`/literal color to the correct surface/overlay/input token (DARK-1, 11+ sites); fix `.button.secondary` (DARK-2); delete or rename the two dead `.file-icon` blocks (DARK-3); resolve the `--radius-xl` split-brain (DARK-4); delete the 3 dead components carrying the same bugs (DSI-6, which also clears POLISH-23 for free). | DARK-1..4 (4) + DSI-6 (1) | **Quick win** for the token swaps (mechanical, same recipe as the already-shipped "F7" fix); **medium** for DARK-3/4 (need cascade investigation before deleting). **Status:** DONE for the shared/global-foundation slice (DESIGN-8 "Foundation" implementer pass) — DARK-2/3/4 fully done; DARK-1 done for onboarding/setup + Wallet Export only (Turbo/Upload/Download surfaces remain for the parallel restyle lane); DSI-6 fully done (all 3 components deleted); one DSI-2 site (`.sync-progress-bar`) fixed as a bonus find. `typecheck`/`lint`/`build`/`test` all pass. |
-| **C — Info-bubble distribution pass** | Wire the already-built, accessible `InfoButton` onto ~20 surfaces per the coverage table; standardize on it over native `title=`/custom hover tooltips (INFO-2); build the missing Gateway Settings UI (INFO-3, bigger — new control, not just a bubble). Sweeps in: POLISH-14 (fingerprint fallback, same session as its bubble), POLISH-20/21 (same files). | INFO-1..8 (8) + 16-concept table + 3 polish sweep-ins | **Quick win** for wiring existing `InfoButton`s (cheapest fix in this whole sweep); **bigger** only for INFO-3 (Gateway UI doesn't exist yet). **Status:** DONE for the dashboard-content-tabs slice of INFO-1/INFO-2 (see those items) — Overview/Activity/Storage now have 8 real `InfoButton` usages between them. Gateway Settings UI (INFO-3), DriveSelector/UserMenu's native-tooltip sites, and Upload-Queue-side work remain for whichever lane owns those files. |
-| **D — Modal a11y + hover-control keyboard reach** | Escape/backdrop-click/focus-trap on `CreateDriveModal`/`AddExistingDriveModal`/`CreateManifestModal` (ideally one shared `<DriveModal>` wrapper); WelcomeBackScreen radio fix; ActivityTab context-menu keyboard reach; label/input `htmlFor` pairs; onboarding `<h1>` promotion. Sweeps in: POLISH-13 (same a11y concern as A11Y-2). | A11Y-1..5 (5) + 1 polish sweep-in | **Quick win** for A11Y-1/4/5 (small, contained diffs); **bigger** for A11Y-3 if done as a shared wrapper (recommended — do it once, not 3x). **Status:** A11Y-2 (ActivityTab context-menu keyboard reach) DONE, with a regression test — see A11Y-2. StorageTab's equivalent row-hover controls (`.quick-action`/`.action-menu-trigger`) were audited and found already keyboard-reachable (opacity-only visibility + `:focus-visible`, no fix needed). A11Y-1/3/4/5 (drive modals, onboarding, WelcomeBackScreen) are outside this lane's file ownership. |
-| **E — Trust & copy fixes** | Every Theme 1 (trust/honesty) and Theme 7 (copy/permanence) item — mostly copy edits, a few conditional/data-wiring fixes (TRUST-1's fake stats, TRUST-3's validator wiring). Sweeps in the onboarding-adjacent Theme 8 polish items that live in the same files (POLISH-1/2/3/6/7/9/10/22). | TRUST-1..6 (6) + COPY-1..15 (15) + 8 polish sweep-ins | **Quick win** for the vast majority (localized copy/conditional fixes); **bigger** only for TRUST-1 if real usage counters are wired instead of a "Coming soon" swap, and COPY-5 if submitted-vs-confirmed needs new state tracking. **Status:** COPY-8 and COPY-15 DONE as part of the dashboard-content-tabs lane (both live in OverviewTab/ActivityTab). Remaining COPY/TRUST items are outside this lane's file ownership. |
-| **F — Design-system integrity** | Token-naming consolidation (DSI-1), status-hue misuse (DSI-2), emoji→lucide (DSI-3), status-pill consolidation (DSI-4), Cancel-button standardization (DSI-5), focus-visible fix (DSI-7), onboarding type-scale migration (DSI-8). Sweeps in: POLISH-4/5/8/11/12/15 (same consistency theme). | DSI-1..8 minus DSI-6 (7, since DSI-6 moved to Lane B) + 6 polish sweep-ins | **Quick win** for DSI-2/3/5/7 (small, mechanical); **bigger** for DSI-1 (6+ files) and DSI-8 (3 files, full type-scale pass). **Status:** the `StorageTab.tsx` slice of DSI-2 and the `OverviewTab.tsx` slice of DSI-3 are DONE (dashboard content-tabs lane) — see those items. DSI-4 (status-pill consolidation) was partially addressed as a side effect (StorageTab's ad hoc pill now sources correct per-status colors from the same `STATUS_META` map as the row icon) but the 3-implementation architectural consolidation itself is untouched. DSI-1/5/7/8 and the remaining DSI-2/3 sites are outside this lane's file ownership. |
+| **C — Info-bubble distribution pass** | Wire the already-built, accessible `InfoButton` onto ~20 surfaces per the coverage table; standardize on it over native `title=`/custom hover tooltips (INFO-2); build the missing Gateway Settings UI (INFO-3). Sweeps in: POLISH-14, POLISH-20/21. | INFO-1..8 (8) + 16-concept table + 3 polish sweep-ins | **Quick win** for wiring existing `InfoButton`s; **bigger** only for INFO-3. **Status:** DONE across dashboard slice (Overview/Activity/Storage — 8 `InfoButton`s, INFO-1/INFO-2), Settings/Gateway slice (INFO-3 Gateway UI reusing `config:set-gateway`, INFO-2's `UserMenu` sites, INFO-7 ArNS, Wallet-address row, POLISH-20 Switch-Profile, DSI-2's `settings.css` site), and drives slice (INFO-2 DriveSelector + public/private/cost/fingerprint bubbles, POLISH-14 fingerprint fallback). Remaining: INFO-4/5/6 onboarding surfaces (onboarding lane). |
+| **D — Modal a11y + hover-control keyboard reach** | Escape/backdrop-click/focus-trap on `CreateDriveModal`/`AddExistingDriveModal`/`CreateManifestModal` (ideally one shared wrapper); WelcomeBackScreen radio fix; ActivityTab context-menu keyboard reach; label/input `htmlFor` pairs; onboarding `<h1>` promotion. Sweeps in: POLISH-13. | A11Y-1..5 (5) + 1 polish sweep-in | **Quick win** for A11Y-1/4/5; **bigger** for A11Y-3 (shared wrapper). **Status:** A11Y-2 DONE (dashboard lane, ActivityTab context-menu keyboard reach + regression test). A11Y-3 DONE (drives lane — shared `useModalA11y` hook wired into all 4 drive/manifest modals: Escape/backdrop/focus-trap/return-focus), plus A11Y-4 label/id pairs. Remaining: A11Y-1 (WelcomeBackScreen radios) + A11Y-5 (onboarding `<h1>`) — onboarding lane. |
+| **E — Trust & copy fixes** | Every Theme 1 (trust/honesty) and Theme 7 (copy/permanence) item — mostly copy edits, a few conditional/data-wiring fixes (TRUST-1's fake stats, TRUST-3's validator wiring). Sweeps in the onboarding-adjacent Theme 8 polish items (POLISH-1/2/3/6/7/9/10/22). | TRUST-1..6 (6) + COPY-1..15 (15) + 8 polish sweep-ins | **Quick win** for the vast majority; **bigger** only for TRUST-1 and COPY-5. **Status:** TRUST-1/2/6 DONE (DESIGN-5 lane — fake stats wired-to-real or removed, Enterprise overclaim cut, AR→Credits relabel). COPY-8/COPY-15 DONE (dashboard lane). Remaining TRUST-3/4/5 + most COPY items live on onboarding surfaces — onboarding lane. |
+| **F — Design-system integrity** | Token-naming consolidation (DSI-1), status-hue misuse (DSI-2), emoji→lucide (DSI-3), status-pill consolidation (DSI-4), Cancel-button standardization (DSI-5), focus-visible fix (DSI-7), onboarding type-scale migration (DSI-8). Sweeps in: POLISH-4/5/8/11/12/15. | DSI-1..8 minus DSI-6 (7) + 6 polish sweep-ins | **Quick win** for DSI-2/3/5/7; **bigger** for DSI-1 and DSI-8. **Status:** DSI-2 DONE across all 4 named sites (Foundation `.sync-progress-bar`, dashboard `StorageTab`, settings `.settings-icon`, drives `CreateDriveModal`) + DESIGN-5 `turbo-credits.css`. DSI-3 emoji→lucide DONE for dashboard (OverviewTab + 8 clipboard icons) + TurboAboutTab table. DSI-5 Cancel-button standardization DONE (drives lane, all 4 modals). DSI-7 focus-visible partial. Remaining: DSI-1 (token-naming, 6+ files), DSI-4 (status-pill architecture), DSI-8 (onboarding type-scale). |
 
 **Suggested dispatch order:** B and E first (both are almost entirely quick wins and
 fix the two categories — visible breakage and dishonest copy — that damage trust

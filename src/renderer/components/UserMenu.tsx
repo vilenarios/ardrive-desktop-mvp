@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  User, 
-  ChevronDown, 
-  Settings, 
-  LogOut, 
+import {
+  User,
+  ChevronDown,
+  Settings,
+  LogOut,
   Wallet,
   Copy,
   ExternalLink,
@@ -13,10 +13,10 @@ import {
   Users,
   Plus,
   Edit,
-  HelpCircle,
   X
 } from 'lucide-react';
 import { Profile } from '../../types';
+import { InfoButton } from './common/InfoButton';
 
 interface UserMenuProps {
   currentProfile: Profile;
@@ -186,28 +186,35 @@ const UserMenu: React.FC<UserMenuProps> = ({
                       {currentProfile.arnsName}
                     </div>
                   ) : (
-                    <button 
-                      className="arns-prompt"
-                      onClick={async () => {
-                        await window.electronAPI.shell.openExternal('https://arns.ar.io');
-                        setIsOpen(false);
-                      }}
-                      title="Get your ArNS name"
-                    >
-                      <Zap size={14} />
-                      <span>Get your ArNS name</span>
-                      <ExternalLink size={12} />
-                    </button>
+                    // INFO-7: this linked out to arns.ar.io with zero in-app
+                    // explanation of what ArNS is - add the InfoButton
+                    // alongside it rather than relying on the link alone.
+                    <div className="arns-prompt-row">
+                      <button
+                        className="arns-prompt"
+                        onClick={async () => {
+                          await window.electronAPI.shell.openExternal('https://arns.ar.io');
+                          setIsOpen(false);
+                        }}
+                        title="Get your ArNS name"
+                      >
+                        <Zap size={14} />
+                        <span>Get your ArNS name</span>
+                        <ExternalLink size={12} />
+                      </button>
+                      <InfoButton tooltip="ArNS gives your wallet a memorable name instead of a long address — like a domain name for Arweave." />
+                    </div>
                   )}
                   <div className="profile-address">
                     <span>{currentProfile.address.slice(0, 6)}...{currentProfile.address.slice(-4)}</span>
-                    <button 
+                    <button
                       className="copy-button"
                       onClick={handleCopyAddress}
                       title="Copy address"
                     >
                       {copiedAddress ? <Check size={14} /> : <Copy size={14} />}
                     </button>
+                    <InfoButton tooltip="This is your public wallet address — safe to share. It's used to receive AR tokens and to prove you own your uploads. It is not a secret." />
                   </div>
                 </div>
               </div>
@@ -223,10 +230,9 @@ const UserMenu: React.FC<UserMenuProps> = ({
               <div className="balance-label">
                 <Wallet size={16} />
                 <span>AR Balance</span>
-                <div className="balance-tooltip">
-                  <HelpCircle size={14} />
-                  <div className="menu-tooltip-content">Your Arweave token balance for permanent storage</div>
-                </div>
+                {/* INFO-2: was a hand-rolled hover-only tooltip (no keyboard/
+                    touch access) — standardized on the shared InfoButton. */}
+                <InfoButton tooltip="Your Arweave (AR) token balance — used to pay for permanent storage directly on the network." />
               </div>
               <div className="balance-controls">
                 <div className="balance-value">
@@ -248,10 +254,9 @@ const UserMenu: React.FC<UserMenuProps> = ({
                 <div className="balance-label">
                   <Zap size={16} />
                   <span>Turbo Credits</span>
-                  <div className="balance-tooltip">
-                    <HelpCircle size={14} />
-                    <div className="menu-tooltip-content">Credits for fast, gasless uploads via Turbo</div>
-                  </div>
+                  {/* INFO-2 + Turbo Credits coverage-table copy: same fix as
+                      the AR balance row above. */}
+                  <InfoButton tooltip="Turbo Credits are prepaid, instant-upload credits you buy with a card — no crypto wallet required." />
                 </div>
                 <div className="balance-controls">
                   <div className="balance-value">{formatBalance(turboBalance)}</div>
@@ -294,6 +299,21 @@ const UserMenu: React.FC<UserMenuProps> = ({
 
           {/* Settings & Logout */}
           <div className="menu-section final-section">
+            {/* POLISH-20: onSwitchProfile/profileCount were threaded down
+                from Dashboard.tsx but never rendered anywhere in this menu -
+                ProfileSwitcher was unreachable dead code. Wiring it up here,
+                right next to Settings, is the "one place for account stuff"
+                fix the design sweep asked for. */}
+            {onSwitchProfile && (
+              <button className="menu-item" onClick={() => {
+                onSwitchProfile();
+                setIsOpen(false);
+              }}>
+                <Users size={16} />
+                <span>Switch Profile{profileCount > 1 ? ` (${profileCount})` : ''}</span>
+              </button>
+            )}
+
             <button className="menu-item" onClick={() => {
               onShowSettings();
               setIsOpen(false);
@@ -301,7 +321,7 @@ const UserMenu: React.FC<UserMenuProps> = ({
               <Settings size={16} />
               <span>Settings</span>
             </button>
-            
+
             <button className="menu-item logout" onClick={handleLogoutClick}>
               <LogOut size={16} />
               <span>Logout</span>

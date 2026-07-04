@@ -177,6 +177,14 @@
 }
 
 /* Simplified ArNS Prompt */
+/* INFO-7: wraps the prompt + its new InfoButton on one row. */
+.arns-prompt-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
 .arns-prompt {
   display: flex;
   align-items: center;
@@ -190,7 +198,6 @@
   color: var(--ardrive-primary);
   cursor: pointer;
   transition: all 0.2s ease;
-  margin-bottom: var(--space-2);
   white-space: nowrap;
 }
 
@@ -317,61 +324,12 @@
   to { transform: rotate(360deg); }
 }
 
-/* Simplified Tooltip Styles
- * F7 + collision fix: this used to be named `.tooltip-content` — the exact
- * same class name InfoButton.tsx uses (info-button.css). Being a global,
- * un-namespaced selector, whichever stylesheet imported later in styles.css
- * won the cascade for BOTH components, so info-button.css's own DESIGN-3
- * dark-mode fix (background/color forced !important) was fighting this
- * file's later, non-!important `position`/`padding`/etc, and this tooltip's
- * own background (`--gray-900`, which bridges to near-white `--text-primary`
- * in dark mode) with literal white text was unreadable in dark mode.
- * Renamed to `.menu-tooltip-content` (unique to this component) and put on
- * theme-reactive surface/text tokens instead. */
-.balance-tooltip,
-.export-tooltip {
-  position: relative;
-  display: flex;
-  align-items: center;
-  margin-left: var(--space-2);
-}
-
-.balance-tooltip:hover .menu-tooltip-content,
-.export-tooltip:hover .menu-tooltip-content {
-  opacity: 1;
-  visibility: visible;
-}
-
-.menu-tooltip-content {
-  position: absolute;
-  bottom: calc(100% + var(--space-1));
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--surface-overlay);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-  box-shadow: var(--elevation-3);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: 0.75rem;
-  white-space: nowrap;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity var(--motion-base) var(--ease-standard),
-              visibility var(--motion-base) var(--ease-standard);
-  z-index: 1001;
-  pointer-events: none;
-}
-
-.menu-tooltip-content::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 0.25rem solid transparent;
-  border-top-color: var(--surface-overlay);
-}
+/* INFO-2: the hand-rolled hover-only `.balance-tooltip`/`.export-tooltip` +
+ * `.menu-tooltip-content` widgets these rules supported are gone — both
+ * live call sites (AR/Turbo balance rows) now use the shared, keyboard-
+ * accessible InfoButton instead (see UserMenu.tsx). `.export-tooltip` had
+ * no live call site even before this change (repo-wide grep confirms).
+ * Rules removed rather than left as dead CSS. */
 
 /* Menu Item Styles */
 .menu-item {

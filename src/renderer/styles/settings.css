@@ -138,10 +138,22 @@
   margin-bottom: var(--space-4);
 }
 
+/* DSI-2: these are informational section icons (Sync Folder / Gateway /
+ * Account Export / About), not alert or call-to-action signals — brand red
+ * here taught users to distrust the "something's wrong" hue. Neutral icon
+ * tone instead, matching the resting-state convention used for other
+ * decorative row icons (dashboard-shell.css, drive-selector.css). */
 .settings-icon {
-  color: var(--ardrive-primary);
+  color: var(--icon-mid);
   flex-shrink: 0;
   margin-top: var(--space-1); /* Align with text */
+}
+
+/* Section title + InfoButton row (Gateway heading) */
+.settings-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .settings-item-info {
@@ -254,6 +266,73 @@
 
 .settings-button-secondary svg {
   opacity: 0.7;
+}
+
+/* Gateway field (INFO-3) — stacked layout, overriding the row layout
+ * .settings-item-content otherwise uses for a single trailing action. */
+.settings-gateway-content {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.settings-input-label {
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Text input — DESIGN-SYSTEM.md §6.2 */
+.settings-input {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-body-lg);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  transition: border-color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.settings-input::placeholder {
+  color: var(--input-placeholder);
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.settings-input:disabled {
+  background: var(--input-bg-disabled);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.settings-input.invalid {
+  border-color: var(--danger);
+}
+
+.settings-field-error {
+  color: var(--danger-fg);
+  font-size: var(--text-body-sm);
+}
+
+.settings-field-success {
+  color: var(--success-fg);
+  font-size: var(--text-body-sm);
+}
+
+.settings-gateway-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
 }
 
 /* Responsive Design */
