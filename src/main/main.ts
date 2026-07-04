@@ -34,6 +34,16 @@ if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
 
+// MONEY-7: the exact URL the Turbo/Stripe hosted checkout redirects to on a
+// completed payment. Source of truth is the Turbo payment service
+// (ardriveapp/turbo-payment-service — constants.ts:
+// `defaultTopUpCheckoutSuccessUrl = "https://app.ardrive.io"`), which the
+// turbo-sdk's getCheckout never overrides. Success is detected by matching a
+// navigation/redirect against this EXACT origin+path — never a substring or a
+// timer. If the payment service ever changes its default success URL, update
+// this constant in lockstep.
+const PAYMENT_SUCCESS_URL = 'https://app.ardrive.io';
+
 // Utility function to safely wrap IPC handlers with error handling
 function safeIpcHandler<T extends any[], R>(
   handler: (...args: T) => Promise<R>
@@ -255,30 +265,12 @@ class ArDriveApp {
     this.mainWindow.once('ready-to-show', () => {
       this.mainWindow?.show();
     });
-    
-    // Refresh wallet info when window regains focus only if payment-related
-    this.mainWindow.on('focus', async () => {
-      try {
-        // Only refresh if we're on a payment-related page
-        const currentURL = await this.mainWindow?.webContents.getURL();
-        const isPaymentRelated = currentURL && (
-          currentURL.includes('turbo') || 
-          currentURL.includes('payment') ||
-          currentURL.includes('checkout')
-        );
-        
-        if (isPaymentRelated) {
-          console.log('Window focused on payment-related page, refreshing wallet info');
-          const walletInfo = await this.walletManager.getWalletInfo();
-          if (walletInfo) {
-            // Send updated wallet info to renderer
-            this.mainWindow?.webContents.send('wallet-info-updated', walletInfo);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to refresh wallet info on focus:', error);
-      }
-    });
+
+    // MONEY-7: the old focus-based wallet refresh matched the main window's
+    // URL against 'turbo'/'payment'/'checkout' — strings the renderer URL
+    // (index.html / localhost dev server) never contains, so it was dead code.
+    // Wallet balance now refreshes on the actual payment-completion event in
+    // the payment:open-window handler below.
 
     this.mainWindow.on('close', (event) => {
       if (!this.isQuitting) {
@@ -2930,7 +2922,15 @@ class ArDriveApp {
       }
     });
     
-    // Open payment in a new child window instead of external browser
+    // Open the Turbo/Stripe checkout in a hardened child window (MONEY-7).
+    // Guarantees:
+    //  - host pinning: only the exact checkout host may load/navigate;
+    //  - success detection: exact-URL match on will-navigate/will-redirect
+    //    (never a substring or a timer);
+    //  - exactly one accurate event: completing → one 'payment-completed';
+    //    closing without completing → one 'payment-cancelled'; never both,
+    //    never zero, never a success on a mere close (settled/once guard);
+    //  - balance refresh on the success path only.
     ipcMain.handle('payment:open-window', async (_, url: string) => {
       try {
         // Validate URL
@@ -2939,12 +2939,24 @@ class ArDriveApp {
           minLength: 1,
           maxLength: 2048
         });
-        
-        // Basic URL validation - must start with https for payment security
+
+        // Payment URLs must use HTTPS.
         if (!validatedUrl.startsWith('https://')) {
           throw new ValidationError('Payment URL must use HTTPS', 'url');
         }
-        
+
+        // Host pinning: the only host the payment window may load or navigate
+        // to is the exact host of the checkout URL the trusted Turbo SDK
+        // handed us (Stripe hosted checkout → checkout.stripe.com). Any
+        // navigation to a different origin is blocked — the sole exception is
+        // the exact success redirect, handled below.
+        let checkoutHost: string;
+        try {
+          checkoutHost = new URL(validatedUrl).host;
+        } catch {
+          throw new ValidationError('Payment URL is not a valid URL', 'url');
+        }
+
         const paymentWindow = new BrowserWindow({
           width: 600,
           height: 700,
@@ -2952,38 +2964,117 @@ class ArDriveApp {
           modal: true,
           webPreferences: {
             nodeIntegration: false,
-            contextIsolation: true
+            contextIsolation: true,
+            sandbox: true
           },
           autoHideMenuBar: true,
           title: 'Complete Your Payment'
         });
-        
-        paymentWindow.loadURL(validatedUrl);
-      
-      // Listen for successful payment redirects
-      paymentWindow.webContents.on('will-navigate', (event, navUrl) => {
-        console.log('Payment window navigating to:', navUrl);
-        
-        // Check if this is a success redirect
-        if (navUrl.includes('app.ardrive.io') || navUrl.includes('success')) {
-          // Send success event to main window
+
+        // Deny any popup / new-window request originating from the checkout
+        // page — the payment flow is single-window.
+        paymentWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
+        // Exactly-one-event invariant. The first of {success, cancel} to
+        // settle wins; the loser (e.g. the 'closed' our own close() fires
+        // after a success) becomes a no-op.
+        let settled = false;
+
+        const settleSuccess = () => {
+          if (settled) return;
+          settled = true;
+          // Exactly one success event; the renderer refreshes its Turbo
+          // balance on this.
           this.mainWindow?.webContents.send('payment-completed');
-          
-          // Close payment window after a short delay
-          setTimeout(() => {
+          if (!paymentWindow.isDestroyed()) {
             paymentWindow.close();
-          }, 2000);
-        }
+          }
+          // Balance refresh on completion (success path only). Best-effort:
+          // a refresh failure must not suppress the success event.
+          this.walletManager.getWalletInfo()
+            .then((walletInfo) => {
+              if (walletInfo) {
+                this.mainWindow?.webContents.send('wallet-info-updated', walletInfo);
+              }
+            })
+            .catch((refreshError) => {
+              console.error('[payment] Failed to refresh wallet info after payment:', refreshError);
+            });
+        };
+
+        const settleCancel = () => {
+          if (settled) return;
+          settled = true;
+          // Exactly one cancel event: the user closed the window without
+          // completing checkout.
+          this.mainWindow?.webContents.send('payment-cancelled');
+        };
+
+        // Exact success-URL match: same origin AND same (trailing-slash
+        // normalized) path, ignoring query/hash. Not a substring test.
+        const isSuccessUrl = (candidate: string): boolean => {
+          try {
+            const u = new URL(candidate);
+            const s = new URL(PAYMENT_SUCCESS_URL);
+            const normPath = (p: string) => p.replace(/\/+$/, '');
+            return u.origin === s.origin && normPath(u.pathname) === normPath(s.pathname);
+          } catch {
+            return false;
+          }
+        };
+
+        // Guard every top-level navigation and server redirect.
+        const handleNav = (event: { preventDefault(): void }, navUrl: string) => {
+          if (isSuccessUrl(navUrl)) {
+            // Don't render the success page — settle and close instead.
+            event.preventDefault();
+            settleSuccess();
+            return;
+          }
+          let host: string | null = null;
+          try {
+            host = new URL(navUrl).host;
+          } catch {
+            host = null;
+          }
+          if (host !== checkoutHost) {
+            // Never log navUrl — the checkout URL carries the session id.
+            console.warn('[payment] Blocked navigation to a non-checkout host');
+            event.preventDefault();
+          }
+        };
+
+        paymentWindow.webContents.on('will-navigate', handleNav);
+        paymentWindow.webContents.on('will-redirect', handleNav);
+        // Belt: catch a success arrived-at without a cancelable pre-event.
+        paymentWindow.webContents.on('did-navigate', (_event, navUrl) => {
+          if (isSuccessUrl(navUrl)) {
+            settleSuccess();
+          }
         });
-        
-        return true;
+
+        // User closed the window (X / OS) → cancel, unless already settled.
+        paymentWindow.on('closed', () => {
+          settleCancel();
+        });
+
+        // Do not await: loadURL rejects (ERR_ABORTED) whenever we intercept a
+        // redirect, and its message embeds the checkout URL — never surface it.
+        paymentWindow.loadURL(validatedUrl).catch(() => {
+          console.error('[payment] Payment window failed to load the checkout URL');
+        });
+
+        return { success: true };
       } catch (error) {
         if (error instanceof ValidationError) {
           console.error('Payment window validation failed:', error.message);
-          throw error;
+        } else {
+          console.error('Failed to open payment window:', error);
         }
-        console.error('Failed to open payment window:', error);
-        throw error;
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to open payment window'
+        };
       }
     });
 
