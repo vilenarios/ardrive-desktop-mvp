@@ -14,7 +14,7 @@ const api = {
     generate: (password: string) =>
       ipcRenderer.invoke('wallet:create-new', password),
     completeSetup: () =>
-      Promise.resolve(true),
+      ipcRenderer.invoke('wallet:complete-setup'),
     getInfo: (forceRefresh?: boolean) => 
       ipcRenderer.invoke('wallet:get-info', forceRefresh),
     ensureLoaded: () =>
