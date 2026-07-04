@@ -6,7 +6,11 @@ import type {
   PermawebFile,
   FolderNode,
   ManifestCreationResult,
+  WalletInfo,
+  Profile,
+  AppConfig,
 } from '../types';
+import type { ExportResult } from './wallet-export-manager';
 
 // UX-3 / D-005: methods whose main-process handler is wrapped in
 // `envelopeHandler` are annotated `Promise<IpcResult<T>>`. Because the
@@ -16,42 +20,44 @@ import type {
 // guard. Un-annotated methods below are handlers not yet migrated (raw shape).
 
 const api = {
-  // Wallet operations
+  // Wallet operations (UX-3: migrated to the IpcResult envelope)
   wallet: {
-    import: (walletPath: string, password: string) => 
+    import: (walletPath: string, password: string): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('wallet:import', walletPath, password),
-    importFromSeedPhrase: (seedPhrase: string, password: string) =>
+    importFromSeedPhrase: (seedPhrase: string, password: string): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('wallet:import-from-seed-phrase', seedPhrase, password),
-    importFromKeyfile: (walletPath: string, password: string) =>
+    importFromKeyfile: (walletPath: string, password: string): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('wallet:import', walletPath, password),
-    createNew: (password: string) =>
+    createNew: (password: string): Promise<IpcResult<{ seedPhrase: string; address: string }>> =>
       ipcRenderer.invoke('wallet:create-new', password),
-    generate: (password: string) =>
+    generate: (password: string): Promise<IpcResult<{ seedPhrase: string; address: string }>> =>
       ipcRenderer.invoke('wallet:create-new', password),
-    completeSetup: () =>
+    completeSetup: (): Promise<IpcResult<{ address: string }>> =>
       ipcRenderer.invoke('wallet:complete-setup'),
-    getInfo: (forceRefresh?: boolean) => 
+    getInfo: (forceRefresh?: boolean): Promise<IpcResult<WalletInfo | null>> =>
       ipcRenderer.invoke('wallet:get-info', forceRefresh),
-    ensureLoaded: () =>
+    ensureLoaded: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('wallet:ensure-loaded'),
-    isLoaded: () =>
+    isLoaded: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('wallet:is-loaded'),
-    hasStoredWallet: () =>
+    hasStoredWallet: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('wallet:has-stored'),
     // UX-7: the specific reason the last profiles.switch(id, password)
     // attempt failed (wrong password vs. a corrupted/IO wallet-file
     // failure), so the login UI can distinguish them.
-    getLastAuthError: () =>
+    getLastAuthError: (): Promise<IpcResult<string | null>> =>
       ipcRenderer.invoke('wallet:get-last-auth-error'),
-    clearStored: () =>
+    clearStored: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('wallet:clear-stored'),
-    logout: () =>
+    logout: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('wallet:logout'),
+    // UX-3: outer IpcResult envelope wraps the inner ExportResult (which keeps
+    // its own success/data/error/warning). Callers unwrap outer, then inner.
     export: (options: {
       format: 'jwk-encrypted' | 'jwk-plain' | 'seed-phrase' | 'private-key';
       password: string;
       newPassword?: string;
-    }) => ipcRenderer.invoke('wallet:export', options),
+    }): Promise<IpcResult<ExportResult>> => ipcRenderer.invoke('wallet:export', options),
   },
 
   // Drive operations (UX-3: all migrated to the IpcResult envelope)
@@ -170,17 +176,17 @@ const api = {
       ipcRenderer.invoke('uploads:retry-all'),
   },
 
-  // Config operations
+  // Config operations (UX-3: migrated to the IpcResult envelope)
   config: {
-    get: () => 
+    get: (): Promise<IpcResult<AppConfig>> =>
       ipcRenderer.invoke('config:get'),
-    markFirstRunComplete: () =>
+    markFirstRunComplete: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('config:mark-first-run-complete'),
-    clearDrive: () =>
+    clearDrive: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('config:clear-drive'),
-    clearFolder: () =>
+    clearFolder: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('config:clear-folder'),
-    setTheme: (theme: 'light' | 'dark' | 'system') =>
+    setTheme: (theme: 'light' | 'dark' | 'system'): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('config:set-theme', theme),
   },
 
@@ -222,11 +228,11 @@ const api = {
     },
   },
 
-  // Security operations
+  // Security operations (UX-3: migrated to the IpcResult envelope)
   security: {
-    isKeychainAvailable: () =>
+    isKeychainAvailable: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('security:is-keychain-available'),
-    getMethod: () =>
+    getMethod: (): Promise<IpcResult<'keychain' | 'fallback'>> =>
       ipcRenderer.invoke('security:get-method'),
   },
 
@@ -295,22 +301,22 @@ const api = {
       ipcRenderer.invoke('arns:get-profile', address),
   },
 
-  // Profile operations
+  // Profile operations (UX-3: migrated to the IpcResult envelope)
   profiles: {
-    list: () =>
+    list: (): Promise<IpcResult<Profile[]>> =>
       ipcRenderer.invoke('profiles:list'),
-    getActive: () =>
+    getActive: (): Promise<IpcResult<Profile | null>> =>
       ipcRenderer.invoke('profiles:get-active'),
-    switch: (profileId: string, password?: string) =>
+    switch: (profileId: string, password?: string): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('profiles:switch', profileId, password),
-    update: (profileId: string, updates: any) =>
+    update: (profileId: string, updates: any): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('profiles:update', profileId, updates),
-    delete: (profileId: string) =>
+    delete: (profileId: string): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('profiles:delete', profileId),
   },
-  
+
   profile: {
-    getActive: () =>
+    getActive: (): Promise<IpcResult<Profile | null>> =>
       ipcRenderer.invoke('profiles:get-active'),
   },
 

@@ -64,8 +64,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let cancelled = false;
     (async () => {
       try {
-        const config = await window.electronAPI?.config?.get?.();
-        const stored = config?.theme;
+        // UX-3: config.get returns the IpcResult envelope — read theme off .data.
+        const configResult = await window.electronAPI?.config?.get?.();
+        const stored = configResult?.success ? configResult.data.theme : undefined;
         if (!cancelled && (stored === 'light' || stored === 'dark' || stored === 'system')) {
           setPreferenceState(stored);
         }

@@ -12,8 +12,12 @@ export const SecurityStatus: React.FC = () => {
 
   const checkSecurityStatus = async () => {
     try {
-      const available = await window.electronAPI.security.isKeychainAvailable();
-      const method = await window.electronAPI.security.getMethod();
+      // UX-3: unwrap the IpcResult envelope (the wrapper object is always
+      // truthy, so passing it straight to setKeychainAvailable would be wrong).
+      const availableResult = await window.electronAPI.security.isKeychainAvailable();
+      const methodResult = await window.electronAPI.security.getMethod();
+      const available = availableResult.success && availableResult.data;
+      const method = methodResult.success ? methodResult.data : 'fallback';
       setKeychainAvailable(available);
       setSecurityMethod(method);
     } catch (error) {

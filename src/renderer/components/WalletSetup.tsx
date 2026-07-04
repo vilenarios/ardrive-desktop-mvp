@@ -140,11 +140,16 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
       setLoading(true);
       setError(null);
       
-      // Generate wallet and seed phrase
+      // Generate wallet and seed phrase (UX-3: unwrap envelope — business
+      // errors now resolve as {success:false}, they no longer reject, so this
+      // must branch on .success rather than relying on the catch block).
       const result = await window.electronAPI.wallet.generate(password);
-      
-      setGeneratedSeedPhrase(result.seedPhrase);
-      setGeneratedAddress(result.address);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to create account');
+      }
+
+      setGeneratedSeedPhrase(result.data.seedPhrase);
+      setGeneratedAddress(result.data.address);
       nextStep();
       
     } catch (err) {
@@ -161,9 +166,11 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
 
       // UX-20: persistence (profile + encrypted wallet) actually happens here,
       // now that the user has confirmed they saved their recovery phrase.
+      // UX-3: IpcResult envelope — branch on .success (business failures
+      // resolve, they don't reject).
       const result = await window.electronAPI.wallet.completeSetup();
-      if (!result || result.success === false) {
-        throw new Error(result?.error || 'Failed to complete account setup');
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to complete account setup');
       }
 
       // Navigate immediately - no need for success message
@@ -198,8 +205,13 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
           return;
         }
         
-        // Import account from JWK file
-        await window.electronAPI.wallet.importFromKeyfile(walletPath, password);
+        // Import account from JWK file (UX-3: unwrap envelope — a failed
+        // import now resolves as {success:false} instead of rejecting, so we
+        // must re-throw to keep the error visible to the user).
+        const importResult = await window.electronAPI.wallet.importFromKeyfile(walletPath, password);
+        if (!importResult.success) {
+          throw new Error(importResult.error || 'Failed to import account');
+        }
       } else {
         // Import account from recovery phrase
         const seedValidation = validateSeedPhrase(seedPhrase);
@@ -207,8 +219,11 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
           setError(seedValidation.error!);
           return;
         }
-        
-        await window.electronAPI.wallet.importFromSeedPhrase(seedPhrase.trim(), password);
+
+        const importResult = await window.electronAPI.wallet.importFromSeedPhrase(seedPhrase.trim(), password);
+        if (!importResult.success) {
+          throw new Error(importResult.error || 'Failed to import account');
+        }
       }
       
       // Navigate immediately - no need for success message

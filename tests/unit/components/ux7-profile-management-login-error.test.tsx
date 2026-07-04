@@ -47,7 +47,8 @@ describe('ProfileManagement login error surfacing (UX-7)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockElectronAPI.profiles.list.mockResolvedValue([profile]);
+    // UX-3: profiles.* now return the IpcResult envelope.
+    mockElectronAPI.profiles.list.mockResolvedValue({ success: true, data: [profile] });
   });
 
   const submitPassword = async (value: string) => {
@@ -58,7 +59,7 @@ describe('ProfileManagement login error surfacing (UX-7)', () => {
   };
 
   it('shows "Invalid password" on a wrong password', async () => {
-    mockElectronAPI.profiles.switch.mockResolvedValue(false);
+    mockElectronAPI.profiles.switch.mockResolvedValue({ success: true, data: false });
     mockElectronAPI.wallet.getLastAuthError.mockResolvedValue({
       success: true,
       data: 'Invalid password',
@@ -75,7 +76,7 @@ describe('ProfileManagement login error surfacing (UX-7)', () => {
   });
 
   it('shows a distinct message for a corrupted/unreadable wallet file, not "Invalid password"', async () => {
-    mockElectronAPI.profiles.switch.mockResolvedValue(false);
+    mockElectronAPI.profiles.switch.mockResolvedValue({ success: true, data: false });
     mockElectronAPI.wallet.getLastAuthError.mockResolvedValue({
       success: true,
       data: 'Invalid wallet data format',
@@ -95,7 +96,7 @@ describe('ProfileManagement login error surfacing (UX-7)', () => {
   });
 
   it('falls back to the generic message when no reason is available (data: null)', async () => {
-    mockElectronAPI.profiles.switch.mockResolvedValue(false);
+    mockElectronAPI.profiles.switch.mockResolvedValue({ success: true, data: false });
     mockElectronAPI.wallet.getLastAuthError.mockResolvedValue({ success: true, data: null });
 
     render(
@@ -108,7 +109,7 @@ describe('ProfileManagement login error surfacing (UX-7)', () => {
   });
 
   it('falls back to the generic message when the reason lookup itself fails (envelope success:false)', async () => {
-    mockElectronAPI.profiles.switch.mockResolvedValue(false);
+    mockElectronAPI.profiles.switch.mockResolvedValue({ success: true, data: false });
     mockElectronAPI.wallet.getLastAuthError.mockResolvedValue({
       success: false,
       error: 'IPC failure',
@@ -124,7 +125,7 @@ describe('ProfileManagement login error surfacing (UX-7)', () => {
   });
 
   it('still logs in successfully on the correct password', async () => {
-    mockElectronAPI.profiles.switch.mockResolvedValue(true);
+    mockElectronAPI.profiles.switch.mockResolvedValue({ success: true, data: true });
 
     render(
       <ProfileManagement onProfileSelected={onProfileSelected} onCreateNewProfile={onCreateNewProfile} />

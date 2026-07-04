@@ -55,14 +55,18 @@ Object.defineProperty(window, 'electronAPI', {
 describe('App boot routing fail-safe (UX-7)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockElectronAPI.config.get.mockResolvedValue({ syncFolder: '/sync' });
-    mockElectronAPI.profiles.list.mockResolvedValue([profile]);
-    mockElectronAPI.profile.getActive.mockResolvedValue(profile);
-    mockElectronAPI.wallet.hasStoredWallet.mockResolvedValue(true);
+    // UX-3: config/profiles/profile/wallet handlers now return the IpcResult envelope.
+    mockElectronAPI.config.get.mockResolvedValue({ success: true, data: { syncFolder: '/sync' } });
+    mockElectronAPI.profiles.list.mockResolvedValue({ success: true, data: [profile] });
+    mockElectronAPI.profile.getActive.mockResolvedValue({ success: true, data: profile });
+    mockElectronAPI.wallet.hasStoredWallet.mockResolvedValue({ success: true, data: true });
     mockElectronAPI.wallet.getInfo.mockResolvedValue({
-      address: 'addr-1',
-      balance: '1.0',
-      walletType: 'arweave',
+      success: true,
+      data: {
+        address: 'addr-1',
+        balance: '1.0',
+        walletType: 'arweave',
+      },
     });
     mockElectronAPI.arns.getProfile.mockResolvedValue(null);
     mockElectronAPI.driveMappings.list.mockResolvedValue([]);
@@ -131,7 +135,7 @@ describe('App boot routing fail-safe (UX-7)', () => {
   });
 
   it('a genuinely new user (no profiles) still routes to wallet-setup, not boot-error', async () => {
-    mockElectronAPI.profiles.list.mockResolvedValue([]);
+    mockElectronAPI.profiles.list.mockResolvedValue({ success: true, data: [] });
 
     render(<App />);
 
