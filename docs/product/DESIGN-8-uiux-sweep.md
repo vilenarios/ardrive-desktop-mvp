@@ -406,6 +406,18 @@ opacity:0; pointer-events:none` / a standard `.sr-only` class) instead of
 `display:none`, so the input stays tabbable and `:focus-within` fires.
 
 ### A11Y-2 — Activity row context menu is mouse-only
+**Status: DONE (DESIGN-8, dashboard content-tabs lane).** Removed the
+`hoveredItem` state and its `onMouseEnter`/`onMouseLeave` handlers entirely;
+the `.context-menu-trigger` button is now always mounted and its visibility
+is a pure CSS concern (`activity-tab.css`: opacity 0 by default, revealed via
+`.unified-activity-item:hover`/`:focus-within .context-menu-trigger`, plus a
+`.open` modifier so the trigger stays visible while its own dropdown is
+expanded — same recipe as StorageTab's already-working `.quick-action`/
+`.action-menu-trigger`). Added `aria-label`/`aria-haspopup`/`aria-expanded` on
+the trigger and `role="menu"`/`role="menuitem"` on the dropdown. Regression
+test: `tests/unit/components/activity-tab-context-menu-a11y.test.tsx` (asserts
+the trigger is a real, queryable, clickable button with **no** hover simulated
+anywhere in the test — the exact scenario this bug made impossible).
 `src/renderer/components/dashboard/ActivityTab.tsx:626-627,745-801` · **broken** (for
 keyboard users) The "…" trigger only mounts when `hoveredItem === activity.id`
 (JS-state-gated, not CSS `:hover`) — no `:focus-within` fallback exists, so
@@ -452,6 +464,16 @@ almost everything below is "wire up the component that's already there," which i
 about as cheap as design debt gets.
 
 ### INFO-1 — `InfoButton` imported but never rendered, on the two highest-stakes surfaces in the app
+**Status: DONE for StorageTab (DESIGN-8, dashboard content-tabs lane).**
+Wired up 4 real usages: (1) a new tab header ("Permaweb Files" + InfoButton
+defining the permaweb) where the tab previously had none at all; (2) a "what
+do these icons mean?" legend InfoButton in the controls row covering synced/
+uploading/downloading/queued/cloud-only/error in one place; (3) promoted the
+Hidden-badge's existing excellent copy from a native `title=` into a real
+InfoButton (see INFO-2); (4) InfoButtons on the Overview tab's Export
+Metadata and Create Manifest quick actions (tx-id / manifest concepts — see
+the coverage table). `UploadApprovalQueueModern.tsx` is owned by the
+parallel DESIGN-5 restyle lane — not touched here.
 `src/renderer/components/dashboard/StorageTab.tsx:3` (1,377-line file, never called)
 and `src/renderer/components/UploadApprovalQueueModern.tsx:14` (never called) ·
 **missing-info-bubble** Storage/"Permaweb" has the highest concentration of
@@ -462,6 +484,15 @@ has the highest concentration of unexplained concepts in the app (see INFO-5).
 table below for exact copy.
 
 ### INFO-2 — Three different, inconsistent mechanisms deliver the same "explain this" job
+**Status: PARTIALLY DONE (DESIGN-8, dashboard content-tabs lane).** Fixed the
+`StorageTab.tsx` sites named here: the Hidden badge's `title=` is now a real
+`InfoButton` with the same copy (`.hidden-badge-group` wrapper in
+`storage-tab.css`), and the per-row sync-status icons keep their native
+`title=` (a reasonable per-row hover nicety, not the primary explanation
+mechanism) but their *meanings* now live in one always-reachable InfoButton
+legend in the controls row instead of nowhere-accessible-by-keyboard.
+`DriveSelector.tsx` and `UserMenu.tsx` are out of this lane's file ownership —
+left untouched for whichever lane owns those components.
 **inconsistent** `InfoButton` (click-triggered, keyboard-accessible) coexists with:
 native HTML `title=` attributes (hover-only, no keyboard/touch access, unstyled) at
 `DriveSelector.tsx:181-192` (Remember-this-drive toggle) and `StorageTab.tsx:836-844`
@@ -583,15 +614,22 @@ shared/token-level instance this pass turned up: `styles.css`'s
 `DriveAndSyncSetup.tsx`) used `var(--ardrive-primary)` (brand red) for an
 ordinary "sync in progress" bar — remapped to `var(--info)`, matching the
 already-correct `.progress-fill.download` convention elsewhere in the file.
-The 4 sites named below are all **per-component CSS/inline-styles owned by
-other lanes** (`StorageTab.tsx` inline styles, `turbo-credits.css`,
-`settings.css`, `CreateDriveModal.tsx`) — out of this lane's strict file
-ownership, left untouched per instructions ("if unsure, leave and note it").
+The `StorageTab.tsx` site below is **DONE (DESIGN-8, dashboard content-tabs
+lane)**: "downloading"/"uploading" now resolve through a new `STATUS_META`
+map (`StorageTab.tsx`, module scope) to `var(--info-600)` instead of
+`var(--ardrive-primary-600)`; the same map also fixed the file-details
+modal's status pill (`StorageTab.tsx` "Status:" row), which used to collapse
+every non-"synced" status — including "error" — to the same neutral gray,
+hiding a real failure behind a color that read as "nothing's wrong." The
+remaining 3 sites (`turbo-credits.css`, `settings.css`, `CreateDriveModal.tsx`)
+are **per-component CSS/inline-styles owned by other lanes** — out of this
+lane's strict file ownership, left untouched per instructions ("if unsure,
+leave and note it").
 **inconsistent** Status hues are reserved for actual state signals; using them
 decoratively teaches users to distrust the "something's wrong" signal.
-- `StorageTab.tsx:485-503` — "downloading"/"uploading" (ordinary, expected states) use
+- ~~`StorageTab.tsx:485-503` — "downloading"/"uploading" (ordinary, expected states) use
   `--ardrive-primary-600` (brand red) instead of `--info` (blue); only "synced"
-  (green) and "error" (red) are correctly status-colored.
+  (green) and "error" (red) are correctly status-colored.~~ **DONE.**
 - `src/renderer/styles/turbo-credits.css:41-43` — `.tcm-header-icon` colors a purely
   decorative `Zap` icon with `--ardrive-warning` (amber).
 - `src/renderer/styles/settings.css:141-145` — `.settings-icon` colors every section
@@ -605,12 +643,21 @@ for the decorative Turbo icon; `--icon-mid`/`--icon-high` for neutral settings i
 a quieter selection indicator (not red) for "this is chosen" vs. "this is dangerous."
 
 ### DSI-3 — Raw emoji mixed into the lucide-react icon system (2 sites)
+**Status: PARTIALLY DONE (DESIGN-8, dashboard content-tabs lane).** Fixed the
+OverviewTab site (below) — the Privacy row now renders the (previously dead)
+`.privacy-badge.private`/`.public` classes with the Lucide `Lock`/`Globe` icon
+for both instances, no emoji fallback. Also swept the same raw-`📋`-emoji
+pattern found (not originally enumerated in this item, but the same bug
+class) in `ActivityTab.tsx` (6 sites) and `StorageTab.tsx` (2 sites)
+copy-to-clipboard buttons — all replaced with the already-imported `Copy`
+lucide icon. `TurboAboutTab.tsx` is out of this lane's file ownership — left
+untouched for whichever lane owns Turbo/payments components.
 **inconsistent**
-- `OverviewTab.tsx:345` vs `:359` — uses the Lucide `Lock`/`Globe` component in the
+- ~~`OverviewTab.tsx:345` vs `:359` — uses the Lucide `Lock`/`Globe` component in the
   card header, then falls back to raw emoji text (`🔒 Private`/`🌐 Public`) 14 lines
   later for the identical concept. Emoji also carry real cross-platform "tofu box"
   risk — visible in `reconciled-design6-overview-{LIGHT,DARK}.png`, where the lock
-  emoji renders as an empty glyph box.
+  emoji renders as an empty glyph box.~~ **DONE.**
 - `TurboAboutTab.tsx:121-159` — the "Turbo vs. Traditional Arweave" comparison table
   uses 12 raw emoji (⏳⚡🪙💳💰🆓📈📊❌✅🔧🎯) as its entire icon system, while every
   other icon in the app is a stroke-matched `lucide-react` SVG.
@@ -757,6 +804,9 @@ INFO coverage table's "permanence" row for suggested copy — this is the highes
 single fix in the whole sweep.
 
 ### COPY-8 — Rename Drive quick action gives no upfront cost/permanence cue
+**Status: DONE (DESIGN-8, dashboard content-tabs lane).** Added the suggested
+muted caption ("Writes a permanent record on Arweave.") directly under the
+Rename Drive button, before the cost-confirmation modal is ever reached.
 `src/renderer/components/dashboard/OverviewTab.tsx:429-445` · **copy-clarity** The
 cost-confirmation modal (`:565-673`) only reveals "this is paid and permanent" after
 the user has already committed to the flow and typed a new name. A Dropbox user's
@@ -815,6 +865,11 @@ clipboard managers/history can retain sensitive data.
 clipboard history after pasting somewhere safe."*
 
 ### COPY-15 — Completed uploads render identically to completed downloads — no "Permanent" reinforcement
+**Status: DONE (DESIGN-8, dashboard content-tabs lane).** Added a green
+`.permanent-chip` (`CheckCircle` + "Permanent", `activity-tab.css`) to the
+meta row of every completed upload. Also added an InfoButton next to the
+Activity header reinforcing the same permanence framing at the point where
+the whole activity stream lives.
 `src/renderer/components/dashboard/ActivityTab.tsx` (whole stream) · **copy-clarity**
 DESIGN-SYSTEM.md §6.8 calls out `"Permanent"` (green) as the canonical example badge,
 and the brief asks for permanence to be *felt* — but a completed upload shows just a
@@ -939,12 +994,23 @@ signal. *(Bundle with Lane A.)*
 **Fix:** keep the count; it's more informative than a bare dot.
 
 ### POLISH-17 — Overview's two-column grid doesn't collapse responsively
+**Status: DONE (DESIGN-8, dashboard content-tabs lane).** Replaced the inline
+`gridTemplateColumns` style with a new `.overview-grid` class
+(`overview-tab.css`) carrying a `@media (max-width: 860px)` rule that
+collapses to a single column.
 `src/renderer/components/dashboard/OverviewTab.tsx:335-340`
 (`gridTemplateColumns: '1fr 1fr'`) · **polish** On a narrowed window, Drive Info and
 Quick Actions (five stacked buttons) get cramped side by side rather than stacking.
 *(Bundle with Lane A.)*
 
 ### POLISH-18 — The tab literally named "Overview" surfaces no at-a-glance sync health
+**Status: DONE (DESIGN-8, dashboard content-tabs lane).** Added a self-contained
+`loadUploadHealth()` fetch (via `window.electronAPI.files.getUploads()`,
+filtered to the current drive — no new props/IPC needed, so Dashboard.tsx
+wasn't touched) and a small banner shown only when there's something
+actionable: a danger banner for failed uploads, an info banner for
+in-progress ones, and nothing at all when everything's caught up (kept the
+common case quiet rather than adding permanent "all good" chrome).
 `src/renderer/components/dashboard/OverviewTab.tsx` (whole tab) · **polish**
 (information-layout) No pending-upload or failed-item count anywhere — a user with a
 failed upload has to know to check Activity or Upload Queue instead. *(Bundle with
@@ -953,6 +1019,8 @@ Lane A.)*
 Overview.
 
 ### POLISH-19 — In-progress activity rows show a bare percentage with no label
+**Status: DONE (DESIGN-8, dashboard content-tabs lane).** Now reads "63%
+uploaded"/"63% downloaded" depending on activity type.
 `src/renderer/components/dashboard/ActivityTab.tsx:711-718` · **polish** A bare `63%`
 reads ambiguous ("63% of what?") out of context. *(Bundle with Lane A.)*
 **Fix:** add a word, e.g. "63% uploaded."
@@ -998,10 +1066,10 @@ sites.
 |---|---|---|---|
 | **A — DESIGN-5 restyle** | Finish the Upload Approval Queue + Download Queue + Turbo Credits Manager restyle: legacy→semantic tokens, column headers, off-brand glow, balance-message color, dead search/filter wiring, CreateManifestModal's modal-shell port + debug-log removal. Sweeps in: POLISH-16/17/18/19 (same files). | RESTYLE-1..8 (8) + 4 polish sweep-ins | **Bigger** — largest lane by file-touch count; RESTYLE-9 (hover-handler fix) can be done here in the same pass since it's the same files |
 | **B — Dark-mode + `styles.css` dead-block purge** | Token-swap every hardcoded `white`/literal color to the correct surface/overlay/input token (DARK-1, 11+ sites); fix `.button.secondary` (DARK-2); delete or rename the two dead `.file-icon` blocks (DARK-3); resolve the `--radius-xl` split-brain (DARK-4); delete the 3 dead components carrying the same bugs (DSI-6, which also clears POLISH-23 for free). | DARK-1..4 (4) + DSI-6 (1) | **Quick win** for the token swaps (mechanical, same recipe as the already-shipped "F7" fix); **medium** for DARK-3/4 (need cascade investigation before deleting). **Status:** DONE for the shared/global-foundation slice (DESIGN-8 "Foundation" implementer pass) — DARK-2/3/4 fully done; DARK-1 done for onboarding/setup + Wallet Export only (Turbo/Upload/Download surfaces remain for the parallel restyle lane); DSI-6 fully done (all 3 components deleted); one DSI-2 site (`.sync-progress-bar`) fixed as a bonus find. `typecheck`/`lint`/`build`/`test` all pass. |
-| **C — Info-bubble distribution pass** | Wire the already-built, accessible `InfoButton` onto ~20 surfaces per the coverage table; standardize on it over native `title=`/custom hover tooltips (INFO-2); build the missing Gateway Settings UI (INFO-3, bigger — new control, not just a bubble). Sweeps in: POLISH-14 (fingerprint fallback, same session as its bubble), POLISH-20/21 (same files). | INFO-1..8 (8) + 16-concept table + 3 polish sweep-ins | **Quick win** for wiring existing `InfoButton`s (cheapest fix in this whole sweep); **bigger** only for INFO-3 (Gateway UI doesn't exist yet) |
-| **D — Modal a11y + hover-control keyboard reach** | Escape/backdrop-click/focus-trap on `CreateDriveModal`/`AddExistingDriveModal`/`CreateManifestModal` (ideally one shared `<DriveModal>` wrapper); WelcomeBackScreen radio fix; ActivityTab context-menu keyboard reach; label/input `htmlFor` pairs; onboarding `<h1>` promotion. Sweeps in: POLISH-13 (same a11y concern as A11Y-2). | A11Y-1..5 (5) + 1 polish sweep-in | **Quick win** for A11Y-1/4/5 (small, contained diffs); **bigger** for A11Y-3 if done as a shared wrapper (recommended — do it once, not 3x) |
-| **E — Trust & copy fixes** | Every Theme 1 (trust/honesty) and Theme 7 (copy/permanence) item — mostly copy edits, a few conditional/data-wiring fixes (TRUST-1's fake stats, TRUST-3's validator wiring). Sweeps in the onboarding-adjacent Theme 8 polish items that live in the same files (POLISH-1/2/3/6/7/9/10/22). | TRUST-1..6 (6) + COPY-1..15 (15) + 8 polish sweep-ins | **Quick win** for the vast majority (localized copy/conditional fixes); **bigger** only for TRUST-1 if real usage counters are wired instead of a "Coming soon" swap, and COPY-5 if submitted-vs-confirmed needs new state tracking |
-| **F — Design-system integrity** | Token-naming consolidation (DSI-1), status-hue misuse (DSI-2), emoji→lucide (DSI-3), status-pill consolidation (DSI-4), Cancel-button standardization (DSI-5), focus-visible fix (DSI-7), onboarding type-scale migration (DSI-8). Sweeps in: POLISH-4/5/8/11/12/15 (same consistency theme). | DSI-1..8 minus DSI-6 (7, since DSI-6 moved to Lane B) + 6 polish sweep-ins | **Quick win** for DSI-2/3/5/7 (small, mechanical); **bigger** for DSI-1 (6+ files) and DSI-8 (3 files, full type-scale pass) |
+| **C — Info-bubble distribution pass** | Wire the already-built, accessible `InfoButton` onto ~20 surfaces per the coverage table; standardize on it over native `title=`/custom hover tooltips (INFO-2); build the missing Gateway Settings UI (INFO-3, bigger — new control, not just a bubble). Sweeps in: POLISH-14 (fingerprint fallback, same session as its bubble), POLISH-20/21 (same files). | INFO-1..8 (8) + 16-concept table + 3 polish sweep-ins | **Quick win** for wiring existing `InfoButton`s (cheapest fix in this whole sweep); **bigger** only for INFO-3 (Gateway UI doesn't exist yet). **Status:** DONE for the dashboard-content-tabs slice of INFO-1/INFO-2 (see those items) — Overview/Activity/Storage now have 8 real `InfoButton` usages between them. Gateway Settings UI (INFO-3), DriveSelector/UserMenu's native-tooltip sites, and Upload-Queue-side work remain for whichever lane owns those files. |
+| **D — Modal a11y + hover-control keyboard reach** | Escape/backdrop-click/focus-trap on `CreateDriveModal`/`AddExistingDriveModal`/`CreateManifestModal` (ideally one shared `<DriveModal>` wrapper); WelcomeBackScreen radio fix; ActivityTab context-menu keyboard reach; label/input `htmlFor` pairs; onboarding `<h1>` promotion. Sweeps in: POLISH-13 (same a11y concern as A11Y-2). | A11Y-1..5 (5) + 1 polish sweep-in | **Quick win** for A11Y-1/4/5 (small, contained diffs); **bigger** for A11Y-3 if done as a shared wrapper (recommended — do it once, not 3x). **Status:** A11Y-2 (ActivityTab context-menu keyboard reach) DONE, with a regression test — see A11Y-2. StorageTab's equivalent row-hover controls (`.quick-action`/`.action-menu-trigger`) were audited and found already keyboard-reachable (opacity-only visibility + `:focus-visible`, no fix needed). A11Y-1/3/4/5 (drive modals, onboarding, WelcomeBackScreen) are outside this lane's file ownership. |
+| **E — Trust & copy fixes** | Every Theme 1 (trust/honesty) and Theme 7 (copy/permanence) item — mostly copy edits, a few conditional/data-wiring fixes (TRUST-1's fake stats, TRUST-3's validator wiring). Sweeps in the onboarding-adjacent Theme 8 polish items that live in the same files (POLISH-1/2/3/6/7/9/10/22). | TRUST-1..6 (6) + COPY-1..15 (15) + 8 polish sweep-ins | **Quick win** for the vast majority (localized copy/conditional fixes); **bigger** only for TRUST-1 if real usage counters are wired instead of a "Coming soon" swap, and COPY-5 if submitted-vs-confirmed needs new state tracking. **Status:** COPY-8 and COPY-15 DONE as part of the dashboard-content-tabs lane (both live in OverviewTab/ActivityTab). Remaining COPY/TRUST items are outside this lane's file ownership. |
+| **F — Design-system integrity** | Token-naming consolidation (DSI-1), status-hue misuse (DSI-2), emoji→lucide (DSI-3), status-pill consolidation (DSI-4), Cancel-button standardization (DSI-5), focus-visible fix (DSI-7), onboarding type-scale migration (DSI-8). Sweeps in: POLISH-4/5/8/11/12/15 (same consistency theme). | DSI-1..8 minus DSI-6 (7, since DSI-6 moved to Lane B) + 6 polish sweep-ins | **Quick win** for DSI-2/3/5/7 (small, mechanical); **bigger** for DSI-1 (6+ files) and DSI-8 (3 files, full type-scale pass). **Status:** the `StorageTab.tsx` slice of DSI-2 and the `OverviewTab.tsx` slice of DSI-3 are DONE (dashboard content-tabs lane) — see those items. DSI-4 (status-pill consolidation) was partially addressed as a side effect (StorageTab's ad hoc pill now sources correct per-status colors from the same `STATUS_META` map as the row icon) but the 3-implementation architectural consolidation itself is untouched. DSI-1/5/7/8 and the remaining DSI-2/3 sites are outside this lane's file ownership. |
 
 **Suggested dispatch order:** B and E first (both are almost entirely quick wins and
 fix the two categories — visible breakage and dishonest copy — that damage trust

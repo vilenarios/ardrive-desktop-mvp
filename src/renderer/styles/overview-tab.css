@@ -1,0 +1,73 @@
+/* OverviewTab — dedicated styles (DESIGN-8, dashboard content-tabs lane) */
+
+/* POLISH-17: the two-column Drive Info / Quick Actions grid didn't collapse
+ * on a narrowed window — both columns (the latter holding five stacked
+ * buttons) got cramped side by side instead of stacking. */
+.overview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-6);
+  margin-bottom: var(--space-6);
+}
+
+@media (max-width: 860px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* POLISH-18: "needs your attention" summary — only rendered when there's
+ * something actionable (failed/in-progress uploads), so the common "all
+ * caught up" case doesn't add visual noise to the tab literally named
+ * Overview. */
+.overview-attention-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-body-sm);
+  margin-bottom: var(--space-6);
+}
+
+.overview-attention-banner.danger {
+  background: var(--danger-surface);
+  color: var(--danger-fg);
+}
+
+.overview-attention-banner.info {
+  background: var(--info-surface);
+  color: var(--info-fg);
+}
+
+/* COPY-8: permanence/cost cue on the Rename Drive quick action, surfaced
+ * before commitment rather than only after the cost-confirmation modal. */
+.overview-quick-action-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.overview-quick-action-caption {
+  margin: 0 0 0 var(--space-1);
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+}
+
+/* INFO coverage: quick actions whose underlying concept (manifest, tx-id
+ * export) isn't self-explanatory get a trailing InfoButton alongside the
+ * button rather than inside it. */
+.overview-quick-action-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.overview-quick-action-row > button {
+  flex: 1;
+}
+
+/* DSI-3: the Privacy row now reuses the existing (previously dead/unused)
+ * .privacy-badge.private/.public classes from styles.css instead of the raw
+ * emoji fallback that used to sit a few lines below the Lucide Lock/Globe
+ * icon for the same concept — no new rule needed here. */

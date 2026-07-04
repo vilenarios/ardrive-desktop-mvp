@@ -76,6 +76,25 @@ interface SyncState {
   error?: string;
 }
 
+// DSI-2: single source of truth for status → color, shared by the row icon
+// and the file-details modal's status pill. Previously "downloading"/
+// "uploading" (ordinary, expected states) used `--ardrive-primary-600`
+// (brand red) instead of an info hue, and the details-modal pill collapsed
+// every non-"synced" status (including "error") to the same neutral gray —
+// hiding a real failure signal behind a color that means nothing's wrong.
+const STATUS_META: Record<FileItem['status'] | 'default', { color: string; badgeBg: string; badgeFg: string; label: string }> = {
+  synced: { color: 'var(--success-600)', badgeBg: 'var(--success-100)', badgeFg: 'var(--success-700)', label: 'Synced — downloaded and available locally' },
+  downloading: { color: 'var(--info-600)', badgeBg: 'var(--info-100)', badgeFg: 'var(--info-600)', label: 'Downloading from Arweave' },
+  uploading: { color: 'var(--info-600)', badgeBg: 'var(--info-100)', badgeFg: 'var(--info-600)', label: 'Uploading to Arweave' },
+  queued: { color: 'var(--warning-600)', badgeBg: 'var(--warning-100)', badgeFg: 'var(--warning-600)', label: 'Queued — will download automatically' },
+  cloud_only: { color: 'var(--gray-500)', badgeBg: 'var(--gray-100)', badgeFg: 'var(--gray-700)', label: 'Cloud-only — stored permanently on Arweave, not on this device' },
+  pending: { color: 'var(--gray-500)', badgeBg: 'var(--gray-100)', badgeFg: 'var(--gray-700)', label: 'Pending — not yet synced' },
+  error: { color: 'var(--error-600)', badgeBg: 'var(--error-100)', badgeFg: 'var(--error-600)', label: 'Error — sync failed' },
+  default: { color: 'var(--gray-400)', badgeBg: 'var(--gray-100)', badgeFg: 'var(--gray-700)', label: 'Unknown sync status' }
+};
+
+const getStatusMeta = (status: FileItem['status'] | undefined) => STATUS_META[status as FileItem['status']] || STATUS_META.default;
+
 export const StorageTab: React.FC<StorageTabProps> = ({
   drive,
   config,
@@ -483,23 +502,24 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   };
 
   const getStatusIcon = (item: FileItem) => {
+    const color = getStatusMeta(item.status).color;
     switch (item.status) {
       case 'synced':
-        return <div title="Downloaded and available locally - Click to open"><CheckCircle size={14} className="status-icon synced" style={{ color: 'var(--success-600)' }} /></div>;
+        return <div title="Downloaded and available locally - Click to open"><CheckCircle size={14} className="status-icon synced" style={{ color }} /></div>;
       case 'downloading':
-        return <div title="Currently downloading from Arweave"><Loader size={14} className="status-icon downloading animate-spin" style={{ color: 'var(--ardrive-primary-600)' }} /></div>;
+        return <div title="Currently downloading from Arweave"><Loader size={14} className="status-icon downloading animate-spin" style={{ color }} /></div>;
       case 'uploading':
-        return <div title="Currently uploading to Arweave"><Cloud size={14} className="status-icon uploading animate-pulse" style={{ color: 'var(--ardrive-primary-600)' }} /></div>;
+        return <div title="Currently uploading to Arweave"><Cloud size={14} className="status-icon uploading animate-pulse" style={{ color }} /></div>;
       case 'queued':
-        return <div title="Queued for download - Will download automatically"><Clock size={14} className="status-icon queued" style={{ color: 'var(--warning-600)' }} /></div>;
+        return <div title="Queued for download - Will download automatically"><Clock size={14} className="status-icon queued" style={{ color }} /></div>;
       case 'cloud_only':
-        return <div title="Stored on Arweave only - Click to view online"><Cloud size={14} className="status-icon cloud-only" style={{ color: 'var(--gray-500)' }} /></div>;
+        return <div title="Stored on Arweave only - Click to view online"><Cloud size={14} className="status-icon cloud-only" style={{ color }} /></div>;
       case 'pending':
-        return <div title="Not yet synced - Checking status"><Clock size={14} className="status-icon pending" style={{ color: 'var(--gray-500)' }} /></div>;
+        return <div title="Not yet synced - Checking status"><Clock size={14} className="status-icon pending" style={{ color }} /></div>;
       case 'error':
-        return <div title="Sync failed - Check error details"><AlertCircle size={14} className="status-icon error" style={{ color: 'var(--error-600)' }} /></div>;
+        return <div title="Sync failed - Check error details"><AlertCircle size={14} className="status-icon error" style={{ color }} /></div>;
       default:
-        return <div title="Unknown sync status"><WifiOff size={14} className="status-icon unknown" style={{ color: 'var(--gray-400)' }} /></div>;
+        return <div title="Unknown sync status"><WifiOff size={14} className="status-icon unknown" style={{ color }} /></div>;
     }
   };
 
@@ -710,6 +730,17 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   return (
     <div className="storage-tab">
 
+      {/* INFO-1: InfoButton was imported but never rendered anywhere on this
+          tab, despite it having the highest concentration of crypto-native
+          concepts (permaweb, cloud-only, hidden/unhide) in the dashboard. */}
+      <div className="storage-tab-header">
+        <div className="storage-tab-title-row">
+          <h2>Permaweb Files</h2>
+          <InfoButton tooltip="Permaweb = Arweave's permanent web. Every file here is stored forever — it can be hidden from view but never truly deleted." />
+        </div>
+        <p>Files permanently stored on Arweave for &quot;{selectedDrive.name}&quot;</p>
+      </div>
+
       {/* File Explorer Controls */}
       <div className="explorer-controls">
         <div className="breadcrumb">
@@ -757,6 +788,18 @@ export const StorageTab: React.FC<StorageTabProps> = ({
           </div>
 
           <div className="view-actions">
+            {/* INFO-2: the per-row status icons keep their native `title=` quick
+                hint (fine for a per-row hover nicety), but the *meanings* — the
+                thing a non-expert user actually needs explained — now live in
+                one real, keyboard-reachable InfoButton instead of nowhere. */}
+            <InfoButton tooltip="What do the file status icons mean?">
+              <p style={{ margin: 0, fontWeight: 600 }}>File status icons</p>
+              <ul style={{ margin: '4px 0 0', paddingLeft: '1.1rem' }}>
+                {(['synced', 'uploading', 'downloading', 'queued', 'cloud_only', 'error'] as const).map(status => (
+                  <li key={status}>{STATUS_META[status].label}</li>
+                ))}
+              </ul>
+            </InfoButton>
             <div className="view-toggle">
               <button 
                 className={`view-button ${viewMode === 'list' ? 'active' : ''}`}
@@ -834,12 +877,16 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                       {item.name}
                     </div>
                     {item.isHidden && (
-                      <span
-                        className="hidden-badge"
-                        title="Hidden on Arweave — removed locally. Permanent storage can't be deleted; the data still exists. Unhide to restore it to view."
-                      >
-                        <EyeOff size={11} />
-                        Hidden
+                      /* INFO-2: this was the best microcopy in the app, but only
+                         reachable via a native title= (hover-only, no keyboard/
+                         touch access). Promoted to a real InfoButton; the badge
+                         itself keeps its at-a-glance pill look. */
+                      <span className="hidden-badge-group">
+                        <span className="hidden-badge">
+                          <EyeOff size={11} />
+                          Hidden
+                        </span>
+                        <InfoButton tooltip="Hidden on Arweave — removed locally. Permanent storage can't be deleted; the data still exists. Unhide to restore it to view." />
                       </span>
                     )}
                     {viewMode === 'grid' && (
@@ -1289,7 +1336,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                         }}
                         title="Copy to clipboard"
                       >
-                        📋
+                        <Copy size={12} />
                       </button>
                     </span>
                   </div>
@@ -1308,7 +1355,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                         }}
                         title="Copy to clipboard"
                       >
-                        📋
+                        <Copy size={12} />
                       </button>
                     </span>
                   </div>
@@ -1317,6 +1364,10 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                 <div className="detail-row">
                   <span className="detail-label">Status:</span>
                   <span className="detail-value">
+                    {/* DSI-2/DSI-4: this used to collapse every non-"synced" status
+                        (including "error") to the same neutral gray pill, hiding a
+                        real failure behind a color that reads as "nothing's wrong".
+                        Now sourced from the same STATUS_META map as the row icon. */}
                     <span style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -1325,8 +1376,8 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                       borderRadius: '12px',
                       fontSize: '12px',
                       fontWeight: '500',
-                      backgroundColor: selectedItemDetails.status === 'synced' ? 'var(--success-100)' : 'var(--gray-100)',
-                      color: selectedItemDetails.status === 'synced' ? 'var(--success-700)' : 'var(--gray-700)'
+                      backgroundColor: getStatusMeta(selectedItemDetails.status).badgeBg,
+                      color: getStatusMeta(selectedItemDetails.status).badgeFg
                     }}>
                       {getStatusIcon(selectedItemDetails)}
                       {selectedItemDetails.status}
