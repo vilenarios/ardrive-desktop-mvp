@@ -74,7 +74,7 @@ describe('App -> Dashboard toast wiring (UX-1)', () => {
         walletType: 'arweave',
       },
     });
-    mockElectronAPI.arns.getProfile.mockResolvedValue(null);
+    mockElectronAPI.arns.getProfile.mockResolvedValue({ success: true, data: null }); // UX-3: arns:get-profile is now enveloped
     mockElectronAPI.drive.listWithStatus.mockResolvedValue([driveA]);
     mockElectronAPI.drive.isUnlocked.mockResolvedValue({ success: true, data: true });
     // UX-3: driveMappings/sync/files handlers now resolve the IpcResult envelope

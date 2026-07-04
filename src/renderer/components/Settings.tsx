@@ -24,8 +24,10 @@ const Settings: React.FC<SettingsProps> = ({
       setIsChangingFolder(true);
       setFolderError(null);
 
-      // dialog:select-folder resolves to the selected path string, or null on cancel
-      const selectedPath = await window.electronAPI.dialog.selectFolder();
+      // dialog:select-folder resolves to an IpcResult wrapping the selected path
+      // string, or null on cancel
+      const selectFolderResult = await window.electronAPI.dialog.selectFolder();
+      const selectedPath = selectFolderResult.success ? selectFolderResult.data : null;
       if (!selectedPath) {
         return; // user cancelled
       }

@@ -42,7 +42,7 @@ describe('Settings — Change Folder (UX-2)', () => {
 
   it('persists the selected folder and re-targets sync', async () => {
     // Real handler shape: dialog:select-folder resolves to a string path
-    mockElectronAPI.dialog.selectFolder.mockResolvedValue('/new/sync/folder');
+    mockElectronAPI.dialog.selectFolder.mockResolvedValue({ success: true, data: '/new/sync/folder' }); // UX-3: dialog:select-folder is now enveloped
 
     render(<Settings {...defaultProps} />);
     expect(screen.getByText('/old/sync/folder')).toBeInTheDocument();
@@ -64,7 +64,7 @@ describe('Settings — Change Folder (UX-2)', () => {
   });
 
   it('does nothing when the dialog is cancelled', async () => {
-    mockElectronAPI.dialog.selectFolder.mockResolvedValue(null);
+    mockElectronAPI.dialog.selectFolder.mockResolvedValue({ success: true, data: null }); // UX-3: dialog:select-folder is now enveloped
 
     render(<Settings {...defaultProps} />);
     fireEvent.click(screen.getByText('Change Folder'));
@@ -78,7 +78,7 @@ describe('Settings — Change Folder (UX-2)', () => {
   });
 
   it('shows an error and keeps the old folder when persisting fails', async () => {
-    mockElectronAPI.dialog.selectFolder.mockResolvedValue('/new/sync/folder');
+    mockElectronAPI.dialog.selectFolder.mockResolvedValue({ success: true, data: '/new/sync/folder' }); // UX-3: dialog:select-folder is now enveloped
     // UX-3: business errors surface as a resolved { success:false } envelope.
     mockElectronAPI.sync.setFolder.mockResolvedValue({ success: false, error: 'mkdir failed' });
 
@@ -93,7 +93,7 @@ describe('Settings — Change Folder (UX-2)', () => {
   });
 
   it('reports when the folder changed but sync could not restart', async () => {
-    mockElectronAPI.dialog.selectFolder.mockResolvedValue('/new/sync/folder');
+    mockElectronAPI.dialog.selectFolder.mockResolvedValue({ success: true, data: '/new/sync/folder' }); // UX-3: dialog:select-folder is now enveloped
     // UX-3: a failed restart resolves { success:false } rather than throwing.
     mockElectronAPI.sync.start.mockResolvedValue({ success: false, error: 'drive not accessible' });
 

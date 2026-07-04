@@ -746,12 +746,14 @@ class ArDriveApp {
       }
     }));
 
-    // ArNS operations
-    ipcMain.handle('arns:get-profile', async (_, address: string) => {
+    // ArNS operations (UX-3: migrated to the IpcResult envelope). ArNS data is
+    // non-critical, so validation/lookup failures degrade to a null profile
+    // (still a success envelope) rather than surfacing an error to the user.
+    ipcMain.handle('arns:get-profile', envelopeHandler(async (_, address: string) => {
       try {
         // Validate input
         const validatedAddress = InputValidator.validateArweaveAddress(address, 'address');
-        
+
         return await arnsService.getArNSProfile(validatedAddress);
       } catch (error) {
         if (error instanceof ValidationError) {
@@ -761,7 +763,7 @@ class ArDriveApp {
         console.error('Failed to get ArNS profile:', error);
         return { name: null, avatar: null };
       }
-    });
+    }));
 
     // Keychain/Security operations
     ipcMain.handle('security:is-keychain-available', envelopeHandler(async () => {
@@ -2576,8 +2578,9 @@ class ArDriveApp {
       return true;
     }));
 
-    // Turbo operations
-    ipcMain.handle('turbo:get-balance', async () => {
+    // Turbo operations (UX-3: migrated to the IpcResult envelope; payload
+    // semantics unchanged — cost/estimate/top-up logic is untouched)
+    ipcMain.handle('turbo:get-balance', envelopeHandler(async () => {
       try {
         if (!turboManager.isInitialized()) {
           throw new Error('Turbo not initialized');
@@ -2587,9 +2590,9 @@ class ArDriveApp {
         console.error('Failed to get Turbo balance:', error);
         throw error;
       }
-    });
+    }));
 
-    ipcMain.handle('turbo:get-upload-costs', async (_, bytes: number) => {
+    ipcMain.handle('turbo:get-upload-costs', envelopeHandler(async (_, bytes: number) => {
       try {
         // Validate input
         const validatedBytes = InputValidator.validatePositiveNumber(bytes, 'bytes', {
@@ -2607,9 +2610,9 @@ class ArDriveApp {
         console.error('Failed to get Turbo upload costs:', error);
         throw error;
       }
-    });
+    }));
 
-    ipcMain.handle('turbo:get-fiat-estimate', async (_, byteCount: number, currency: string = 'usd') => {
+    ipcMain.handle('turbo:get-fiat-estimate', envelopeHandler(async (_, byteCount: number, currency: string = 'usd') => {
       try {
         // Validate inputs
         const validatedByteCount = InputValidator.validatePositiveNumber(byteCount, 'byteCount', {
@@ -2633,9 +2636,9 @@ class ArDriveApp {
         console.error('Failed to get fiat estimate:', error);
         throw error;
       }
-    });
+    }));
 
-    ipcMain.handle('turbo:create-checkout-session', async (_, amount: number, currency?: string) => {
+    ipcMain.handle('turbo:create-checkout-session', envelopeHandler(async (_, amount: number, currency?: string) => {
       try {
         console.log('IPC create-checkout-session called');
         
@@ -2663,9 +2666,9 @@ class ArDriveApp {
         console.error('Failed to create checkout session:', error);
         throw error;
       }
-    });
+    }));
 
-    ipcMain.handle('turbo:top-up-with-tokens', async (_, tokenAmount: number, feeMultiplier: number = 1.0) => {
+    ipcMain.handle('turbo:top-up-with-tokens', envelopeHandler(async (_, tokenAmount: number, feeMultiplier: number = 1.0) => {
       try {
         // Validate inputs
         const validatedTokenAmount = InputValidator.validateTurboAmount(tokenAmount, 'tokenAmount');
@@ -2686,13 +2689,13 @@ class ArDriveApp {
         console.error('Failed to top up with tokens:', error);
         throw error;
       }
-    });
+    }));
 
-    ipcMain.handle('turbo:is-initialized', async () => {
+    ipcMain.handle('turbo:is-initialized', envelopeHandler(async () => {
       return turboManager.isInitialized();
-    });
+    }));
 
-    ipcMain.handle('turbo:get-status', async () => {
+    ipcMain.handle('turbo:get-status', envelopeHandler(async () => {
       let hasBalance = false;
       let balance = null;
       let error = null;
@@ -2712,7 +2715,7 @@ class ArDriveApp {
         balance,
         error
       };
-    });
+    }));
 
     ipcMain.handle('config:clear-folder', envelopeHandler(async () => {
       // Clear sync folder
@@ -2728,24 +2731,24 @@ class ArDriveApp {
       return true;
     }));
 
-    // Dialog operations
-    ipcMain.handle('dialog:select-folder', async () => {
+    // Dialog operations (UX-3: migrated to the IpcResult envelope)
+    ipcMain.handle('dialog:select-folder', envelopeHandler(async () => {
       const result = await dialog.showOpenDialog(this.mainWindow!, {
         properties: ['openDirectory']
       });
       return result.canceled ? null : result.filePaths[0];
-    });
+    }));
 
-    ipcMain.handle('dialog:select-wallet', async () => {
+    ipcMain.handle('dialog:select-wallet', envelopeHandler(async () => {
       const result = await dialog.showOpenDialog(this.mainWindow!, {
         properties: ['openFile'],
         filters: [{ name: 'JSON Files', extensions: ['json'] }]
       });
       return result.canceled ? null : result.filePaths[0];
-    });
+    }));
 
-    // Shell operations
-    ipcMain.handle('shell:open-external', async (_, url: string) => {
+    // Shell operations (UX-3: migrated to the IpcResult envelope)
+    ipcMain.handle('shell:open-external', envelopeHandler(async (_, url: string) => {
       try {
         // Validate URL
         const validatedUrl = InputValidator.validateString(url, 'url', {
@@ -2769,9 +2772,9 @@ class ArDriveApp {
         console.error('Failed to open external URL:', error);
         throw error;
       }
-    });
+    }));
 
-    ipcMain.handle('shell:open-path', async (_, path: string) => {
+    ipcMain.handle('shell:open-path', envelopeHandler(async (_, path: string) => {
       try {
         // Validate the path
         const validatedPath = InputValidator.validateFilePath(path);
@@ -2810,10 +2813,10 @@ class ArDriveApp {
         console.error('Failed to open path:', error);
         throw error;
       }
-    });
+    }));
 
     // Open file directly with default application
-    ipcMain.handle('shell:open-file', async (_, filePath: string) => {
+    ipcMain.handle('shell:open-file', envelopeHandler(async (_, filePath: string) => {
       try {
         // Validate the file path
         const validatedPath = InputValidator.validateFilePath(filePath);
@@ -2846,8 +2849,8 @@ class ArDriveApp {
         console.error('Failed to open file:', error);
         throw error;
       }
-    });
-    
+    }));
+
     // Open the Turbo/Stripe checkout in a hardened child window (MONEY-7).
     // Guarantees:
     //  - host pinning: only the exact checkout host may load/navigate;
@@ -2857,8 +2860,12 @@ class ArDriveApp {
     //    closing without completing → one 'payment-cancelled'; never both,
     //    never zero, never a success on a mere close (settled/once guard);
     //  - balance refresh on the success path only.
-    ipcMain.handle('payment:open-window', async (_, url: string) => {
-      try {
+    // UX-3: normalized to the IpcResult envelope. Validation/creation failures
+    // now RESOLVE { success:false, error } (via envelopeHandler) instead of the
+    // hand-rolled shape; the success path returns void → { success:true }. All
+    // MONEY-7 guarantees (host pinning, exactly-one-event, once-guard,
+    // success-only balance refresh) are unchanged — only the outer envelope is.
+    ipcMain.handle('payment:open-window', envelopeHandler(async (_, url: string) => {
         // Validate URL
         const validatedUrl = InputValidator.validateString(url, 'url', {
           required: true,
@@ -2989,20 +2996,7 @@ class ArDriveApp {
         paymentWindow.loadURL(validatedUrl).catch(() => {
           console.error('[payment] Payment window failed to load the checkout URL');
         });
-
-        return { success: true };
-      } catch (error) {
-        if (error instanceof ValidationError) {
-          console.error('Payment window validation failed:', error.message);
-        } else {
-          console.error('Failed to open payment window:', error);
-        }
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to open payment window'
-        };
-      }
-    });
+    }));
 
     // Drive mappings handlers
     ipcMain.handle('drive-mappings:add', envelopeHandler(async (_, driveMapping: any) => {
@@ -3042,15 +3036,15 @@ class ArDriveApp {
       return mappings.find(m => m.isActive) || mappings[0] || null;
     }));
 
-    // System operations
-    ipcMain.handle('system:get-env', async (_, key: string) => {
+    // System operations (UX-3: migrated to the IpcResult envelope)
+    ipcMain.handle('system:get-env', envelopeHandler(async (_, key: string) => {
       // SEC-2: dev-only variables, gated behind dev mode. Packaged builds and
       // non-dev runs expose nothing (fails closed to undefined).
       return readDevEnv(key, { isPackaged: app.isPackaged, env: process.env });
-    });
+    }));
 
-    // Error reporting handler
-    ipcMain.handle('error:report', async (_, errorData: {
+    // Error reporting handler (UX-3: migrated to the IpcResult envelope)
+    ipcMain.handle('error:report', envelopeHandler(async (_, errorData: {
       message: string;
       stack?: string;
       componentStack?: string;
@@ -3109,7 +3103,7 @@ class ArDriveApp {
         console.error('Failed to process error report:', error);
         return false;
       }
-    });
+    }));
   }
 
   async shutdown(): Promise<void> {
