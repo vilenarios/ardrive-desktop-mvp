@@ -11,11 +11,21 @@
   margin-bottom: var(--space-4);
 }
 
+.activity-header-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 .activity-header h2 {
   font-size: 1.125rem;
   font-weight: 600;
   color: var(--gray-900);
   margin: 0 0 var(--space-1) 0;
+}
+
+.activity-header-title h2 {
+  margin: 0;
 }
 
 .activity-header p {
@@ -231,6 +241,20 @@
   line-height: 1;
 }
 
+/* COPY-15: "Permanent" confirmation chip on completed uploads — DESIGN-SYSTEM
+ * §6.8 calls out this exact green "Permanent" badge as the canonical example. */
+.permanent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--success-600);
+  font-weight: 500;
+}
+
+.permanent-chip svg {
+  flex-shrink: 0;
+}
+
 /* Compact Progress Bar */
 .activity-progress {
   margin-top: 2px; /* Reduced from 4px */
@@ -279,12 +303,25 @@
 }
 
 /* Compact Context Menu */
+/* A11Y-2: this used to only mount in the DOM when a JS `hoveredItem` state
+ * matched the row (mouse-only, and a §5A violation to boot). It's now always
+ * mounted; visibility is opacity-only (never `display:none`) so the trigger
+ * button stays in the tab order and reachable by keyboard — same recipe as
+ * StorageTab's already-fixed `.quick-action`/`.action-menu-trigger`. */
 .context-menu-trigger {
   position: absolute;
   right: var(--space-3);
   top: 50%;
   transform: translateY(-50%);
   z-index: 10;
+  opacity: 0;
+  transition: opacity var(--motion-base) var(--ease-standard);
+}
+
+.unified-activity-item:hover .context-menu-trigger,
+.unified-activity-item:focus-within .context-menu-trigger,
+.context-menu-trigger.open {
+  opacity: 1;
 }
 
 .context-menu-button {

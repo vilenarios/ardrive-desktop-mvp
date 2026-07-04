@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { DriveInfo, AppConfig } from '../../../types';
-import { 
-  HardDrive, 
+import { DriveInfo, AppConfig, FileUpload } from '../../../types';
+import {
+  HardDrive,
   Copy,
   Lock,
   Globe,
@@ -13,9 +13,11 @@ import {
   FileJson,
   Edit,
   AlertCircle,
-  CreditCard
+  CreditCard,
+  Clock
 } from 'lucide-react';
 import CreateManifestModal from '../CreateManifestModal';
+import { InfoButton } from '../common/InfoButton';
 import { ARDRIVE_OPERATION_SIZES, isArDriveOperationFree } from '../../../utils/turbo-utils';
 
 interface OverviewTabProps {
@@ -46,11 +48,15 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   const [isRenaming, setIsRenaming] = useState(false);
   const [showRenameCostConfirm, setShowRenameCostConfirm] = useState(false);
   const [walletBalances, setWalletBalances] = useState<{ ar: number; turbo: number | null }>({ ar: 0, turbo: null });
+  // POLISH-18: at-a-glance sync health so a failed/in-progress upload doesn't
+  // require a trip to Activity to discover.
+  const [uploadHealth, setUploadHealth] = useState<{ failed: number; inProgress: number } | null>(null);
 
   useEffect(() => {
     if (selectedDrive) {
       loadDriveStats();
       loadWalletBalances();
+      loadUploadHealth();
     }
   }, [selectedDrive?.id]);
 
@@ -121,6 +127,23 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       });
     } catch (error) {
       console.error('Failed to load wallet balances:', error);
+    }
+  };
+
+  // POLISH-18: surface failed/in-progress upload counts for this drive right
+  // on Overview, instead of requiring a trip to Activity to discover them.
+  const loadUploadHealth = async () => {
+    try {
+      const uploadsResult = await window.electronAPI.files.getUploads();
+      const allUploads: FileUpload[] = uploadsResult.success ? uploadsResult.data : [];
+      const driveUploads = allUploads.filter(u => u.driveId === selectedDrive.id);
+      setUploadHealth({
+        failed: driveUploads.filter(u => u.status === 'failed').length,
+        inProgress: driveUploads.filter(u => u.status === 'pending' || u.status === 'uploading').length
+      });
+    } catch (error) {
+      console.error('Failed to load upload health:', error);
+      setUploadHealth(null);
     }
   };
 
@@ -330,14 +353,27 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </p>
       </div>
 
+      {/* POLISH-18: needs-your-attention summary — only shown when there's
+          something actionable, so the common "all good" case stays quiet. */}
+      {uploadHealth && uploadHealth.failed > 0 && (
+        <div className="overview-attention-banner danger">
+          <AlertCircle size={16} />
+          <span>
+            {uploadHealth.failed} upload{uploadHealth.failed !== 1 ? 's' : ''} failed — check the Activity tab for details.
+          </span>
+        </div>
+      )}
+      {uploadHealth && uploadHealth.failed === 0 && uploadHealth.inProgress > 0 && (
+        <div className="overview-attention-banner info">
+          <Clock size={16} />
+          <span>
+            {uploadHealth.inProgress} upload{uploadHealth.inProgress !== 1 ? 's' : ''} still in progress.
+          </span>
+        </div>
+      )}
 
       {/* Main Content Grid */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: 'var(--space-6)',
-        marginBottom: 'var(--space-6)'
-      }}>
+      <div className="overview-grid">
         {/* Drive Information */}
         <div className="summary-card">
           <div className="card-header">
@@ -356,7 +392,17 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             <div className="metadata-row">
               <span className="metadata-label">Privacy</span>
               <span className="metadata-value">
-                {selectedDrive.privacy === 'private' ? '🔒 Private' : '🌐 Public'}
+                <span className={`privacy-badge ${selectedDrive.privacy}`}>
+                  {selectedDrive.privacy === 'private' ? <Lock size={12} /> : <Globe size={12} />}
+                  {selectedDrive.privacy === 'private' ? 'Private' : 'Public'}
+                </span>
+                <InfoButton
+                  tooltip={
+                    selectedDrive.privacy === 'private'
+                      ? "Files are encrypted with your password before they ever leave your device. ArDrive never sees or stores this password."
+                      : "Anyone with the link can view these files, forever. Don't use this for anything sensitive."
+                  }
+                />
               </span>
             </div>
 
@@ -385,13 +431,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               <span className="metadata-label">Drive ID</span>
               <div className="metadata-value drive-id">
                 <span>{selectedDrive.id}</span>
-                <button 
+                <button
                   className="icon-button"
                   onClick={() => copyToClipboard(selectedDrive.id)}
                   title="Copy Drive ID"
                 >
                   <Copy size={14} />
                 </button>
+                <InfoButton tooltip="Your drive's permanent identifier on Arweave. Use it to look up this drive's records directly on the network, independent of ArDrive." />
               </div>
             </div>
 
@@ -426,25 +473,31 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               Open Sync Folder
             </button>
 
-            <button 
-              className="button outline large"
-              onClick={() => {
-                setNewDriveName(selectedDrive.name);
-                setRenameError(null);
-                setShowRenameModal(true);
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-                justifyContent: 'center'
-              }}
-            >
-              <Edit size={16} />
-              Rename Drive
-            </button>
+            <div className="overview-quick-action-group">
+              <button
+                className="button outline large"
+                onClick={() => {
+                  setNewDriveName(selectedDrive.name);
+                  setRenameError(null);
+                  setShowRenameModal(true);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  justifyContent: 'center'
+                }}
+              >
+                <Edit size={16} />
+                Rename Drive
+              </button>
+              {/* COPY-8: surface the permanence cue before commitment, not just
+                  inside the cost-confirmation modal after the user has already
+                  typed a new name. */}
+              <p className="overview-quick-action-caption">Writes a permanent record on Arweave.</p>
+            </div>
 
-            <button 
+            <button
               className="button outline large"
               onClick={() => {
                 // Open drive in ArDrive web app
@@ -463,33 +516,39 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               View Drive Online
             </button>
 
-            <button 
-              className="button outline large"
-              onClick={exportDriveMetadata}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-                justifyContent: 'center'
-              }}
-            >
-              <FileDown size={16} />
-              Export Metadata
-            </button>
+            <div className="overview-quick-action-row">
+              <button
+                className="button outline large"
+                onClick={exportDriveMetadata}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  justifyContent: 'center'
+                }}
+              >
+                <FileDown size={16} />
+                Export Metadata
+              </button>
+              <InfoButton tooltip="Downloads a CSV listing every file's Arweave transaction IDs — permanent receipts you can use to verify each file directly on the network, independent of ArDrive." />
+            </div>
 
-            <button 
-              className="button outline large"
-              onClick={() => setShowManifestModal(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-                justifyContent: 'center'
-              }}
-            >
-              <FileJson size={16} />
-              Create Manifest
-            </button>
+            <div className="overview-quick-action-row">
+              <button
+                className="button outline large"
+                onClick={() => setShowManifestModal(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  justifyContent: 'center'
+                }}
+              >
+                <FileJson size={16} />
+                Create Manifest
+              </button>
+              <InfoButton tooltip="A manifest publishes an index of every file in this folder as one shareable webpage — anyone with the link can browse your files without installing ArDrive." />
+            </div>
           </div>
         </div>
       </div>

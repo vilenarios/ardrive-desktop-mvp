@@ -46,6 +46,7 @@ import {
   RefreshCw,
   X
 } from 'lucide-react';
+import { InfoButton } from '../common/InfoButton';
 
 interface FileDownload {
   id: string;
@@ -84,7 +85,6 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
   const [showingItems, setShowingItems] = useState(15); // Show 15 items initially, load more on scroll
   const [searchQuery, setSearchQuery] = useState('');
   const [activityFilter, setActivityFilter] = useState<'all' | 'uploads' | 'downloads'>('all');
-  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [contextMenuOpen, setContextMenuOpen] = useState<string | null>(null);
   const [selectedActivityDetails, setSelectedActivityDetails] = useState<ActivityItem | null>(null);
 
@@ -581,7 +581,10 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
     <div className="activity-tab">
       {/* Header */}
       <div className="activity-header">
-        <h2>Activity for &quot;{selectedDrive.name}&quot;</h2>
+        <div className="activity-header-title">
+          <h2>Activity for &quot;{selectedDrive.name}&quot;</h2>
+          <InfoButton tooltip="Uploads write a permanent record to Arweave — once complete, they can't be edited or deleted, by you or anyone else. Downloads just bring an already-permanent file onto this device." />
+        </div>
         <p>Recent upload and download activity for this drive</p>
       </div>
 
@@ -620,11 +623,9 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
           <>
             <div className="activity-list">
               {displayedActivities.map((activity) => (
-                <div 
-                  key={activity.id} 
+                <div
+                  key={activity.id}
                   className="unified-activity-item"
-                  onMouseEnter={() => setHoveredItem(activity.id)}
-                  onMouseLeave={() => setHoveredItem(null)}
                   onClick={() => handleActivityClick(activity)}
                   onDoubleClick={() => {
                     if (activity.type === 'download' && activity.status === 'completed') {
@@ -708,11 +709,25 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                       <span>{formatFileSize(activity.fileSize)}</span>
                       <span>•</span>
                       <span>{formatTimeAgo(activity.timestamp)}</span>
+                      {/* POLISH-19: a bare "63%" read ambiguous out of context —
+                          say what it's a percentage of. */}
                       {activity.progress && activity.status !== 'completed' && (
                         <>
                           <span>•</span>
                           <span style={{ color: 'var(--info-600)', fontWeight: '500' }}>
-                            {activity.progress}%
+                            {activity.progress}% {activity.type === 'upload' ? 'uploaded' : 'downloaded'}
+                          </span>
+                        </>
+                      )}
+                      {/* COPY-15: completed uploads showed just a filename, with no
+                          positive confirmation that this is the one screen that could
+                          reinforce "this file is now stored forever". */}
+                      {activity.type === 'upload' && activity.status === 'completed' && (
+                        <>
+                          <span>•</span>
+                          <span className="permanent-chip">
+                            <CheckCircle size={10} />
+                            Permanent
                           </span>
                         </>
                       )}
@@ -741,64 +756,75 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                   </div>
 
 
-                  {/* Context Menu - appears on hover */}
-                  {hoveredItem === activity.id && (
-                    <div className="context-menu-trigger">
-                      <button
-                        className="context-menu-button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setContextMenuOpen(contextMenuOpen === activity.id ? null : activity.id);
-                        }}
-                      >
-                        <MoreHorizontal size={14} />
-                      </button>
+                  {/* Context Menu — A11Y-2: was gated behind `hoveredItem === activity.id`
+                      (a JS-state hover gate), so the trigger never mounted for a
+                      keyboard-only user and "Open / Copy Link / View Details / View
+                      Online" were unreachable without a mouse. Now always mounted;
+                      visibility is a CSS :hover/:focus-within concern (§5A), and the
+                      trigger stays visible via the .open modifier while its own
+                      dropdown is expanded. */}
+                  <div className={`context-menu-trigger${contextMenuOpen === activity.id ? ' open' : ''}`}>
+                    <button
+                      className="context-menu-button"
+                      aria-label="More actions"
+                      aria-haspopup="menu"
+                      aria-expanded={contextMenuOpen === activity.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setContextMenuOpen(contextMenuOpen === activity.id ? null : activity.id);
+                      }}
+                    >
+                      <MoreHorizontal size={14} />
+                    </button>
 
-                      {/* Context Menu Dropdown */}
-                      {contextMenuOpen === activity.id && (
-                        <div className="context-menu-dropdown">
+                    {/* Context Menu Dropdown */}
+                    {contextMenuOpen === activity.id && (
+                      <div className="context-menu-dropdown" role="menu">
+                        <button
+                          className="context-menu-item"
+                          role="menuitem"
+                          onClick={() => handleOpenFile(activity)}
+                        >
+                          {activity.type === 'upload' ? <Eye size={14} /> : <FolderOpen size={14} />}
+                          Open
+                        </button>
+
+                        {getRawGatewayUrl(activity) && (
                           <button
                             className="context-menu-item"
-                            onClick={() => handleOpenFile(activity)}
+                            role="menuitem"
+                            onClick={() => handleShareFile(activity)}
                           >
-                            {activity.type === 'upload' ? <Eye size={14} /> : <FolderOpen size={14} />}
-                            Open
+                            <Copy size={14} />
+                            Copy Link
                           </button>
-                          
-                          {getRawGatewayUrl(activity) && (
-                            <button
-                              className="context-menu-item"
-                              onClick={() => handleShareFile(activity)}
-                            >
-                              <Copy size={14} />
-                              Copy Link
-                            </button>
-                          )}
+                        )}
 
+                        <button
+                          className="context-menu-item"
+                          role="menuitem"
+                          onClick={() => {
+                            setSelectedActivityDetails(activity);
+                            setContextMenuOpen(null);
+                          }}
+                        >
+                          <AlertCircle size={14} />
+                          View Details
+                        </button>
+
+                        {getRawGatewayUrl(activity) && (
                           <button
                             className="context-menu-item"
-                            onClick={() => {
-                              setSelectedActivityDetails(activity);
-                              setContextMenuOpen(null);
-                            }}
+                            role="menuitem"
+                            onClick={() => handleViewOnline(activity)}
                           >
-                            <AlertCircle size={14} />
-                            View Details
+                            <ExternalLink size={14} />
+                            View Online
                           </button>
-
-                          {getRawGatewayUrl(activity) && (
-                            <button
-                              className="context-menu-item"
-                              onClick={() => handleViewOnline(activity)}
-                            >
-                              <ExternalLink size={14} />
-                              View Online
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -955,7 +981,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                             }}
                             title="Copy to clipboard"
                           >
-                            📋
+                            <Copy size={12} />
                           </button>
                         </span>
                       </div>
@@ -974,7 +1000,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                             }}
                             title="Copy to clipboard"
                           >
-                            📋
+                            <Copy size={12} />
                           </button>
                         </span>
                       </div>
@@ -993,7 +1019,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                             }}
                             title="Copy to clipboard"
                           >
-                            📋
+                            <Copy size={12} />
                           </button>
                         </span>
                       </div>
@@ -1047,7 +1073,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                             }}
                             title="Copy to clipboard"
                           >
-                            📋
+                            <Copy size={12} />
                           </button>
                         </span>
                       </div>
@@ -1066,7 +1092,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                             }}
                             title="Copy to clipboard"
                           >
-                            📋
+                            <Copy size={12} />
                           </button>
                         </span>
                       </div>
@@ -1085,7 +1111,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                             }}
                             title="Copy to clipboard"
                           >
-                            📋
+                            <Copy size={12} />
                           </button>
                         </span>
                       </div>

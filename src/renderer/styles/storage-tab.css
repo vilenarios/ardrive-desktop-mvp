@@ -1,0 +1,37 @@
+/* StorageTab ("Permaweb") — dedicated styles (DESIGN-8, dashboard content-tabs lane) */
+
+/* INFO-1: this tab previously jumped straight into the file-explorer
+ * controls with no header at all — unlike its Overview/Activity siblings —
+ * and "Permaweb" (the tab's own nav label) was never once defined for a
+ * non-expert user. Mirrors ActivityTab's .activity-header pattern. */
+.storage-tab-header {
+  margin-bottom: var(--space-4);
+}
+
+.storage-tab-header p {
+  font-size: 0.875rem;
+  color: var(--gray-600);
+  margin: 0;
+}
+
+.storage-tab-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.storage-tab-title-row h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--gray-900);
+  margin: 0;
+}
+
+/* INFO-2: promotes the "Hidden on Arweave" pill's excellent-but-hover-only
+ * `title=` copy into a real, keyboard/touch-reachable InfoButton next to it. */
+.hidden-badge-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  vertical-align: middle;
+}
