@@ -14,7 +14,9 @@
   cursor: pointer;
   color: var(--icon-mid);
   border-radius: var(--radius-sm);
-  transition: all 0.2s ease;
+  transition: color var(--motion-base) var(--ease-standard),
+              background-color var(--motion-base) var(--ease-standard),
+              transform var(--motion-fast) var(--ease-standard);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -25,7 +27,7 @@
   background: var(--surface-inset);
 }
 
-.info-button:focus {
+.info-button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--focus-ring);
 }
@@ -42,7 +44,7 @@
   z-index: 9999;
   min-width: 12.5rem; /* 200px */
   max-width: 18.75rem; /* 300px */
-  animation: fadeIn 0.2s ease-in-out;
+  animation: fadeIn var(--motion-moderate) var(--ease-out);
 }
 
 @keyframes fadeIn {
@@ -96,6 +98,7 @@
   font-weight: 500;
   display: inline-block;
   margin-top: var(--space-2);
+  transition: color var(--motion-base) var(--ease-standard);
 }
 
 .learn-more:hover {

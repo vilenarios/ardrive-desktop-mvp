@@ -46,18 +46,9 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({
         />
         <button
           type="button"
+          className="password-toggle-eye"
           onClick={() => setShowPassword(!showPassword)}
-          style={{
-            position: 'absolute',
-            right: 'var(--space-3)',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 'var(--space-2)',
-            color: 'var(--text-secondary)'
-          }}
+          aria-label={showPassword ? 'Hide password' : 'Show password'}
         >
           {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
         </button>

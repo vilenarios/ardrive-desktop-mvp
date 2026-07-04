@@ -413,6 +413,163 @@ Common transitions:
 
 ---
 
+## 5A. Polish & micro-interactions — reusable recipes
+
+Numbered `5A` rather than renumbering §6–9: this codifies DESIGN-3's polish pass (2026-07-04, Phil)
+as an addendum to Motion without shifting every downstream section reference already cited elsewhere
+in the codebase (`styles.css` §6.3/§8.4, `theme.css` §1–5, etc.).
+
+A restyle isn't "done" when the colors are correct. Every interactive element needs a *felt* state —
+hover, active, focus-visible, the right elevation step, a token-based transition — or the app reads as
+correctly-colored rather than *designed*. These are the reusable CSS shapes; DESIGN-4..7 should reach
+for them instead of re-deriving per surface.
+
+**The rule, restated:** state changes are CSS (`:hover` / `:active` / `:focus-visible`), never a JS
+`onMouseEnter`/`onMouseLeave` handler mutating inline styles. If you catch yourself writing a
+mouse-enter handler to swap a color, that color belongs in a CSS class instead.
+
+### Buttons (mirrors §6.1)
+
+```css
+.thing {
+  cursor: pointer;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              border-color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard),
+              transform var(--motion-base) var(--ease-standard);
+}
+.thing:hover:not(:disabled) {
+  background: var(--brand-hover);        /* darken, don't lighten — D-024 §1.4 note 2 */
+  transform: translateY(-1px);            /* lift */
+  /* elevation step up + a subtle branded glow — primary buttons only */
+  box-shadow: var(--elevation-3), 0 4px 12px rgba(var(--brand-rgb), 0.28);
+}
+.thing:active:not(:disabled) {
+  background: var(--brand-active);
+  transform: translateY(0);               /* pressed = lift undone, not exaggerated */
+  box-shadow: var(--elevation-1);
+}
+.thing:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.thing:disabled {
+  background: var(--brand-disabled);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;                       /* muted tokens carry "disabled" — don't also fade opacity */
+}
+```
+
+Outline/ghost variants keep the same shape but hover by *filling* with `--surface-inset` rather than
+darkening a solid fill; reserve the branded glow for primary buttons (a filled ghost button glowing
+red reads as an error state, not an affordance). `--brand-rgb` (theme.css) is the RGB triplet for
+`--brand`, needed to build the translucent glow via `rgba(var(--brand-rgb), a)` — add an analogous
+`--<token>-rgb` to theme.css for any other color you need to glow rather than inlining the literal.
+
+### Cards / dropzones / interactive containers (mirrors §6.3)
+
+```css
+.thing {
+  border: 1px solid var(--border);
+  box-shadow: var(--elevation-2);
+  transition: border-color var(--motion-moderate) var(--ease-standard),
+              box-shadow var(--motion-moderate) var(--ease-standard),
+              background-color var(--motion-moderate) var(--ease-standard);
+}
+.thing:hover {
+  border-color: var(--border-strong);     /* or --brand for a "drop here" / selectable affordance */
+  box-shadow: var(--elevation-3);          /* one elevation step up */
+}
+.thing.is-active {                         /* drag-over, selected, confirmed, etc. */
+  border-color: var(--brand);
+  background: var(--brand-surface);
+  box-shadow: var(--elevation-3);
+}
+```
+
+### Inputs (mirrors §6.2)
+
+```css
+.thing {
+  border: 1px solid var(--input-border);
+  transition: border-color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard);
+}
+.thing:hover:not(:focus):not(:disabled) { border-color: var(--border-strong); }
+.thing:focus {
+  outline: none;
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--brand-surface);  /* the "glow" */
+}
+.thing:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; } /* keyboard-only ring */
+.thing:disabled { background: var(--input-bg-disabled); color: var(--text-disabled); cursor: not-allowed; }
+```
+
+Text inputs show the glow on *any* focus (mouse or keyboard) since typing always wants a visible
+affordance; the crisper outline ring is reserved for `:focus-visible` (keyboard) on top of it. Buttons
+invert this: no persistent glow on mouse-click focus, ring only via `:focus-visible`.
+
+### Icon-only / ghost hit targets (info buttons, eye toggles, dismiss ×)
+
+```css
+.thing {
+  color: var(--icon-mid);
+  border-radius: var(--radius-sm);
+  transition: color var(--motion-base) var(--ease-standard),
+              background-color var(--motion-base) var(--ease-standard);
+}
+.thing:hover { color: var(--icon-high); background: var(--surface-inset); }
+.thing:active { transform: scale(0.95); }         /* combine with any positional transform, don't replace it */
+.thing:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--focus-ring); }
+```
+
+If the element also needs a positional `transform` (e.g. `translateY(-50%)` to vertically center an
+absolutely-positioned icon button), put the *base* transform in this CSS class too, not inline —
+an inline `style.transform` always wins over a CSS class's `transform`, so a `:active` scale rule
+would silently never apply otherwise. Combine both in one declaration: `translateY(-50%) scale(0.93)`.
+
+### Native checkboxes/radios (mirrors §6.9)
+
+A full custom-rendered checkbox (SVG check, `appearance: none`) is real work — don't take it on inside
+a polish pass unless the surface already warrants it. `accent-color: var(--brand)` recolors the native
+control to on-brand for near-zero cost and real visual payoff; always pair it with a `:focus-visible`
+ring, since native checkboxes commonly ship with no visible keyboard-focus state at all:
+
+```css
+.thing { accent-color: var(--brand); }
+.thing:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+```
+
+### Loading
+
+Prefer a spinner over a disabled-only state for async actions, so the control visibly *is working*
+rather than just inert: a small bordered circle with one colored edge,
+`animation: spin 0.8s linear infinite` (existing `button-spin` keyframe) reads clearly at button scale.
+For content-shaped loading, a skeleton block (`background: var(--surface-inset)`, subtle shimmer) beats
+a bare spinner.
+
+### Reduced motion
+
+Already global (§5) — the `prefers-reduced-motion: reduce` block collapses every animation/transition
+duration to ~0. None of the recipes above need their own override: state changes (color/border/shadow
+swap) still happen, just without the tween.
+
+### Checklist — apply per interactive element
+
+- [ ] Hover is CSS (`:hover`), never a mouse-enter/leave handler mutating inline styles
+- [ ] Active/pressed is visually distinct from hover (darker/inset, not just the hover state held longer)
+- [ ] `:focus-visible` ring present — never remove focus outlines without replacing them
+- [ ] Elevation raises one step on hover (cards/buttons/dropdowns/modals)
+- [ ] Transition uses `--motion-*`/`--ease-*` tokens, not a raw `Nms`/`Ns ease`
+- [ ] Disabled = muted tokens + `cursor: not-allowed`, no hover/active response
+- [ ] `cursor: pointer` on every clickable
+- [ ] Async actions show a spinner/skeleton, not just a disabled button
+- [ ] Positional inline `transform` (if any) is moved into the CSS class before adding a stateful one
+
+---
+
 ## 6. Component patterns
 
 Each primitive lists the tokens it consumes, its states, and the `ardrive_ui` widget it mirrors. Sizes:

@@ -488,13 +488,9 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
               }}>
                 <input
                   type="checkbox"
+                  className="seed-confirm-checkbox"
                   checked={hasConfirmedSeedPhrase}
                   onChange={(e) => setHasConfirmedSeedPhrase(e.target.checked)}
-                  style={{
-                    width: '18px',
-                    height: '18px',
-                    cursor: 'pointer'
-                  }}
                 />
                 <span style={{ color: 'var(--text-primary)' }}>
                   I have written down or safely stored my recovery phrase
@@ -572,23 +568,16 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                     Arweave wallet (.json) files only
                   </span>
                 </label>
-                <div style={{
-                  border: `2px dashed ${isDragging ? 'var(--brand)' : walletPath ? 'var(--brand)' : 'var(--border-strong)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  padding: 'var(--space-5)',
-                  textAlign: 'center',
-                  backgroundColor: isDragging ? 'var(--brand-surface)' : walletPath ? 'var(--brand-surface)' : 'var(--surface-sunken)',
-                  transition: 'all 0.2s ease',
-                  cursor: 'pointer'
-                }}
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onClick={() => !walletPath && handleSelectWallet()}
+                <div
+                  className={`wallet-dropzone${isDragging ? ' is-dragging' : ''}${walletPath ? ' has-file' : ''}`}
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onClick={() => !walletPath && handleSelectWallet()}
                 >
                   {walletPath ? (
                     <>
-                      <FileText size={28} style={{ color: 'var(--brand)', marginBottom: 'var(--space-2)' }} />
+                      <FileText size={28} className="wallet-dropzone-icon" style={{ marginBottom: 'var(--space-2)' }} />
                       <p style={{ fontWeight: '600', marginBottom: 'var(--space-1)', fontSize: '15px' }}>{walletPath.split(/[/\\]/).pop()}</p>
                       <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: 'var(--space-3)' }}>
                         {walletPath}
@@ -626,7 +615,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                     </>
                   ) : (
                     <>
-                      <FileText size={28} style={{ color: isDragging ? 'var(--brand)' : 'var(--text-disabled)', marginBottom: 'var(--space-2)' }} />
+                      <FileText size={28} className="wallet-dropzone-icon" style={{ marginBottom: 'var(--space-2)' }} />
                       <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-2)', fontSize: '15px' }}>
                         {isDragging ? 'Drop your wallet file here' : 'Drop your wallet file here or'}
                       </p>
@@ -662,32 +651,8 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                   {/* Privacy Toggle */}
                   <button
                     type="button"
+                    className="seed-privacy-toggle"
                     onClick={() => setShowSeedPhraseText(!showSeedPhraseText)}
-                    style={{
-                      position: 'absolute',
-                      top: 'var(--space-3)',
-                      right: 'var(--space-3)',
-                      padding: 'var(--space-2)',
-                      backgroundColor: 'var(--surface-overlay)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 'var(--radius-sm)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-1)',
-                      fontSize: '13px',
-                      color: 'var(--text-secondary)',
-                      zIndex: 1,
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--surface-inset)';
-                      e.currentTarget.style.borderColor = 'var(--border-strong)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--surface-overlay)';
-                      e.currentTarget.style.borderColor = 'var(--border)';
-                    }}
                   >
                     {showSeedPhraseText ? (
                       <>
@@ -716,32 +681,11 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                       e.target.style.height = Math.max(120, e.target.scrollHeight) + 'px';
                     }}
                     placeholder="Enter your 12-word recovery phrase separated by spaces"
-                    style={{
-                      resize: 'none',
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '16px',
-                      lineHeight: '1.8',
-                      minHeight: '120px',
-                      transition: 'all 0.2s ease',
-                      padding: 'var(--space-4)',
-                      paddingRight: '100px', // Space for the privacy toggle
-                      backgroundColor: 'var(--input-bg)',
-                      border: `2px solid ${seedPhrase && !validateSeedPhrase(seedPhrase).isValid ? 'var(--danger)' : 'var(--input-border)'}`,
-                      borderRadius: 'var(--radius-md)',
-                      // @ts-expect-error - WebKit specific property
-                      WebkitTextSecurity: showSeedPhraseText ? 'none' : 'disc',
-                      color: showSeedPhraseText ? 'var(--text-primary)' : 'var(--text-tertiary)'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!seedPhrase || validateSeedPhrase(seedPhrase).isValid) {
-                        e.currentTarget.style.borderColor = 'var(--border-strong)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!seedPhrase || validateSeedPhrase(seedPhrase).isValid) {
-                        e.currentTarget.style.borderColor = 'var(--input-border)';
-                      }
-                    }}
+                    className={
+                      'seed-phrase-textarea' +
+                      (showSeedPhraseText ? ' revealed' : '') +
+                      (seedPhrase && !validateSeedPhrase(seedPhrase).isValid ? ' invalid' : '')
+                    }
                   />
                 </div>
 
@@ -847,46 +791,20 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
       </div>
       
       <style>{`
-        .primary-action-button:focus,
-        .secondary-action-button:focus {
-          outline: 3px solid var(--focus-ring);
-          outline-offset: 2px;
-        }
-        
-        .primary-action-button:focus:not(:focus-visible),
-        .secondary-action-button:focus:not(:focus-visible) {
-          outline: none;
-        }
-        
-        @keyframes subtle-pulse {
-          0%, 100% { opacity: 0.03; }
-          50% { opacity: 0.05; }
-        }
-        
-        .wallet-setup-container > div:first-child {
-          animation: subtle-pulse 20s ease-in-out infinite;
-        }
-        
         @keyframes fadeIn {
-          from { 
-            opacity: 0; 
+          from {
+            opacity: 0;
             transform: translateY(10px);
           }
-          to { 
-            opacity: 1; 
+          to {
+            opacity: 1;
             transform: translateY(0);
           }
         }
-        
+
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
-        }
-        
-        textarea:focus {
-          outline: 2px solid var(--focus-ring);
-          outline-offset: -1px;
-          border-color: var(--focus-ring);
         }
       `}</style>
     </div>

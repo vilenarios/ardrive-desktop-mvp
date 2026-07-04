@@ -96,7 +96,7 @@ export const PasswordStrengthIndicator: React.FC<PasswordStrengthIndicatorProps>
             height: '100%',
             width: `${percentage}%`,
             backgroundColor: fillColors[level],
-            transition: 'all 0.3s ease',
+            transition: `width var(--motion-slow) var(--ease-standard), background-color var(--motion-slow) var(--ease-standard)`,
             borderRadius: 'var(--radius-sm)'
           }}
         />

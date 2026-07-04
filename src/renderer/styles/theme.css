@@ -161,6 +161,13 @@
    * existing --text-on-brand (#fff) token. */
   --spinner-track-on-brand: rgba(255, 255, 255, 0.3);
 
+  /* RGB triplet for --brand (#D31721), constant across themes like --brand
+   * itself (D-024 §1.4). Lets component CSS build a translucent branded glow
+   * — e.g. a primary button's hover shadow — via rgba(var(--brand-rgb), a)
+   * without hardcoding a literal color outside this theme layer (DESIGN-3
+   * polish pass, §5A of DESIGN-SYSTEM.md). */
+  --brand-rgb: 211, 23, 33;
+
   /* 2.2 Type scale (desktop) — ArDriveDesktopTypography */
   --text-display: 2.8125rem; /* 45px */
   --text-h1: 2.25rem; /* 36px */

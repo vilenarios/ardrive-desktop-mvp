@@ -109,14 +109,12 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
         }}>
           {showSeedPhrase && (
             <button
-              className="button outline"
+              className="button outline seed-action-button"
               onClick={() => setShowSeedPhrase(false)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 'var(--space-2)',
-                backgroundColor: 'var(--surface-overlay)',
-                border: '1px solid var(--border)'
+                gap: 'var(--space-2)'
               }}
               title="Hide recovery phrase"
             >
@@ -125,15 +123,12 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
             </button>
           )}
           <button
-            className="button outline"
+            className="button outline seed-action-button"
             onClick={handleCopy}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 'var(--space-2)',
-              backgroundColor: 'var(--surface-overlay)',
-              border: '1px solid var(--border)',
-              color: 'var(--text-primary)'
+              gap: 'var(--space-2)'
             }}
             title="Copy recovery phrase to clipboard"
           >
