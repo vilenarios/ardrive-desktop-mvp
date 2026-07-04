@@ -1,0 +1,248 @@
+/**
+ * ArDrive Desktop — Design token layer (DESIGN-2)
+ *
+ * Single source of truth for color, typography, spacing, radii, elevation and
+ * motion tokens. Implements docs/product/DESIGN-SYSTEM.md §1–5 verbatim.
+ *
+ * Import this FIRST in styles.css, before any component CSS. Components should
+ * consume tokens by name (var(--surface-raised), var(--text-body), ...) and
+ * never hardcode a hex/rgb color, px radius, or duration outside this file.
+ *
+ * Dark is the default theme (matches ardrive_ui's themes.dart default): the
+ * bare `:root` selector carries the dark palette, so the app renders dark
+ * before ThemeProvider (src/renderer/contexts/ThemeContext.tsx) has resolved
+ * an explicit preference — zero flash-of-wrong-theme on startup.
+ */
+
+/* ---------------------------------------------------------------------------
+ * 1. Color tokens — Dark theme (default)
+ * ------------------------------------------------------------------------ */
+:root,
+:root[data-theme='dark'] {
+  /* Surfaces — elevation ladder (colors_new container L0–L3 + public fd-*) */
+  --surface-sunken: #0d0d0d; /* wells, inset areas */
+  --surface: #121212; /* app canvas / page bg */
+  --surface-raised: #1e1e1e; /* cards, panels, sidebars */
+  --surface-overlay: #242424; /* modals, menus, popovers, dropdowns */
+  --surface-inset: #2a2a2a; /* hover row / muted fill */
+
+  /* Text */
+  --text-primary: #fafafa;
+  --text-secondary: #a6a6a6;
+  --text-tertiary: #7d7d7d;
+  --text-disabled: #5e5e5e;
+  --text-on-brand: #ffffff;
+  --text-link: #fafafa;
+
+  /* Brand + accent */
+  --brand: #d31721;
+  --brand-hover: #c0151e;
+  --brand-active: #9a1118;
+  --brand-disabled: #2e2e2e;
+  --brand-surface: rgba(211, 23, 33, 0.16); /* light brand wash — selected/active rows, hover highlight */
+  --accent: #fe0230;
+
+  /* Borders / strokes */
+  --border: rgba(250, 250, 250, 0.12);
+  --border-subtle: rgba(250, 250, 250, 0.08);
+  --border-strong: rgba(250, 250, 250, 0.16);
+
+  /* Inputs */
+  --input-bg: #0d0d0d;
+  --input-bg-disabled: #121212;
+  --input-border: var(--border);
+  --input-placeholder: #7d7d7d;
+
+  /* Icons */
+  --icon-low: #5e5e5e;
+  --icon-mid: #a6a6a6;
+  --icon-high: #ffffff;
+
+  /* Status */
+  --success: #18a957;
+  --success-fg: #5dc389;
+  --success-surface: rgba(24, 169, 87, 0.16);
+  --warning: #ffbb38;
+  --warning-fg: #ffcf74;
+  --warning-surface: rgba(255, 187, 56, 0.16);
+  --danger: #fe0230;
+  --danger-fg: #e95c7b;
+  --danger-surface: rgba(254, 2, 48, 0.16);
+  --info: #3d53f5;
+  --info-fg: #8b98f9;
+  --info-surface: rgba(61, 83, 245, 0.16);
+  --on-status: #000000;
+  --toggle-on: #139310; /* ArDriveToggleTheme backgroundOnColor */
+
+  /* Overlay scrim + focus */
+  --overlay: rgba(8, 8, 8, 0.72);
+  --focus-ring: #d31721;
+
+  /* Shadow ink */
+  --shadow-ink: rgba(13, 13, 13, 0.9);
+}
+
+/* ---------------------------------------------------------------------------
+ * 1. Color tokens — Light theme
+ * ------------------------------------------------------------------------ */
+:root[data-theme='light'] {
+  /* Surfaces */
+  --surface-sunken: #ebebeb;
+  --surface: #f7f7f7;
+  --surface-raised: #ffffff;
+  --surface-overlay: #ffffff;
+  --surface-inset: #f1eff0;
+
+  /* Text */
+  --text-primary: #1f1f1f;
+  --text-secondary: #4f4f4f;
+  --text-tertiary: #666666;
+  --text-disabled: #8a8a8a;
+  --text-on-brand: #ffffff;
+  --text-link: #4f4f4f;
+
+  /* Brand + accent */
+  --brand: #d31721;
+  --brand-hover: #b8141c; /* deviation: darken, not the raw token's lighten (D-024) */
+  --brand-active: #9a1118;
+  --brand-disabled: #cecece;
+  --brand-surface: rgba(211, 23, 33, 0.08);
+  --accent: #fe0230;
+
+  /* Borders */
+  --border: rgba(0, 0, 0, 0.1);
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --border-strong: #cecece;
+
+  /* Inputs */
+  --input-bg: #ffffff;
+  --input-bg-disabled: #ebebeb;
+  --input-border: #cecece;
+  --input-placeholder: #8a8a8a;
+
+  /* Icons */
+  --icon-low: #8a8a8a;
+  --icon-mid: #666666;
+  --icon-high: #4f4f4f;
+
+  /* Status */
+  --success: #18a957;
+  --success-fg: #11763d;
+  --success-surface: #e8f6ee;
+  --warning: #ffbb38;
+  --warning-fg: #b38327;
+  --warning-surface: #fff8eb;
+  --danger: #fe0230;
+  --danger-fg: #df1642;
+  --danger-surface: #fce8ec;
+  --info: #3142c4;
+  --info-fg: #3142c4;
+  --info-surface: #ecedfe;
+  --on-status: #000000;
+  --toggle-on: #139310;
+
+  --overlay: rgba(0, 0, 0, 0.48);
+  --focus-ring: #d31721;
+  --shadow-ink: rgba(48, 49, 51, 0.1);
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. Typography — theme-agnostic
+ * ------------------------------------------------------------------------ */
+:root {
+  /* 2.1 Family (D-024): system fallback stack, no bundled webfont */
+  --font-sans: 'Wavehaus', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+
+  /* On-brand loading ring (DESIGN-3): the translucent track of a spinner that
+   * sits inside a --brand-colored (red) button. Constant across themes —
+   * the button's red backdrop doesn't change with light/dark — so it lives
+   * here rather than in the per-theme blocks. The moving arc uses the
+   * existing --text-on-brand (#fff) token. */
+  --spinner-track-on-brand: rgba(255, 255, 255, 0.3);
+
+  /* RGB triplet for --brand (#D31721), constant across themes like --brand
+   * itself (D-024 §1.4). Lets component CSS build a translucent branded glow
+   * — e.g. a primary button's hover shadow — via rgba(var(--brand-rgb), a)
+   * without hardcoding a literal color outside this theme layer (DESIGN-3
+   * polish pass, §5A of DESIGN-SYSTEM.md). */
+  --brand-rgb: 211, 23, 33;
+
+  /* 2.2 Type scale (desktop) — ArDriveDesktopTypography */
+  --text-display: 2.8125rem; /* 45px */
+  --text-h1: 2.25rem; /* 36px */
+  --text-h2: 1.75rem; /* 28px */
+  --text-h3: 1.5625rem; /* 25px */
+  --text-h4: 1.375rem; /* 22px */
+  --text-h5: 1.25rem; /* 20px */
+  --text-h6: 1.125rem; /* 18px */
+  --text-body-xl: 1.125rem; /* 18px */
+  --text-body-lg: 1rem; /* 16px */
+  --text-body: 0.875rem; /* 14px — default body */
+  --text-body-sm: 0.75rem; /* 12px */
+  --text-caption: 0.6875rem; /* 11px */
+  --text-mono: 0.8125rem; /* 13px */
+
+  /* ---------------------------------------------------------------------
+   * 3. Spacing (4px base unit)
+   * -------------------------------------------------------------------- */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Layout */
+  --content-max-width: 1280px;
+  --modal-w-standard: 350px;
+  --modal-w-long: 583px;
+  --bp-mobile: 640px;
+  --bp-tablet: 768px;
+  --bp-desktop: 1024px;
+  --bp-wide: 1280px;
+
+  /* ---------------------------------------------------------------------
+   * 4. Radii, elevation, borders
+   * -------------------------------------------------------------------- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-pill: 9999px;
+
+  --elevation-1: 0 0 1px var(--shadow-ink);
+  --elevation-2: 0 2px 4px var(--shadow-ink);
+  --elevation-3: 0 4px 8px var(--shadow-ink);
+  --elevation-4: 0 8px 16px var(--shadow-ink);
+  --elevation-5: 0 16px 24px var(--shadow-ink);
+
+  /* ---------------------------------------------------------------------
+   * 5. Motion
+   * -------------------------------------------------------------------- */
+  --motion-fast: 100ms;
+  --motion-base: 150ms;
+  --motion-moderate: 200ms;
+  --motion-slow: 300ms;
+
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* Reduced motion — required (§5) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -41,30 +41,21 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({
           autoFocus={autoFocus}
           style={{
             paddingRight: '48px',
-            borderColor: error ? 'var(--error)' : undefined
+            borderColor: error ? 'var(--danger)' : undefined
           }}
         />
         <button
           type="button"
+          className="password-toggle-eye"
           onClick={() => setShowPassword(!showPassword)}
-          style={{
-            position: 'absolute',
-            right: 'var(--space-3)',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 'var(--space-2)',
-            color: 'var(--gray-600)'
-          }}
+          aria-label={showPassword ? 'Hide password' : 'Show password'}
         >
           {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
         </button>
       </div>
       {showStrength && value && <PasswordStrengthIndicator password={value} />}
       {error && (
-        <p style={{ fontSize: '13px', color: 'var(--error)', marginTop: 'var(--space-2)' }}>
+        <p style={{ fontSize: '13px', color: 'var(--danger-fg)', marginTop: 'var(--space-2)' }}>
           {error}
         </p>
       )}

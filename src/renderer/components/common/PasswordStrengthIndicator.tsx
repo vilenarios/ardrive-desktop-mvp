@@ -62,12 +62,21 @@ const getPasswordStrength = (password: string): { level: StrengthLevel; score: n
 
 export const PasswordStrengthIndicator: React.FC<PasswordStrengthIndicatorProps> = ({ password }) => {
   const { level, score, feedback } = getPasswordStrength(password);
-  
-  const colors = {
-    weak: '#dc2626',
-    fair: '#f59e0b',
-    good: '#3b82f6',
-    strong: '#10b981'
+
+  // Fill colors (bar) use the plain status hue; text uses the deepened
+  // `-fg` variant per DESIGN-SYSTEM.md §1.5 (status hues are fills/icons
+  // only — text needs the accessible `-fg` pairing).
+  const fillColors = {
+    weak: 'var(--danger)',
+    fair: 'var(--warning)',
+    good: 'var(--info)',
+    strong: 'var(--success)'
+  };
+  const textColors = {
+    weak: 'var(--danger-fg)',
+    fair: 'var(--warning-fg)',
+    good: 'var(--info-fg)',
+    strong: 'var(--success-fg)'
   };
 
   const maxScore = 7;
@@ -77,7 +86,7 @@ export const PasswordStrengthIndicator: React.FC<PasswordStrengthIndicatorProps>
     <div style={{ marginTop: 'var(--space-2)' }}>
       <div style={{
         height: '4px',
-        backgroundColor: 'var(--gray-200)',
+        backgroundColor: 'var(--surface-inset)',
         borderRadius: 'var(--radius-sm)',
         overflow: 'hidden',
         marginBottom: 'var(--space-1)'
@@ -86,15 +95,15 @@ export const PasswordStrengthIndicator: React.FC<PasswordStrengthIndicatorProps>
           style={{
             height: '100%',
             width: `${percentage}%`,
-            backgroundColor: colors[level],
-            transition: 'all 0.3s ease',
+            backgroundColor: fillColors[level],
+            transition: `width var(--motion-slow) var(--ease-standard), background-color var(--motion-slow) var(--ease-standard)`,
             borderRadius: 'var(--radius-sm)'
           }}
         />
       </div>
       <p style={{
         fontSize: '12px',
-        color: colors[level],
+        color: textColors[level],
         fontWeight: '500'
       }}>
         {feedback}

@@ -5,12 +5,14 @@ import { PasswordForm } from './common/PasswordForm';
 import { SeedPhraseDisplay } from './common/SeedPhraseDisplay';
 import { AddressDisplay } from './common/AddressDisplay';
 import { ClientInputValidator } from '../input-validator';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface WalletSetupProps {
   onWalletImported: () => void;
 }
 
 const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
+  const { theme } = useTheme();
   const [step, setStep] = useState(1);
   const [walletAction, setWalletAction] = useState<'create' | 'import'>('create');
   const [importMethod, setImportMethod] = useState<'file' | 'seedphrase'>('file');
@@ -244,24 +246,17 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
       }}>
       </div>
       
-      <div className="wallet-setup-card" style={{
-        position: 'relative',
-        backgroundColor: 'white',
-        borderRadius: 'var(--radius-xl)',
-        padding: 'var(--space-10)',
-        boxShadow: '0 20px 50px rgba(0, 0, 0, 0.08), 0 10px 20px rgba(0, 0, 0, 0.05)',
-        border: '1px solid rgba(0, 0, 0, 0.06)',
-        maxWidth: '520px',
-        width: '100%',
-        margin: 'var(--space-8)',
-        zIndex: 2
-      }}>
+      <div className="wallet-setup-card">
         {/* Header with Logo */}
         <div style={{ marginBottom: 'var(--space-6)' }}>
-          <img 
-            src="ArDrive-Logo-Wordmark-Dark.png" 
-            alt="ArDrive" 
-            style={{ height: '60px' }} 
+          {/* Wordmark asset naming is text-color-based, not theme-based: "Dark"
+              = dark text (for the light/--surface-raised card), "Light" =
+              light text (for the dark card). Swap on the resolved theme so
+              the wordmark stays legible on --surface-raised in both. */}
+          <img
+            src={theme === 'dark' ? 'ArDrive-Logo-Wordmark-Light.png' : 'ArDrive-Logo-Wordmark-Dark.png'}
+            alt="ArDrive"
+            style={{ height: '60px' }}
           />
         </div>
 
@@ -275,7 +270,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
         {step === 1 && (
           <div className="step-content">
             <h2 style={{ marginBottom: 'var(--space-6)' }}>Welcome to ArDrive Desktop</h2>
-            <p style={{ fontSize: 'var(--text-base)', color: 'var(--gray-600)', marginBottom: 'var(--space-8)', textAlign: 'center' }}>
+            <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)', marginBottom: 'var(--space-8)', textAlign: 'center' }}>
               Store your files permanently on the decentralized web
             </p>
             
@@ -334,11 +329,11 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
             <div style={{
               marginTop: 'var(--space-8)',
               paddingTop: 'var(--space-6)',
-              borderTop: '1px solid var(--gray-200)',
+              borderTop: '1px solid var(--border)',
               textAlign: 'center'
             }}>
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--gray-500)' }}>
-                Need help? Check out our <a href="#" style={{ color: 'var(--ardrive-primary)', textDecoration: 'none' }}>getting started guide</a>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                Need help? Check out our <a href="#" style={{ color: 'var(--brand)', textDecoration: 'none' }}>getting started guide</a>
               </p>
             </div>
           </div>
@@ -348,7 +343,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
         {step === 2 && walletAction === 'create' && (
           <div className="step-content">
             <h2 style={{ marginBottom: 'var(--space-3)' }}>Secure Your Account</h2>
-            <p style={{ fontSize: 'var(--text-base)', color: 'var(--gray-600)', marginBottom: 'var(--space-6)' }}>
+            <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)', marginBottom: 'var(--space-6)' }}>
               Choose a strong password to encrypt your account
             </p>
 
@@ -362,20 +357,20 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
               autoFocus={true}
             />
 
-            <div style={{ 
-              backgroundColor: 'var(--warning-50)', 
-              padding: 'var(--space-4)', 
+            <div style={{
+              backgroundColor: 'var(--warning-surface)',
+              padding: 'var(--space-4)',
               borderRadius: 'var(--radius-md)',
               marginTop: 'var(--space-4)',
-              border: '1px solid var(--warning-200)'
+              border: '1px solid var(--warning)'
             }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
-                <Shield size={20} style={{ color: 'var(--warning-600)', flexShrink: 0, marginTop: '2px' }} />
+                <Shield size={20} style={{ color: 'var(--warning-fg)', flexShrink: 0, marginTop: '2px' }} />
                 <div>
-                  <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: 'var(--space-1)', color: 'var(--warning-900)' }}>
+                  <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: 'var(--space-1)', color: 'var(--warning-fg)' }}>
                     Important Security Notice
                   </h4>
-                  <p style={{ fontSize: '13px', color: 'var(--warning-800)', lineHeight: '1.5' }}>
+                  <p style={{ fontSize: '13px', color: 'var(--warning-fg)', lineHeight: '1.5' }}>
                     There is no way to recover this password if you forget it. Make sure to store it somewhere safe.
                   </p>
                 </div>
@@ -399,11 +394,11 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
               >
                 {loading ? (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)' }}>
-                    <div style={{ 
-                      width: '16px', 
-                      height: '16px', 
-                      border: '2px solid rgba(255,255,255,0.3)',
-                      borderTop: '2px solid white',
+                    <div style={{
+                      width: '16px',
+                      height: '16px',
+                      border: '2px solid var(--spinner-track-on-brand)',
+                      borderTop: '2px solid var(--text-on-brand)',
                       borderRadius: '50%',
                       animation: 'spin 1s linear infinite'
                     }} />
@@ -414,13 +409,13 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                 )}
               </button>
             </div>
-            
+
             {loading && (
-              <div style={{ 
-                marginTop: 'var(--space-3)', 
+              <div style={{
+                marginTop: 'var(--space-3)',
                 textAlign: 'center',
                 fontSize: '13px',
-                color: 'var(--gray-600)',
+                color: 'var(--text-secondary)',
                 animation: 'fadeIn 0.5s ease-in'
               }}>
                 This may take a moment while we generate your secure wallet...
@@ -435,7 +430,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
             animation: 'fadeIn 0.3s ease-in'
           }}>
             <h2 style={{ marginBottom: 'var(--space-2)' }}>Save Your Recovery Phrase</h2>
-            <p style={{ fontSize: '15px', color: 'var(--gray-600)', marginBottom: 'var(--space-4)' }}>
+            <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
               Write down these 12 words in order. You&apos;ll need them to recover your account.
             </p>
 
@@ -447,20 +442,20 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
             )}
 
             {/* Critical Warning */}
-            <div style={{ 
-              backgroundColor: 'var(--error-50)', 
-              padding: 'var(--space-3)', 
+            <div style={{
+              backgroundColor: 'var(--danger-surface)',
+              padding: 'var(--space-3)',
               borderRadius: 'var(--radius-md)',
               marginBottom: 'var(--space-3)',
-              border: '1px solid var(--error-200)'
+              border: '1px solid var(--danger)'
             }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
-                <Shield size={18} style={{ color: 'var(--error-600)', flexShrink: 0, marginTop: '1px' }} />
+                <Shield size={18} style={{ color: 'var(--danger-fg)', flexShrink: 0, marginTop: '1px' }} />
                 <div>
-                  <h4 style={{ fontSize: '13px', fontWeight: '600', marginBottom: '2px', color: 'var(--error-900)' }}>
+                  <h4 style={{ fontSize: '13px', fontWeight: '600', marginBottom: '2px', color: 'var(--danger-fg)' }}>
                     Critical: Save This Phrase
                   </h4>
-                  <p style={{ fontSize: '12px', color: 'var(--error-800)', lineHeight: '1.4' }}>
+                  <p style={{ fontSize: '12px', color: 'var(--danger-fg)', lineHeight: '1.4' }}>
                     This is the ONLY way to recover your account. If you lose this phrase, you lose access to your files forever.
                   </p>
                 </div>
@@ -477,31 +472,27 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
             </div>
 
             {/* Confirmation Checkbox */}
-            <div style={{ 
-              backgroundColor: 'var(--gray-50)',
+            <div style={{
+              backgroundColor: 'var(--surface-inset)',
               padding: 'var(--space-3)',
               borderRadius: 'var(--radius-md)',
               marginBottom: 'var(--space-4)'
             }}>
-              <label style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 'var(--space-2)', 
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
                 cursor: 'pointer',
                 fontSize: '14px',
                 fontWeight: '500'
               }}>
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
+                  className="seed-confirm-checkbox"
                   checked={hasConfirmedSeedPhrase}
                   onChange={(e) => setHasConfirmedSeedPhrase(e.target.checked)}
-                  style={{ 
-                    width: '18px', 
-                    height: '18px',
-                    cursor: 'pointer'
-                  }}
                 />
-                <span style={{ color: 'var(--gray-800)' }}>
+                <span style={{ color: 'var(--text-primary)' }}>
                   I have written down or safely stored my recovery phrase
                 </span>
               </label>
@@ -542,7 +533,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
         {step === 2 && walletAction === 'import' && (
           <div className="step-content">
             <h2 style={{ marginBottom: 'var(--space-2)' }}>Import Your Account</h2>
-            <p style={{ fontSize: '15px', color: 'var(--gray-600)', marginBottom: 'var(--space-4)' }}>
+            <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
               Choose how you&apos;d like to import your existing Arweave wallet
             </p>
 
@@ -573,29 +564,22 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
               <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
                 <label style={{ marginBottom: 'var(--space-2)' }}>
                   Select Wallet File
-                  <span style={{ fontSize: '13px', color: 'var(--gray-500)', fontWeight: 'normal', marginLeft: 'var(--space-3)' }}>
+                  <span style={{ fontSize: '13px', color: 'var(--text-tertiary)', fontWeight: 'normal', marginLeft: 'var(--space-3)' }}>
                     Arweave wallet (.json) files only
                   </span>
                 </label>
-                <div style={{ 
-                  border: `2px dashed ${isDragging ? 'var(--ardrive-primary)' : walletPath ? 'var(--ardrive-primary)' : 'var(--gray-300)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  padding: 'var(--space-5)',
-                  textAlign: 'center',
-                  backgroundColor: isDragging ? 'var(--ardrive-primary-100)' : walletPath ? 'var(--ardrive-primary-50)' : 'var(--gray-50)',
-                  transition: 'all 0.2s ease',
-                  cursor: 'pointer'
-                }}
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onClick={() => !walletPath && handleSelectWallet()}
+                <div
+                  className={`wallet-dropzone${isDragging ? ' is-dragging' : ''}${walletPath ? ' has-file' : ''}`}
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onClick={() => !walletPath && handleSelectWallet()}
                 >
                   {walletPath ? (
                     <>
-                      <FileText size={28} style={{ color: 'var(--ardrive-primary)', marginBottom: 'var(--space-2)' }} />
+                      <FileText size={28} className="wallet-dropzone-icon" style={{ marginBottom: 'var(--space-2)' }} />
                       <p style={{ fontWeight: '600', marginBottom: 'var(--space-1)', fontSize: '15px' }}>{walletPath.split(/[/\\]/).pop()}</p>
-                      <p style={{ fontSize: '13px', color: 'var(--gray-500)', marginBottom: 'var(--space-3)' }}>
+                      <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: 'var(--space-3)' }}>
                         {walletPath}
                       </p>
                       <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'center' }}>
@@ -631,8 +615,8 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                     </>
                   ) : (
                     <>
-                      <FileText size={28} style={{ color: isDragging ? 'var(--ardrive-primary)' : 'var(--gray-400)', marginBottom: 'var(--space-2)' }} />
-                      <p style={{ color: 'var(--gray-600)', marginBottom: 'var(--space-2)', fontSize: '15px' }}>
+                      <FileText size={28} className="wallet-dropzone-icon" style={{ marginBottom: 'var(--space-2)' }} />
+                      <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-2)', fontSize: '15px' }}>
                         {isDragging ? 'Drop your wallet file here' : 'Drop your wallet file here or'}
                       </p>
                       {!isDragging && (
@@ -667,32 +651,8 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                   {/* Privacy Toggle */}
                   <button
                     type="button"
+                    className="seed-privacy-toggle"
                     onClick={() => setShowSeedPhraseText(!showSeedPhraseText)}
-                    style={{
-                      position: 'absolute',
-                      top: 'var(--space-3)',
-                      right: 'var(--space-3)',
-                      padding: 'var(--space-2)',
-                      backgroundColor: 'white',
-                      border: '1px solid var(--gray-300)',
-                      borderRadius: 'var(--radius-sm)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-1)',
-                      fontSize: '13px',
-                      color: 'var(--gray-600)',
-                      zIndex: 1,
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--gray-50)';
-                      e.currentTarget.style.borderColor = 'var(--gray-400)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'white';
-                      e.currentTarget.style.borderColor = 'var(--gray-300)';
-                    }}
                   >
                     {showSeedPhraseText ? (
                       <>
@@ -721,39 +681,18 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                       e.target.style.height = Math.max(120, e.target.scrollHeight) + 'px';
                     }}
                     placeholder="Enter your 12-word recovery phrase separated by spaces"
-                    style={{ 
-                      resize: 'none',
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '16px',
-                      lineHeight: '1.8',
-                      minHeight: '120px',
-                      transition: 'all 0.2s ease',
-                      padding: 'var(--space-4)',
-                      paddingRight: '100px', // Space for the privacy toggle
-                      backgroundColor: 'white',
-                      border: `2px solid ${seedPhrase && !validateSeedPhrase(seedPhrase).isValid ? 'var(--danger-400)' : 'var(--gray-300)'}`,
-                      borderRadius: 'var(--radius-md)',
-                      // @ts-expect-error - WebKit specific property
-                      WebkitTextSecurity: showSeedPhraseText ? 'none' : 'disc',
-                      color: showSeedPhraseText ? 'var(--gray-900)' : 'var(--gray-600)'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!seedPhrase || validateSeedPhrase(seedPhrase).isValid) {
-                        e.currentTarget.style.borderColor = 'var(--gray-400)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!seedPhrase || validateSeedPhrase(seedPhrase).isValid) {
-                        e.currentTarget.style.borderColor = 'var(--gray-300)';
-                      }
-                    }}
+                    className={
+                      'seed-phrase-textarea' +
+                      (showSeedPhraseText ? ' revealed' : '') +
+                      (seedPhrase && !validateSeedPhrase(seedPhrase).isValid ? ' invalid' : '')
+                    }
                   />
                 </div>
 
                 {seedPhrase && !validateSeedPhrase(seedPhrase).isValid && (
-                  <div style={{ 
-                    fontSize: '13px', 
-                    color: 'var(--danger-600)', 
+                  <div style={{
+                    fontSize: '13px',
+                    color: 'var(--danger-fg)',
                     marginTop: 'var(--space-2)',
                     display: 'flex',
                     alignItems: 'center',
@@ -768,7 +707,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                 <div style={{
                   marginTop: 'var(--space-2)',
                   fontSize: '13px',
-                  color: 'var(--gray-500)',
+                  color: 'var(--text-tertiary)',
                   lineHeight: '1.5'
                 }}>
                   Your recovery phrase is case-sensitive and should be entered exactly as it was provided to you.
@@ -790,20 +729,20 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
             </div>
 
             {/* Security Warning - Same as Create Account */}
-            <div style={{ 
-              backgroundColor: 'var(--warning-50)', 
-              padding: 'var(--space-4)', 
+            <div style={{
+              backgroundColor: 'var(--warning-surface)',
+              padding: 'var(--space-4)',
               borderRadius: 'var(--radius-md)',
               marginTop: 'var(--space-4)',
-              border: '1px solid var(--warning-200)'
+              border: '1px solid var(--warning)'
             }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
-                <Shield size={20} style={{ color: 'var(--warning-600)', flexShrink: 0, marginTop: '2px' }} />
+                <Shield size={20} style={{ color: 'var(--warning-fg)', flexShrink: 0, marginTop: '2px' }} />
                 <div>
-                  <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: 'var(--space-1)', color: 'var(--warning-900)' }}>
+                  <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: 'var(--space-1)', color: 'var(--warning-fg)' }}>
                     Important Security Notice
                   </h4>
-                  <p style={{ fontSize: '13px', color: 'var(--warning-800)', lineHeight: '1.5' }}>
+                  <p style={{ fontSize: '13px', color: 'var(--warning-fg)', lineHeight: '1.5' }}>
                     There is no way to recover this password if you forget it. Make sure to store it somewhere safe.
                   </p>
                 </div>
@@ -830,11 +769,11 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
               >
                 {loading ? (
                   <>
-                    <div style={{ 
-                      width: '16px', 
-                      height: '16px', 
-                      border: '2px solid rgba(255,255,255,0.3)',
-                      borderTop: '2px solid white',
+                    <div style={{
+                      width: '16px',
+                      height: '16px',
+                      border: '2px solid var(--spinner-track-on-brand)',
+                      borderTop: '2px solid var(--text-on-brand)',
                       borderRadius: '50%',
                       animation: 'spin 1s linear infinite',
                       marginRight: 'var(--space-2)'
@@ -852,46 +791,20 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
       </div>
       
       <style>{`
-        .primary-action-button:focus,
-        .secondary-action-button:focus {
-          outline: 3px solid var(--ardrive-primary);
-          outline-offset: 2px;
-        }
-        
-        .primary-action-button:focus:not(:focus-visible),
-        .secondary-action-button:focus:not(:focus-visible) {
-          outline: none;
-        }
-        
-        @keyframes subtle-pulse {
-          0%, 100% { opacity: 0.03; }
-          50% { opacity: 0.05; }
-        }
-        
-        .wallet-setup-container > div:first-child {
-          animation: subtle-pulse 20s ease-in-out infinite;
-        }
-        
         @keyframes fadeIn {
-          from { 
-            opacity: 0; 
+          from {
+            opacity: 0;
             transform: translateY(10px);
           }
-          to { 
-            opacity: 1; 
+          to {
+            opacity: 1;
             transform: translateY(0);
           }
         }
-        
+
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
-        }
-        
-        textarea:focus {
-          outline: 2px solid var(--ardrive-primary);
-          outline-offset: -1px;
-          border-color: var(--ardrive-primary);
         }
       `}</style>
     </div>

@@ -19,15 +19,15 @@ export const AddressDisplay: React.FC<AddressDisplayProps> = ({
   };
 
   return (
-    <div style={{ 
-      backgroundColor: 'var(--gray-50)', 
-      padding: 'var(--space-3)', 
+    <div style={{
+      backgroundColor: 'var(--surface-sunken)',
+      padding: 'var(--space-3)',
       borderRadius: 'var(--radius-md)',
       position: 'relative'
     }}>
-      <p style={{ 
-        fontSize: '13px', 
-        color: 'var(--gray-600)', 
+      <p style={{
+        fontSize: '13px',
+        color: 'var(--text-secondary)',
         marginBottom: 'var(--space-2)',
         fontWeight: '500'
       }}>
@@ -38,11 +38,11 @@ export const AddressDisplay: React.FC<AddressDisplayProps> = ({
         alignItems: 'center',
         gap: 'var(--space-2)'
       }}>
-        <p style={{ 
-          fontFamily: 'monospace', 
-          fontSize: '13px', 
+        <p style={{
+          fontFamily: 'monospace',
+          fontSize: '13px',
           wordBreak: 'break-all',
-          color: 'var(--gray-800)',
+          color: 'var(--text-primary)',
           flex: 1,
           margin: 0
         }}>
