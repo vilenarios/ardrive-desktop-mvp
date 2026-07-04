@@ -106,8 +106,15 @@ const api = {
     // Private drive operations
     createPrivate: (name: string, password: string): Promise<IpcResult<DriveInfo>> =>
       ipcRenderer.invoke('drive:create-private', name, password),
-    unlock: (driveId: string, password: string): Promise<IpcResult<DriveInfoWithStatus | undefined>> =>
-      ipcRenderer.invoke('drive:unlock', driveId, password),
+    // PRIV-4: persistKey opts this drive's key into encrypted persistence
+    // ("remember this drive") so it auto-unlocks next launch.
+    unlock: (driveId: string, password: string, persistKey?: boolean): Promise<IpcResult<DriveInfoWithStatus | undefined>> =>
+      ipcRenderer.invoke('drive:unlock', driveId, password, persistKey),
+    // PRIV-4: read/toggle whether a drive's key is remembered across sessions.
+    isPersisted: (driveId: string): Promise<IpcResult<boolean>> =>
+      ipcRenderer.invoke('drive:is-persisted', driveId),
+    setPersistence: (driveId: string, persist: boolean): Promise<IpcResult<boolean>> =>
+      ipcRenderer.invoke('drive:set-persistence', driveId, persist),
     lock: (driveId: string): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('drive:lock', driveId),
     isUnlocked: (driveId: string): Promise<IpcResult<boolean>> =>

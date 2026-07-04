@@ -8,7 +8,8 @@ interface PrivateDriveUnlockModalProps {
   // UX-3: onUnlock returns the SPECIFIC failure reason (wrong password vs.
   // network/gateway verification error) so the modal shows the real error
   // instead of always saying 'Invalid password'.
-  onUnlock: (password: string) => Promise<{ success: boolean; error?: string }>;
+  // PRIV-4: persistKey carries the user's "remember this drive" choice.
+  onUnlock: (password: string, persistKey: boolean) => Promise<{ success: boolean; error?: string }>;
   onCancel: () => void;
 }
 
@@ -22,17 +23,21 @@ export const PrivateDriveUnlockModal: React.FC<PrivateDriveUnlockModalProps> = (
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // PRIV-4: opt-in to remember this drive's key (encrypted) so it auto-unlocks
+  // next launch. Defaults off — persistence is always an explicit choice.
+  const [rememberDrive, setRememberDrive] = useState(false);
 
   const handleUnlock = async () => {
     if (!password.trim()) return;
-    
+
     setLoading(true);
     setError(null);
-    
+
     try {
-      const result = await onUnlock(password);
+      const result = await onUnlock(password, rememberDrive);
       if (result.success) {
         setPassword('');
+        setRememberDrive(false);
         // Modal will be closed by parent component
       } else {
         // UX-3: show the specific reason from the unlock envelope; fall back to
@@ -274,7 +279,35 @@ export const PrivateDriveUnlockModal: React.FC<PrivateDriveUnlockModalProps> = (
           }}>
             <strong>Security:</strong> Your password is kept in memory for this session only and will be cleared when you logout.
           </div>
-          
+
+          {/* PRIV-4: Remember this drive (opt-in key persistence) */}
+          <label
+            htmlFor="remember-drive"
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 'var(--space-2)',
+              marginBottom: error ? 'var(--space-4)' : 'var(--space-5)',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              userSelect: 'none'
+            }}
+          >
+            <input
+              id="remember-drive"
+              type="checkbox"
+              checked={rememberDrive}
+              disabled={loading}
+              onChange={(e) => setRememberDrive(e.target.checked)}
+              style={{ marginTop: '3px', cursor: loading ? 'not-allowed' : 'pointer' }}
+            />
+            <span style={{ fontSize: '13px', color: 'var(--gray-700)', lineHeight: '1.5' }}>
+              <span style={{ fontWeight: 500 }}>Remember this drive on this device</span>
+              <span style={{ display: 'block', color: 'var(--gray-500)', marginTop: '2px' }}>
+                The drive key is stored encrypted so you won&apos;t need this password after signing in. Turn off anytime.
+              </span>
+            </span>
+          </label>
+
           {/* Error Message */}
           {error && (
             <div style={{

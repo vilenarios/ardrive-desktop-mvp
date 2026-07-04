@@ -71,8 +71,24 @@ describe('PrivateDriveUnlockModal error display (UX-3)', () => {
     );
     submitPassword();
 
-    await waitFor(() => expect(onUnlock).toHaveBeenCalledWith('typed-password'));
+    // PRIV-4: onUnlock now also receives the "remember this drive" choice
+    // (default false — the checkbox starts unchecked).
+    await waitFor(() => expect(onUnlock).toHaveBeenCalledWith('typed-password', false));
     expect(screen.queryByText(NETWORK_ERROR)).not.toBeInTheDocument();
     expect(screen.queryByText(WRONG_PASSWORD)).not.toBeInTheDocument();
+  });
+
+  it('PRIV-4: checking "remember this drive" forwards persistKey=true', async () => {
+    const onUnlock = vi.fn().mockResolvedValue({ success: true });
+
+    render(
+      <PrivateDriveUnlockModal drive={lockedDrive} isOpen onUnlock={onUnlock} onCancel={vi.fn()} />
+    );
+
+    // Opt in, then unlock.
+    fireEvent.click(screen.getByRole('checkbox'));
+    submitPassword();
+
+    await waitFor(() => expect(onUnlock).toHaveBeenCalledWith('typed-password', true));
   });
 });
