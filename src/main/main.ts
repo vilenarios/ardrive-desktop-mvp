@@ -1,4 +1,16 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, shell } from 'electron';
+
+// E2E smoke-test hook (INFRA-12 / D-021): redirect userData to a disposable
+// directory so UI tests never touch a real profile. This MUST run here —
+// between the electron import and the manager imports below — because
+// config-manager and profile-manager capture app.getPath('userData') in
+// module-level singleton constructors at require time. Fails closed: packaged
+// builds ignore the variable entirely.
+if (process.env.ARDRIVE_TEST_USERDATA && !app.isPackaged) {
+  app.setPath('userData', process.env.ARDRIVE_TEST_USERDATA);
+  console.log('[TEST] userData redirected to', process.env.ARDRIVE_TEST_USERDATA);
+}
+
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
