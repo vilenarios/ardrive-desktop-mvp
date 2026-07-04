@@ -313,8 +313,8 @@ Acceptance: switch profile from the dashboard → UI shows the new profile's dri
 **Auto-login: implement or remove.** Evidence: §4.1 (circular gate — dead code). Pair with SEC-4: with opt-in consent, fix `hasStoredWallet` to check profiles independent of `currentProfileId` so `attemptAutoLoad` can run; without opt-in, don't store the password at all.
 Acceptance: opted-in returning user lands on the dashboard without typing a password; opted-out user gets the login screen and no keychain entry exists.
 
-### UX-7 · P1 · Phase 3 · `todo`
-**Fail-safe boot routing.** Evidence: §4.10 (initializeApp catch → wallet-setup; listDrives `[]` on network error → auto-create-drive routing).
+### UX-7 · P1 · Phase 3 · `in-progress`
+**Fail-safe boot routing.** Evidence: §4.10 (initializeApp catch → wallet-setup; listDrives `[]` on network error → auto-create-drive routing). Claimed 2026-07-04 (overnight loop, branch fix/UX-7-failsafe-boot, Sonnet impl / Opus gate).
 Fix: distinguish "no drives" from "couldn't fetch drives" (error state + retry); boot exceptions route to an error screen with retry, never to create-account for existing profiles.
 Also (implementer finding 2026-07-03): `loadWallet` swallows its specific "Invalid password" error — the outer catch (wallet-manager-secure.ts:434) rethrows everything as generic "Failed to decrypt wallet"; surface the real cause to the login UI.
 Acceptance: booting offline with an existing profile shows retry, not "Create New Account" or the create-drive flow; a wrong password says so, distinctly from corruption/IO failures.
