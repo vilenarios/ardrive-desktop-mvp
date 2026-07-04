@@ -1,0 +1,193 @@
+/* DriveSelector (DESIGN-4) — header dropdown for switching/creating drives.
+ * Ported off inline style={{}} + JS onMouseEnter/onMouseLeave hover hacks
+ * onto token-driven CSS per docs/product/DESIGN-SYSTEM.md §5A/§6.7.
+ *
+ * F7 (flows-audit): the trigger + dropdown used hardcoded `backgroundColor:
+ * 'white'`, which rendered as a bright white panel in dark mode. Fixed here
+ * via --surface-raised (trigger) / --surface-overlay (dropdown, per the
+ * design system's "menus/popovers/dropdowns" token).
+ */
+
+.drive-selector {
+  position: relative;
+}
+
+.drive-selector-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 200px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  transition: background-color var(--motion-base) var(--ease-standard),
+              border-color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.drive-selector-button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-inset);
+}
+
+.drive-selector-button:active:not(:disabled) {
+  background: var(--surface-sunken);
+}
+
+.drive-selector-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.drive-selector-button:disabled {
+  cursor: not-allowed;
+  color: var(--text-disabled);
+}
+
+.drive-selector-button-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  overflow: hidden;
+}
+
+.drive-selector-button-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-selector-chevron {
+  flex-shrink: 0;
+  transition: transform var(--motion-base) var(--ease-standard);
+}
+
+.drive-selector-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.drive-selector-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: var(--space-1);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elevation-4);
+  z-index: 1000;
+  max-height: 300px;
+  overflow-y: auto;
+  min-width: 200px;
+  /* reuse the existing dropdown-fade-in keyframe (styles.css, user-menu) */
+  animation: dropdown-fade-in var(--motion-moderate) var(--ease-out);
+}
+
+.drive-selector-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-primary);
+  text-align: left;
+  transition: background-color var(--motion-base) var(--ease-standard);
+}
+
+.drive-selector-option:hover {
+  background: var(--surface-inset);
+}
+
+.drive-selector-option:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+
+.drive-selector-option.is-active {
+  background: var(--brand-surface);
+}
+
+.drive-selector-option.is-active:hover {
+  background: var(--brand-surface);
+}
+
+.drive-selector-option-check {
+  color: var(--brand);
+  flex-shrink: 0;
+}
+
+.drive-selector-option-check-spacer {
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.drive-selector-option-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-selector-option-fingerprint {
+  margin-left: var(--space-2);
+  font-size: 12px;
+}
+
+.drive-selector-lock-icon {
+  color: var(--icon-mid);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.drive-selector-lock-icon.is-locked {
+  color: var(--warning-fg);
+  opacity: 0.9;
+}
+
+.drive-selector-globe-icon {
+  color: var(--icon-mid);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.drive-selector-divider {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.drive-selector-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--brand);
+  text-align: left;
+  font-weight: 500;
+  transition: background-color var(--motion-base) var(--ease-standard);
+}
+
+.drive-selector-action:hover {
+  background: var(--surface-inset);
+}
+
+.drive-selector-action:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
