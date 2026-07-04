@@ -1,0 +1,31 @@
+/* READ-ONLY preflight for batch3-hide-restore. No writes. turbo-gateway only. */
+'use strict';
+process.env.ARDRIVE_GATEWAY_HOST = 'turbo-gateway.com';
+const fs = require('fs'), path = require('path');
+const c = require('./common');
+const core = require('ardrive-core-js');
+const { arDriveFactory, ArweaveAddress, EID, readJWKFile } = core;
+const DRIVE = '8d81a9db-b665-4040-866f-37336d324e14';
+const FILE_ID = '27218f49-8fcd-48c5-ab91-4c39be7c2ea3';
+(async () => {
+  const { walletPath, password } = c.loadEnv();
+  const arweave = c.initArweave();
+  const { TurboFactory } = require('@ardrive/turbo-sdk');
+  const wallet = readJWKFile(walletPath);
+  const walletJson = JSON.parse(fs.readFileSync(walletPath, 'utf8'));
+  const dkm = require(path.resolve(__dirname, '..', '..', 'dist', 'main', 'drive-key-manager.js')).driveKeyManager;
+  dkm.setWallet(walletJson);
+  const arDrive = arDriveFactory({ wallet, arweave, turboSettings: { turboUrl: new URL('https://upload.ardrive.io') } });
+  const owner = new ArweaveAddress(c.IKRY_ADDRESS);
+  const driveKey = await dkm.deriveKey(DRIVE, password);
+  const bal = String((await TurboFactory.unauthenticated().getBalance(c.IKRY_ADDRESS)).winc);
+  c.log('ikry balance:', bal, '(expected', c.IKRY_TURBO_BALANCE_EXPECTED + ')', bal === c.IKRY_TURBO_BALANCE_EXPECTED ? 'MATCH' : 'MISMATCH');
+  const m = await arDrive.getPrivateFile({ fileId: EID(FILE_ID), driveKey, owner });
+  c.log('name          :', c.assertNoSecret(String(m.name)));
+  c.log('size          :', Number(m.size.toString()), 'B');
+  c.log('dataTxId      :', m.dataTxId ? m.dataTxId.toString() : null);
+  c.log('isHidden      :', m.isHidden);
+  c.log('READY TO HIDE :', String(m.name) === 'base.webp' && m.isHidden !== true && bal === c.IKRY_TURBO_BALANCE_EXPECTED ? 'YES' : 'NO');
+  dkm.clearAllKeys();
+  process.exit(0);
+})().catch((e) => { console.error('PREFLIGHT FATAL:', e && e.stack ? e.stack : e); process.exit(1); });
