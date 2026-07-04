@@ -68,7 +68,7 @@ describe('App boot routing fail-safe (UX-7)', () => {
         walletType: 'arweave',
       },
     });
-    mockElectronAPI.arns.getProfile.mockResolvedValue(null);
+    mockElectronAPI.arns.getProfile.mockResolvedValue({ success: true, data: null }); // UX-3: arns:get-profile is now enveloped
     mockElectronAPI.driveMappings.list.mockResolvedValue([]);
   });
 

@@ -63,18 +63,22 @@ describe('TurboCreditsManager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
+    // UX-3: turbo/payment IPC methods now resolve the IpcResult envelope.
     mockElectronAPI.wallet.getInfo.mockResolvedValue(mockWalletInfo);
     mockElectronAPI.turbo.getBalance.mockResolvedValue({
-      ar: '0.500000',
-      winc: '500000000000'
+      success: true,
+      data: { ar: '0.500000', winc: '500000000000' },
     });
     mockElectronAPI.turbo.getFiatEstimate.mockResolvedValue({
-      byteCount: 1024 * 1024 * 1024,
-      amount: 10,
-      winc: '1000000000000',
-      currency: 'usd'
+      success: true,
+      data: {
+        byteCount: 1024 * 1024 * 1024,
+        amount: 10,
+        winc: '1000000000000',
+        currency: 'usd',
+      },
     });
-    mockElectronAPI.payment.openWindow.mockResolvedValue(undefined);
+    mockElectronAPI.payment.openWindow.mockResolvedValue({ success: true, data: undefined });
   });
 
   it('should render the Turbo Credits header and back button', async () => {
@@ -107,8 +111,8 @@ describe('TurboCreditsManager', () => {
   describe('Fiat Top-up', () => {
     it('should create a checkout session and open the payment window', async () => {
       mockElectronAPI.turbo.createCheckoutSession.mockResolvedValue({
-        url: 'https://checkout.stripe.com/test-session',
-        id: 'cs_test_123'
+        success: true,
+        data: { url: 'https://checkout.stripe.com/test-session', id: 'cs_test_123' },
       });
 
       renderComponent();
@@ -128,8 +132,8 @@ describe('TurboCreditsManager', () => {
 
     it('should pass the selected currency to the checkout session', async () => {
       mockElectronAPI.turbo.createCheckoutSession.mockResolvedValue({
-        url: 'https://checkout.stripe.com/test-session',
-        id: 'cs_test_123'
+        success: true,
+        data: { url: 'https://checkout.stripe.com/test-session', id: 'cs_test_123' },
       });
 
       renderComponent();
@@ -147,8 +151,8 @@ describe('TurboCreditsManager', () => {
 
     it('should create a checkout session for a quick-buy amount', async () => {
       mockElectronAPI.turbo.createCheckoutSession.mockResolvedValue({
-        url: 'https://checkout.stripe.com/test-session',
-        id: 'cs_test_123'
+        success: true,
+        data: { url: 'https://checkout.stripe.com/test-session', id: 'cs_test_123' },
       });
 
       renderComponent();
@@ -161,7 +165,12 @@ describe('TurboCreditsManager', () => {
     });
 
     it('should handle payment errors', async () => {
-      mockElectronAPI.turbo.createCheckoutSession.mockRejectedValue(new Error('Payment failed'));
+      // UX-3: a business error surfaces as a resolved { success:false } envelope
+      // (not a rejection) — the component must still show it and NOT open a window.
+      mockElectronAPI.turbo.createCheckoutSession.mockResolvedValue({
+        success: false,
+        error: 'Payment failed',
+      });
 
       renderComponent();
 
@@ -191,7 +200,8 @@ describe('TurboCreditsManager', () => {
   describe('Token Top-up (AR conversion)', () => {
     it('should convert AR to credits', async () => {
       mockElectronAPI.turbo.topUpWithTokens.mockResolvedValue({
-        transactionId: 'tx-123'
+        success: true,
+        data: { transactionId: 'tx-123' },
       });
 
       renderComponent();
@@ -208,7 +218,12 @@ describe('TurboCreditsManager', () => {
     });
 
     it('should handle token top-up errors', async () => {
-      mockElectronAPI.turbo.topUpWithTokens.mockRejectedValue(new Error('Insufficient balance'));
+      // UX-3: a failed conversion resolves { success:false } — the user must be
+      // told (this path spends AR), so the component surfaces the error.
+      mockElectronAPI.turbo.topUpWithTokens.mockResolvedValue({
+        success: false,
+        error: 'Insufficient balance',
+      });
 
       renderComponent();
 
@@ -319,8 +334,9 @@ describe('TurboCreditsManager', () => {
 
   describe('Loading States', () => {
     it('should show a processing state while the checkout session is created', async () => {
-      // Keep the checkout session pending to observe the loading state
-      let resolveSession: (session: { url: string }) => void;
+      // Keep the checkout session pending to observe the loading state.
+      // UX-3: createCheckoutSession resolves the IpcResult envelope.
+      let resolveSession: (session: { success: true; data: { url: string } }) => void;
       mockElectronAPI.turbo.createCheckoutSession.mockImplementation(
         () => new Promise((resolve) => { resolveSession = resolve; })
       );
@@ -339,7 +355,7 @@ describe('TurboCreditsManager', () => {
       expect(getPurchaseButton()).toBeDisabled();
 
       // Resolve and let the flow finish
-      resolveSession!({ url: 'https://checkout.stripe.com/test-session' });
+      resolveSession!({ success: true, data: { url: 'https://checkout.stripe.com/test-session' } });
       await waitFor(() => {
         expect(screen.queryByText('Processing...')).not.toBeInTheDocument();
       });

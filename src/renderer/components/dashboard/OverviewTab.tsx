@@ -103,7 +103,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       let turboBalance = null;
       
       try {
-        const turbo = await window.electronAPI.turbo.getBalance();
+        // UX-3: getBalance now resolves an IpcResult; a failure (e.g. Turbo not
+        // initialized) leaves turboBalance null → renders as unavailable, not NaN.
+        const turboResult = await window.electronAPI.turbo.getBalance();
+        const turbo = turboResult.success ? turboResult.data : null;
         if (turbo && turbo.winc) {
           // Convert Winston Credits to AR equivalent for display
           turboBalance = parseFloat(turbo.winc) / 1e12;

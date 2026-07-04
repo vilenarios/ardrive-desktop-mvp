@@ -15,6 +15,8 @@ import type {
   SyncStatus,
 } from '../types';
 import type { ExportResult } from './wallet-export-manager';
+import type { TurboBalance, TurboCosts } from './turbo-manager';
+import type { ArNSProfile } from './arns-service';
 
 // UX-3 / D-005: methods whose main-process handler is wrapped in
 // `envelopeHandler` are annotated `Promise<IpcResult<T>>`. Because the
@@ -195,27 +197,28 @@ const api = {
       ipcRenderer.invoke('config:set-theme', theme),
   },
 
-  // Dialog operations
+  // Dialog operations (UX-3: migrated to the IpcResult envelope)
   dialog: {
-    selectFolder: () => 
+    selectFolder: (): Promise<IpcResult<string | null>> =>
       ipcRenderer.invoke('dialog:select-folder'),
-    selectWallet: () => 
+    selectWallet: (): Promise<IpcResult<string | null>> =>
       ipcRenderer.invoke('dialog:select-wallet'),
   },
 
-  // Shell operations
+  // Shell operations (UX-3: migrated to the IpcResult envelope)
   shell: {
-    openExternal: (url: string) => 
+    openExternal: (url: string): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('shell:open-external', url),
-    openPath: (path: string) =>
+    openPath: (path: string): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('shell:open-path', path),
-    openFile: (filePath: string) =>
+    openFile: (filePath: string): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('shell:open-file', filePath),
   },
-  
-  // Payment operations
+
+  // Payment operations (UX-3: openWindow migrated to the IpcResult envelope;
+  // the payment-completed/cancelled events are unchanged, MONEY-7)
   payment: {
-    openWindow: (url: string) =>
+    openWindow: (url: string): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('payment:open-window', url),
     onPaymentCompleted: (callback: () => void) => {
       ipcRenderer.on('payment-completed', callback);
@@ -241,21 +244,27 @@ const api = {
       ipcRenderer.invoke('security:get-method'),
   },
 
-  // Turbo operations
+  // Turbo operations (UX-3: migrated to the IpcResult envelope; payload
+  // semantics unchanged — no cost/approval/charge logic altered)
   turbo: {
-    getBalance: () =>
+    getBalance: (): Promise<IpcResult<TurboBalance>> =>
       ipcRenderer.invoke('turbo:get-balance'),
-    getUploadCosts: (bytes: number) =>
+    getUploadCosts: (bytes: number): Promise<IpcResult<TurboCosts>> =>
       ipcRenderer.invoke('turbo:get-upload-costs', bytes),
-    getFiatEstimate: (byteCount: number, currency?: string) =>
+    getFiatEstimate: (byteCount: number, currency?: string): Promise<IpcResult<any>> =>
       ipcRenderer.invoke('turbo:get-fiat-estimate', byteCount, currency),
-    createCheckoutSession: (amount: number, currency?: string) =>
+    createCheckoutSession: (amount: number, currency?: string): Promise<IpcResult<any>> =>
       ipcRenderer.invoke('turbo:create-checkout-session', amount, currency),
-    topUpWithTokens: (tokenAmount: number, feeMultiplier?: number) =>
+    topUpWithTokens: (tokenAmount: number, feeMultiplier?: number): Promise<IpcResult<any>> =>
       ipcRenderer.invoke('turbo:top-up-with-tokens', tokenAmount, feeMultiplier),
-    isInitialized: () =>
+    isInitialized: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('turbo:is-initialized'),
-    getStatus: () =>
+    getStatus: (): Promise<IpcResult<{
+      isInitialized: boolean;
+      hasBalance: boolean;
+      balance: TurboBalance | null;
+      error: string | null;
+    }>> =>
       ipcRenderer.invoke('turbo:get-status'),
   },
   
@@ -300,9 +309,9 @@ const api = {
     ipcRenderer.removeAllListeners('download:progress');
   },
   
-  // ArNS operations
+  // ArNS operations (UX-3: migrated to the IpcResult envelope)
   arns: {
-    getProfile: (address: string) =>
+    getProfile: (address: string): Promise<IpcResult<ArNSProfile>> =>
       ipcRenderer.invoke('arns:get-profile', address),
   },
 
@@ -358,19 +367,19 @@ const api = {
       ipcRenderer.invoke('files:get-uploads-by-mapping', driveId), // TODO: Rename IPC channel
   },
 
-  // Error reporting
+  // Error reporting (UX-3: migrated to the IpcResult envelope)
   error: {
     reportError: (errorData: {
       message: string;
       stack?: string;
       componentStack?: string;
       timestamp: string;
-    }) => ipcRenderer.invoke('error:report', errorData),
+    }): Promise<IpcResult<boolean>> => ipcRenderer.invoke('error:report', errorData),
   },
 
-  // System operations
+  // System operations (UX-3: migrated to the IpcResult envelope)
   system: {
-    getEnv: (key: string) =>
+    getEnv: (key: string): Promise<IpcResult<string | undefined>> =>
       ipcRenderer.invoke('system:get-env', key),
   },
 

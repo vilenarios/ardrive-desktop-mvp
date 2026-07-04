@@ -370,16 +370,13 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
     } else if (activity.type === 'download') {
       const download = activity.originalItem as FileDownload;
       if (download.localPath) {
-        try {
-          await window.electronAPI.shell.openFile(download.localPath);
-        } catch (error) {
-          console.error('Failed to open file:', error);
-          // Fallback to opening the containing folder
-          try {
-            await window.electronAPI.shell.openPath(download.localPath);
-          } catch (fallbackError) {
-            console.error('Failed to open containing folder:', fallbackError);
-          }
+        // UX-3: openFile RESOLVES { success:false } instead of throwing, so
+        // branch on the envelope to keep the containing-folder fallback alive.
+        const openResult = await window.electronAPI.shell.openFile(download.localPath);
+        if (!openResult.success) {
+          console.error('Failed to open file:', openResult.error);
+          // Fallback to opening the containing folder (best-effort)
+          await window.electronAPI.shell.openPath(download.localPath);
         }
       }
     }
@@ -539,16 +536,13 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
       
       // Open file directly for successful downloads
       if (download.localPath && download.status === 'completed') {
-        try {
-          await window.electronAPI.shell.openFile(download.localPath);
-        } catch (error) {
-          console.error('Failed to open file:', error);
-          // Fallback to opening the containing folder
-          try {
-            await window.electronAPI.shell.openPath(download.localPath);
-          } catch (fallbackError) {
-            console.error('Failed to open containing folder:', fallbackError);
-          }
+        // UX-3: openFile RESOLVES { success:false } instead of throwing, so
+        // branch on the envelope to keep the containing-folder fallback alive.
+        const openResult = await window.electronAPI.shell.openFile(download.localPath);
+        if (!openResult.success) {
+          console.error('Failed to open file:', openResult.error);
+          // Fallback to opening the containing folder (best-effort)
+          await window.electronAPI.shell.openPath(download.localPath);
         }
       }
     }
@@ -1260,16 +1254,14 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                     <button 
                       className="button small secondary"
                       onClick={async () => {
-                        try {
-                          await window.electronAPI.shell.openFile((selectedActivityDetails.originalItem as FileDownload).localPath);
-                        } catch (error) {
-                          console.error('Failed to open file:', error);
-                          // Fallback to opening the containing folder
-                          try {
-                            await window.electronAPI.shell.openPath((selectedActivityDetails.originalItem as FileDownload).localPath);
-                          } catch (fallbackError) {
-                            console.error('Failed to open containing folder:', fallbackError);
-                          }
+                        // UX-3: openFile RESOLVES { success:false }; branch on the
+                        // envelope to keep the containing-folder fallback alive.
+                        const localPath = (selectedActivityDetails.originalItem as FileDownload).localPath;
+                        const openResult = await window.electronAPI.shell.openFile(localPath);
+                        if (!openResult.success) {
+                          console.error('Failed to open file:', openResult.error);
+                          // Fallback to opening the containing folder (best-effort)
+                          await window.electronAPI.shell.openPath(localPath);
                         }
                       }}
                     >

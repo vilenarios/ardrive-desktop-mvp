@@ -36,10 +36,13 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
   // Dev mode auto-fill for faster testing
   React.useEffect(() => {
     const checkDevMode = async () => {
-      const isDevMode = await window.electronAPI.system.getEnv('ARDRIVE_DEV_MODE');
-      const devWalletPath = await window.electronAPI.system.getEnv('ARDRIVE_DEV_WALLET_PATH');
-      const devPassword = await window.electronAPI.system.getEnv('ARDRIVE_DEV_PASSWORD');
-      
+      const isDevModeResult = await window.electronAPI.system.getEnv('ARDRIVE_DEV_MODE');
+      const devWalletPathResult = await window.electronAPI.system.getEnv('ARDRIVE_DEV_WALLET_PATH');
+      const devPasswordResult = await window.electronAPI.system.getEnv('ARDRIVE_DEV_PASSWORD');
+      const isDevMode = isDevModeResult.success ? isDevModeResult.data : undefined;
+      const devWalletPath = devWalletPathResult.success ? devWalletPathResult.data : undefined;
+      const devPassword = devPasswordResult.success ? devPasswordResult.data : undefined;
+
       if (isDevMode === 'true' && walletAction === 'import' && step === 2) {
         if (devWalletPath) {
           setWalletPath(devWalletPath);
@@ -70,7 +73,8 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
 
   const handleSelectWallet = async () => {
     try {
-      const selectedPath = await window.electronAPI.dialog.selectWallet();
+      const result = await window.electronAPI.dialog.selectWallet();
+      const selectedPath = result.success ? result.data : null;
       if (selectedPath) {
         setWalletPath(selectedPath);
         setError(null);

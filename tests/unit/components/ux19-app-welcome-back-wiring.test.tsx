@@ -75,7 +75,7 @@ describe('App -> WelcomeBackScreen drive-list wiring (UX-19)', () => {
         walletType: 'arweave',
       },
     });
-    mockElectronAPI.arns.getProfile.mockResolvedValue(null);
+    mockElectronAPI.arns.getProfile.mockResolvedValue({ success: true, data: null }); // UX-3: arns:get-profile is now enveloped
     // UX-3: drive-mappings:list returns the IpcResult envelope
     mockElectronAPI.driveMappings.list.mockResolvedValue({ success: true, data: [] });
   });

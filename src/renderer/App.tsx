@@ -133,13 +133,14 @@ const App: React.FC = () => {
       
       // Fetch ArNS data for the profile
       try {
-        const arnsProfile = await window.electronAPI.arns.getProfile(profile.address);
+        const arnsResult = await window.electronAPI.arns.getProfile(profile.address);
+        const arnsProfile = arnsResult.success ? arnsResult.data : null;
         console.log('ArNS profile data:', arnsProfile);
         if (arnsProfile) {
           const enrichedProfile = {
             ...profile,
-            arnsName: arnsProfile.name,
-            avatarUrl: arnsProfile.avatar  // Fixed: was avatarUrl, should be avatar
+            arnsName: arnsProfile.name ?? undefined,
+            avatarUrl: arnsProfile.avatar ?? undefined  // Fixed: was avatarUrl, should be avatar
           };
           setCurrentProfile(enrichedProfile);
         } else {
@@ -460,13 +461,14 @@ const App: React.FC = () => {
   
   const loadArnsProfileInBackground = async (profile: Profile) => {
     try {
-      const arnsProfile = await window.electronAPI.arns.getProfile(profile.address);
+      const arnsResult = await window.electronAPI.arns.getProfile(profile.address);
+      const arnsProfile = arnsResult.success ? arnsResult.data : null;
       console.log('ArNS profile data loaded:', arnsProfile);
       if (arnsProfile) {
         const enrichedProfile = {
           ...profile,
-          arnsName: arnsProfile.name,
-          avatarUrl: arnsProfile.avatar
+          arnsName: arnsProfile.name ?? undefined,
+          avatarUrl: arnsProfile.avatar ?? undefined
         };
         setCurrentProfile(enrichedProfile);
       }

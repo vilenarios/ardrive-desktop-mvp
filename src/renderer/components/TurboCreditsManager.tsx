@@ -136,8 +136,15 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
   const loadTurboBalance = async () => {
     try {
       setLoading(true);
-      const turboBalance = await window.electronAPI.turbo.getBalance();
-      setBalance(turboBalance);
+      // UX-3: getBalance resolves an IpcResult; a business failure no longer
+      // throws, so surface it explicitly (MONEY-13: never show a broken value).
+      const result = await window.electronAPI.turbo.getBalance();
+      if (!result.success) {
+        console.error('Failed to load Turbo balance:', result.error);
+        setError('Failed to load Turbo Credits balance');
+        return;
+      }
+      setBalance(result.data);
     } catch (err) {
       console.error('Failed to load Turbo balance:', err);
       setError('Failed to load Turbo Credits balance');
@@ -149,8 +156,10 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
   const loadFiatEstimate = async () => {
     try {
       // Get estimate for 1 GB upload
-      const estimate = await window.electronAPI.turbo.getFiatEstimate(1024 * 1024 * 1024, 'usd');
-      setFiatEstimate(estimate);
+      const result = await window.electronAPI.turbo.getFiatEstimate(1024 * 1024 * 1024, 'usd');
+      if (result.success) {
+        setFiatEstimate(result.data);
+      }
     } catch (err) {
       console.error('Failed to load fiat estimate:', err);
     }
@@ -169,12 +178,18 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
         throw new Error(amountValidation.error!);
       }
 
-      const session = await window.electronAPI.turbo.createCheckoutSession(finalAmount, topUpCurrency);
-      
+      // UX-3: createCheckoutSession resolves an IpcResult; a failed session no
+      // longer throws, so surface it explicitly before opening the window.
+      const sessionResult = await window.electronAPI.turbo.createCheckoutSession(finalAmount, topUpCurrency);
+      if (!sessionResult.success) {
+        throw new Error(sessionResult.error || 'Failed to create checkout session');
+      }
+      const session = sessionResult.data;
+
       if (session.url) {
         // Open payment in modal window (MONEY-7: returns an envelope)
         const openResult = await window.electronAPI.payment.openWindow(session.url);
-        if (openResult && openResult.success === false) {
+        if (openResult.success === false) {
           throw new Error(openResult.error || 'Failed to open payment window');
         }
         setSuccessMessage('Payment window opened. Complete your payment and the window will close automatically.');
@@ -203,9 +218,14 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
         throw new Error(tokenValidation.error!);
       }
 
+      // UX-3: topUpWithTokens resolves an IpcResult; a failed conversion no
+      // longer throws, so surface it (this spends AR — the user must be told).
       const result = await window.electronAPI.turbo.topUpWithTokens(amount);
-      console.log('Token top-up result:', result);
-      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to top up with tokens');
+      }
+      console.log('Token top-up result:', result.data);
+
       // Refresh balance after successful top-up
       await loadTurboBalance();
       setSuccessMessage('Successfully converted AR to Turbo Credits!');

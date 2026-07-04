@@ -622,11 +622,11 @@ export const StorageTab: React.FC<StorageTabProps> = ({
       
       console.log('Constructed local path:', localPath);
       
-      try {
-        // Use openFile to open the file directly with its default application
-        await window.electronAPI.shell.openFile(localPath);
-      } catch (error) {
-        console.error('Failed to open local file:', error);
+      // UX-3: openFile now RESOLVES { success:false } instead of throwing, so
+      // branch on the envelope to keep the ArDrive-URL fallback alive.
+      const openResult = await window.electronAPI.shell.openFile(localPath);
+      if (!openResult.success) {
+        console.error('Failed to open local file:', openResult.error);
         // Fallback to ArDrive URL if local file can't be opened
         if (item.ardriveUrl) {
           window.electronAPI.shell.openExternal(item.ardriveUrl);

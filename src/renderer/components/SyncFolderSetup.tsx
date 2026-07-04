@@ -18,7 +18,8 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
 
   const handleSelectFolder = async () => {
     try {
-      const selectedFolder = await window.electronAPI.dialog.selectFolder();
+      const result = await window.electronAPI.dialog.selectFolder();
+      const selectedFolder = result.success ? result.data : null;
       if (selectedFolder) {
         setSyncFolder(selectedFolder);
         setError(null);

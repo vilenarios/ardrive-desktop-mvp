@@ -12,7 +12,8 @@ const SyncManager: React.FC<SyncManagerProps> = ({ onSyncFolderSelected }) => {
 
   const handleSelectFolder = async () => {
     try {
-      const folderPath = await window.electronAPI.dialog.selectFolder();
+      const result = await window.electronAPI.dialog.selectFolder();
+      const folderPath = result.success ? result.data : null;
       if (folderPath) {
         setSelectedFolder(folderPath);
         setError(null);

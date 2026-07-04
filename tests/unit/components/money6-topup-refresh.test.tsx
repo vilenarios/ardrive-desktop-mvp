@@ -167,7 +167,7 @@ describe('MONEY-6: top-up refresh reaches blocked queue rows in the production c
       success: true,
       data: forceRefresh ? freshWalletInfo : staleWalletInfo,
     }));
-    mockElectronAPI.arns.getProfile.mockResolvedValue(null);
+    mockElectronAPI.arns.getProfile.mockResolvedValue({ success: true, data: null }); // UX-3: arns:get-profile is now enveloped
     // Real handler shape: {success, data} envelope (main.ts drive:listWithStatus)
     mockElectronAPI.drive.listWithStatus.mockResolvedValue({ success: true, data: [driveA] });
     mockElectronAPI.drive.isUnlocked.mockResolvedValue({ success: true, data: true });

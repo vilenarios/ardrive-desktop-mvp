@@ -35,9 +35,11 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
   // Dev mode auto-fill for faster testing
   useEffect(() => {
     const checkDevMode = async () => {
-      const isDevMode = await window.electronAPI.system.getEnv('ARDRIVE_DEV_MODE');
-      const devSyncFolder = await window.electronAPI.system.getEnv('ARDRIVE_DEV_SYNC_FOLDER');
-      
+      const isDevModeResult = await window.electronAPI.system.getEnv('ARDRIVE_DEV_MODE');
+      const devSyncFolderResult = await window.electronAPI.system.getEnv('ARDRIVE_DEV_SYNC_FOLDER');
+      const isDevMode = isDevModeResult.success ? isDevModeResult.data : undefined;
+      const devSyncFolder = devSyncFolderResult.success ? devSyncFolderResult.data : undefined;
+
       if (isDevMode === 'true' && devSyncFolder && !syncFolder) {
         setSyncFolder(devSyncFolder);
       }
@@ -72,7 +74,8 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
 
   const handleSelectFolder = async () => {
     try {
-      const selectedFolder = await window.electronAPI.dialog.selectFolder();
+      const result = await window.electronAPI.dialog.selectFolder();
+      const selectedFolder = result.success ? result.data : null;
       if (selectedFolder) {
         setSyncFolder(selectedFolder);
         setError(null);
