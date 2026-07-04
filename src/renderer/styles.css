@@ -25,13 +25,20 @@
  * files. DESIGN-3..7 will migrate each surface to the new names directly and
  * delete its slice of this bridge as it goes (per DESIGN-SYSTEM.md §8.4).
  *
- * Scale tokens (spacing/radius/shadow/type-size/line-height/font-weight) are
+ * Scale tokens (spacing/shadow/type-size/line-height/font-weight) are
  * intentionally NOT re-aliased here: their legacy values differ numerically
- * from the new §3–5 scale (e.g. old --radius-lg: 1rem vs new 8px), and
- * remapping them now would visibly reflow/resize existing UI — out of scope
- * for the token/theme foundation (no visual regression is a DESIGN-2
- * acceptance criterion). They stay as literal legacy values until each
- * surface is ported in DESIGN-3..7.
+ * from the new §3–5 scale, and remapping them now would visibly reflow/resize
+ * existing UI — out of scope for the token/theme foundation (no visual
+ * regression is a DESIGN-2 acceptance criterion). They stay as literal legacy
+ * values until each surface is ported in DESIGN-3..7.
+ *
+ * EXCEPTION (DARK-4, DESIGN-8): --radius-sm/md/lg/xl used to be redeclared
+ * here too (e.g. old --radius-lg: 1rem vs new 8px), silently overriding
+ * theme.css's spec'd scale for every already-migrated DESIGN-3..7 surface
+ * that references them. That redeclaration has been removed — those four
+ * names now resolve to theme.css's 4/6/8/12px scale everywhere. `--radius`
+ * (no suffix, not part of theme.css's scale, ~40 call sites) is unaffected
+ * and stays literal below.
  */
 :root {
   /* ArDrive Brand Colors - Primary Red Scale (bridged to --brand ladder) */
@@ -209,12 +216,18 @@
   --space-10: 2.5rem;
   --space-12: 3rem;
 
-  /* Border Radius (legacy scale, left as literal — see note above) */
-  --radius-sm: 0.375rem;
+  /* Border Radius — --radius-sm/md/lg/xl bridge-drift fix (DARK-4): this
+   * block used to redeclare those four names as literal rem values (6/12/16/
+   * 24px) AFTER theme.css's @import, so the cascade always picked this file's
+   * ~2x-inflated literals over theme.css's spec'd 4/6/8/12px scale — silently
+   * undoing every DESIGN-3..7 component that references --radius-xl etc.
+   * expecting the spec'd size (settings.css, user-menu.css, the DESIGN-7
+   * modals). Removed per DESIGN-SYSTEM.md §8.4 so these resolve to theme.css.
+   * `--radius` (no suffix) is intentionally NOT part of theme.css's scale —
+   * it's a separate legacy-only token with ~40 live call sites, so it stays
+   * here unchanged; only the four names that collide with theme.css's actual
+   * scale are removed. */
   --radius: 0.5rem;
-  --radius-md: 0.75rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.5rem;
 
   /* Shadows (legacy scale, left as literal — see note above) */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -700,18 +713,33 @@ label {
   box-shadow: none;
 }
 
-/* Secondary Button - Style Guide Dark */
+/* Secondary Button (DARK-2 fix): was filled with --gray-800/--gray-700, which
+ * bridge to --text-primary (near-white in dark theme) while `color` was a
+ * literal `white` — invisible white-on-near-white text in dark mode. Now uses
+ * the same dark-safe surface/text/border tokens as the working `.button.outline`
+ * recipe, just filled instead of transparent. */
 .button.secondary {
-  background: var(--gray-800);
-  color: white;
-  border: 1px solid var(--gray-700);
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
 }
 
-.button.secondary:hover {
-  background: var(--gray-900);
-  color: white;
-  box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.15), 0 2px 4px 0 rgba(0, 0, 0, 0.1);
-  border-color: var(--gray-600);
+.button.secondary:hover:not(:disabled) {
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  box-shadow: var(--elevation-2);
+}
+
+.button.secondary:active:not(:disabled) {
+  background: var(--surface-sunken);
+  box-shadow: none;
+}
+
+.button.secondary:disabled {
+  background: var(--surface-inset);
+  color: var(--text-disabled);
+  border-color: var(--border);
 }
 
 /* Outline Button - Style Guide Aligned */
@@ -1565,13 +1593,26 @@ label {
   border-bottom: 1px solid var(--gray-200);
 }
 
-.file-icon {
+/* Renamed from the collided `.file-icon` (DARK-3/DESIGN-8): this is
+ * FileMetadataModal's 56px file-detail icon well, an unrelated concept from
+ * the canonical `.file-icon <family>` file-type icon system used by
+ * ActivityTab/StorageTab (see the "File Type Icons (canonical, DESIGN-6)"
+ * block below). Sharing the class name meant this 56px/white-background/
+ * box-shadow rule (equal specificity, later in cascade order) silently won
+ * width/height/background for every small file-type icon app-wide, and — in
+ * dark theme, where the canonical rule's --gray-700 color bridges to
+ * --text-primary (#FAFAFA) — rendered them as an invisible near-white glyph
+ * on a white 56px box. Also swapped `background: white` for the dark-safe
+ * --surface-inset token (DARK-1); color/radius/shadow are unchanged from the
+ * original rule (--ardrive-primary is theme-invariant, so it was never
+ * broken — only the collision and the white literal were bugs). */
+.file-detail-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 56px;
   height: 56px;
-  background: white;
+  background: var(--surface-inset);
   border-radius: var(--radius-lg);
   color: var(--ardrive-primary);
   box-shadow: var(--shadow-sm);
@@ -2769,14 +2810,14 @@ label {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay);
   backdrop-filter: blur(4px);
   z-index: 3000;
 }
 
 .wallet-export-modal .modal-content {
   position: relative;
-  background: white;
+  background: var(--surface-raised);
   border-radius: var(--radius-xl);
   max-width: 600px;
   width: 90%;
@@ -2839,7 +2880,7 @@ label {
   align-items: center;
   gap: var(--space-4);
   padding: var(--space-4);
-  background: white;
+  background: var(--surface-raised);
   border: 2px solid var(--gray-200);
   border-radius: var(--radius-lg);
   cursor: pointer;
@@ -3105,12 +3146,16 @@ label {
   gap: var(--space-3);
 }
 
+/* DARK-1: was `background: white` paired with `.word-text { color:
+ * var(--gray-900) }` (bridges to --text-primary, #FAFAFA in dark) — the
+ * revealed recovery-phrase words rendered near-white-on-white, on the single
+ * highest-stakes screen in the app. */
 .seed-word {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background: white;
+  background: var(--surface-inset);
   border: 1px solid var(--gray-300);
   border-radius: var(--radius);
 }
@@ -3815,9 +3860,15 @@ label {
   flex-shrink: 0;
 }
 
-.file-icon {
-  color: var(--gray-600);
-}
+/* DARK-3/DESIGN-8: dead duplicate `.file-icon` rule removed — this whole
+ * block (.activity-item, .item-icon, .item-details, .item-meta, etc.) is a
+ * pre-DESIGN-6 leftover with zero live consumers (superseded by
+ * `.unified-activity-item` in ActivityTab.tsx); this specific selector also
+ * collided with the canonical `.file-icon <family>` file-type icon system
+ * (styles.css "File Type Icons (canonical, DESIGN-6)" block), silently
+ * winning the `color` property for every file-type icon app-wide via later
+ * source order at equal specificity. Left the rest of the dead block alone —
+ * out of scope for this pass (only the collision was in-scope). */
 
 .item-details {
   flex: 1;
@@ -5703,9 +5754,14 @@ label {
   margin: var(--space-2) 0;
 }
 
+/* DSI-2: an ordinary, benign in-progress fill (sync is running, nothing is
+ * wrong) shouldn't use the brand/danger-adjacent red hue — matches the
+ * already-correct `.progress-fill.download`/`.detail-progress-fill.download`
+ * convention elsewhere in this file. Consumed by SyncProgressDisplay.tsx,
+ * rendered from DriveAndSyncSetup.tsx. */
 .sync-progress-bar {
   height: 100%;
-  background: var(--ardrive-primary);
+  background: var(--info);
   transition: width 0.3s ease;
 }
 

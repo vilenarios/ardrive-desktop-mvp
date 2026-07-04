@@ -130,6 +130,23 @@ silently wins over the intended one, or a raw color literal ignores the theme
 entirely.
 
 ### DARK-1 — Hardcoded `background: white` (and literal overlay colors) bypass theme tokens → invisible or near-invisible content in dark mode
+**Status (DESIGN-8, Foundation lane): PARTIALLY DONE.** Fixed the
+onboarding/setup + Wallet Export sites (this lane's ownership):
+`DriveAndSyncSetup.tsx:279`, `SyncFolderSetup.tsx:119`,
+`ProfileManagement.tsx:192,238,467`, and `styles.css`'s Wallet Export modal
+(overlay scrim → `var(--overlay)`, panel + format-choice cards →
+`var(--surface-raised)`, `.seed-word` → `var(--surface-inset)`). Also swapped
+the onboarding "loading" spinners' literal `white`/`rgba(255,255,255,0.3)` for
+the existing `--text-on-brand`/`--spinner-track-on-brand` tokens (same file,
+same bug class). `DownloadQueueTab.tsx`, `UploadApprovalQueueModern.tsx`, and
+`turbo-credits.css` are **owned by the parallel DESIGN-5/restyle lane** — not
+touched here, per this lane's file-ownership boundary. The dead-code sites
+(`DriveManager.tsx`, `ProfileSelection.tsx`) are resolved by DSI-6's deletion
+below. Note for whichever lane picks up the remaining sites: this lane's audit
+also found ~18 more live `background: white` sites elsewhere in `styles.css`
+(payment-modal, file-metadata-modal, info-card, status-card, activity-section,
+download-overlay, global-status-card, mapping-card, form-section, etc.) that
+this doc's original sweep didn't enumerate — worth a follow-up pass.
 **broken** — the single most-repeated bug across all four critiques. Every heading/
 label inside these cards inherits `--text-primary`, which is `#FAFAFA` in dark theme
 (`theme.css:30`) — white text on a hardcoded white card.
@@ -175,6 +192,16 @@ the same recipe already applied to the three DESIGN-7 drive modals (`modal.css`'
 header comment documents this exact fix, "F7," having already been done there).
 
 ### DARK-2 — `.button.secondary` renders invisible white-on-white text in dark mode
+**Status: DONE (DESIGN-8, Foundation lane).** `.button.secondary` now uses
+`background: var(--surface-inset); color: var(--text-primary); border: 1px
+solid var(--border-strong);` (resting), with matching `:hover`/`:active`/
+`:disabled` states mirroring `.button.outline`'s recipe. Verified by cascade:
+both tokens resolve to legible, distinguishable pairs in each theme
+(dark: `#2a2a2a` bg / `#fafafa` text; light: `#f1eff0` bg / `#1f1f1f` text).
+Confirmed live call sites (`FileLinkActions.tsx`, `StorageTab.tsx`,
+`CreateManifestModal.tsx:426,601`, `SyncManager.tsx`, `FileMetadataModal.tsx`,
+`OverviewTab.tsx`, `ActivityTab.tsx`, `UploadApprovalQueue.tsx`) all pick up
+the shared class — no per-component change needed.
 `src/renderer/styles.css:704-708` · **broken** (pixel-verified: sampled
 `design6-overview-modal-DARK.png`'s Cancel button — every pixel ≥ RGB(250,250,250),
 the label isn't rendered visibly at all)
@@ -193,6 +220,21 @@ var(--border-strong);` (the same recipe as `.button.outline`) instead of a bridg
 "gray text" token repurposed as a fill.
 
 ### DARK-3 — Dead `.file-icon` rule blocks win the cascade → invisible file-type icons in dark mode
+**Status: DONE (DESIGN-8, Foundation lane).** `:3818`'s bare `.file-icon {
+color: var(--gray-600) }` was confirmed dead (its whole surrounding block —
+`.activity-item`, `.item-icon`, `.item-meta`, etc. — has zero live consumers,
+superseded by `.unified-activity-item`) and deleted. `:1568` (the 56px
+file-detail-modal box) turned out to be **live** — `FileMetadataModal.tsx`
+genuinely renders `<div className="file-icon"><FileText/></div>` for its
+56px icon well — so instead of deleting it, it was renamed to
+`.file-detail-icon` (CSS + the one TSX call site) and its `background: white`
+swapped for `var(--surface-inset)` (DARK-1 same-bug). This leaves exactly one
+bare `.file-icon` declaration (`activity-tab.css:157`, 12px sizing) beneath
+the canonical `.file-icon.<family>` color rules — the collision is gone.
+Verified via full-repo grep: no other component references the old bare
+`"file-icon"` class except the already-dead, out-of-mandate
+`StoredFilesBrowser.tsx` (unreferenced anywhere — not deleted since it isn't
+named in this doc, but flagged here for a future dead-code pass).
 `src/renderer/styles.css:1568` and `:3818` · **broken**
 Two leftover `.file-icon` blocks (one a 56px file-detail-modal relic with
 `background:white`, one a dead duplicate) share the canonical rule's specificity
@@ -212,6 +254,17 @@ actually belongs to (grep its real consumer first) so it stops colliding with th
 canonical rule.
 
 ### DARK-4 — `--radius-xl` is split-brained (12px vs 24px), and the wrong one silently wins
+**Status: DONE (DESIGN-8, Foundation lane).** Removed the `--radius-sm/md/lg/xl`
+redeclaration from `styles.css`'s legacy bridge block; those four names now
+resolve to `theme.css`'s spec'd 4/6/8/12px scale everywhere (`settings.css:23`,
+`user-menu.css:88`/`:449`, and every DESIGN-7 modal get the correct radius with
+no further changes needed). `--radius` (no suffix) is **not** part of
+theme.css's scale and was left untouched — it has ~40 live call sites across
+`styles.css`/`turbo-credits.css`/`activity-tab.css` with no equivalent token to
+bridge to; deleting it would zero out their `border-radius` entirely, which is
+out of scope for this fix. Checked for hard-dependencies on the old inflated
+literals (e.g. paired `clip-path`/offset math assuming a specific px value) —
+found none; border-radius is purely cosmetic at every call site.
 `src/renderer/styles/theme.css:216` (12px, DESIGN-SYSTEM-spec'd) vs
 `src/renderer/styles.css:217` (24px, `:root` block loaded *after* the `@import`,
 "intentionally left as literal" per that file's own comment) · **broken (guardrail
@@ -524,6 +577,16 @@ single answer for "how do I show an error."
 `--danger-surface` and delete the `--error-*`/`--red-*` aliases once callers move.
 
 ### DSI-2 — Brand red / status hues used for benign, non-alert UI (4 sites)
+**Status: PARTIALLY DONE (DESIGN-8, Foundation lane).** Fixed one additional
+shared/token-level instance this pass turned up: `styles.css`'s
+`.sync-progress-bar` (the fill inside `SyncProgressDisplay.tsx`, rendered from
+`DriveAndSyncSetup.tsx`) used `var(--ardrive-primary)` (brand red) for an
+ordinary "sync in progress" bar — remapped to `var(--info)`, matching the
+already-correct `.progress-fill.download` convention elsewhere in the file.
+The 4 sites named below are all **per-component CSS/inline-styles owned by
+other lanes** (`StorageTab.tsx` inline styles, `turbo-credits.css`,
+`settings.css`, `CreateDriveModal.tsx`) — out of this lane's strict file
+ownership, left untouched per instructions ("if unsure, leave and note it").
 **inconsistent** Status hues are reserved for actual state signals; using them
 decoratively teaches users to distrust the "something's wrong" signal.
 - `StorageTab.tsx:485-503` — "downloading"/"uploading" (ordinary, expected states) use
@@ -571,6 +634,19 @@ semantic action — which also trips DARK-2's invisible-text bug. · **inconsist
 **Fix:** standardize every modal Cancel/Back on `button outline`.
 
 ### DSI-6 — Dead/unreachable components duplicate the bugs of their live siblings
+**Status: DONE (DESIGN-8, Foundation lane).** Deleted all three:
+`SecurityStatus.tsx`, `DriveManager.tsx`, `ProfileSelection.tsx`. Verified zero
+references first — repo-wide grep (`src/`, `tests/`, all `.ts`/`.tsx`/`.js`)
+for each component name matched only the file's own definition, both before
+and re-confirmed after deletion; `typecheck`/`build`/`test` all still pass.
+This also resolves DSI-6's own POLISH-23 cross-reference (duplicate "remember
+me"/spinner code in the now-deleted `ProfileSelection.tsx`) and clears
+`DriveManager.tsx`'s slice of DSI-1's legacy-token debt for free. Did not
+restyle-and-wire `SecurityStatus.tsx` per the doc's alternate option — that's
+a product decision (surfacing it in password setup) beyond a dark-mode/DS-
+integrity fix, left for a future pass. Also found (but did NOT delete, since
+it isn't named in this doc): `StoredFilesBrowser.tsx` is equally
+unreferenced anywhere in the repo — worth a DSI-6 follow-up entry.
 `src/renderer/components/SecurityStatus.tsx` (not imported anywhere; ships Tailwind-
 shaped classes — `text-green-600`, `bg-gray-50`, `list-disc`, `hover:opacity-80` —
 that don't exist in this app's CSS, so it'd render as unstyled black-on-white text if
@@ -921,7 +997,7 @@ sites.
 | Lane | Scope | Items | Size |
 |---|---|---|---|
 | **A — DESIGN-5 restyle** | Finish the Upload Approval Queue + Download Queue + Turbo Credits Manager restyle: legacy→semantic tokens, column headers, off-brand glow, balance-message color, dead search/filter wiring, CreateManifestModal's modal-shell port + debug-log removal. Sweeps in: POLISH-16/17/18/19 (same files). | RESTYLE-1..8 (8) + 4 polish sweep-ins | **Bigger** — largest lane by file-touch count; RESTYLE-9 (hover-handler fix) can be done here in the same pass since it's the same files |
-| **B — Dark-mode + `styles.css` dead-block purge** | Token-swap every hardcoded `white`/literal color to the correct surface/overlay/input token (DARK-1, 11+ sites); fix `.button.secondary` (DARK-2); delete or rename the two dead `.file-icon` blocks (DARK-3); resolve the `--radius-xl` split-brain (DARK-4); delete the 3 dead components carrying the same bugs (DSI-6, which also clears POLISH-23 for free). | DARK-1..4 (4) + DSI-6 (1) | **Quick win** for the token swaps (mechanical, same recipe as the already-shipped "F7" fix); **medium** for DARK-3/4 (need cascade investigation before deleting) |
+| **B — Dark-mode + `styles.css` dead-block purge** | Token-swap every hardcoded `white`/literal color to the correct surface/overlay/input token (DARK-1, 11+ sites); fix `.button.secondary` (DARK-2); delete or rename the two dead `.file-icon` blocks (DARK-3); resolve the `--radius-xl` split-brain (DARK-4); delete the 3 dead components carrying the same bugs (DSI-6, which also clears POLISH-23 for free). | DARK-1..4 (4) + DSI-6 (1) | **Quick win** for the token swaps (mechanical, same recipe as the already-shipped "F7" fix); **medium** for DARK-3/4 (need cascade investigation before deleting). **Status:** DONE for the shared/global-foundation slice (DESIGN-8 "Foundation" implementer pass) — DARK-2/3/4 fully done; DARK-1 done for onboarding/setup + Wallet Export only (Turbo/Upload/Download surfaces remain for the parallel restyle lane); DSI-6 fully done (all 3 components deleted); one DSI-2 site (`.sync-progress-bar`) fixed as a bonus find. `typecheck`/`lint`/`build`/`test` all pass. |
 | **C — Info-bubble distribution pass** | Wire the already-built, accessible `InfoButton` onto ~20 surfaces per the coverage table; standardize on it over native `title=`/custom hover tooltips (INFO-2); build the missing Gateway Settings UI (INFO-3, bigger — new control, not just a bubble). Sweeps in: POLISH-14 (fingerprint fallback, same session as its bubble), POLISH-20/21 (same files). | INFO-1..8 (8) + 16-concept table + 3 polish sweep-ins | **Quick win** for wiring existing `InfoButton`s (cheapest fix in this whole sweep); **bigger** only for INFO-3 (Gateway UI doesn't exist yet) |
 | **D — Modal a11y + hover-control keyboard reach** | Escape/backdrop-click/focus-trap on `CreateDriveModal`/`AddExistingDriveModal`/`CreateManifestModal` (ideally one shared `<DriveModal>` wrapper); WelcomeBackScreen radio fix; ActivityTab context-menu keyboard reach; label/input `htmlFor` pairs; onboarding `<h1>` promotion. Sweeps in: POLISH-13 (same a11y concern as A11Y-2). | A11Y-1..5 (5) + 1 polish sweep-in | **Quick win** for A11Y-1/4/5 (small, contained diffs); **bigger** for A11Y-3 if done as a shared wrapper (recommended — do it once, not 3x) |
 | **E — Trust & copy fixes** | Every Theme 1 (trust/honesty) and Theme 7 (copy/permanence) item — mostly copy edits, a few conditional/data-wiring fixes (TRUST-1's fake stats, TRUST-3's validator wiring). Sweeps in the onboarding-adjacent Theme 8 polish items that live in the same files (POLISH-1/2/3/6/7/9/10/22). | TRUST-1..6 (6) + COPY-1..15 (15) + 8 polish sweep-ins | **Quick win** for the vast majority (localized copy/conditional fixes); **bigger** only for TRUST-1 if real usage counters are wired instead of a "Coming soon" swap, and COPY-5 if submitted-vs-confirmed needs new state tracking |

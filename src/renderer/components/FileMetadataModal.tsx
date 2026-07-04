@@ -111,7 +111,7 @@ const FileMetadataModal: React.FC<FileMetadataModalProps> = ({
 
         {/* File Header */}
         <div className="file-header">
-          <div className="file-icon">
+          <div className="file-detail-icon">
             <FileText size={32} />
           </div>
           <div className="file-info">
