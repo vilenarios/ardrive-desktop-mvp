@@ -41,7 +41,7 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({
           autoFocus={autoFocus}
           style={{
             paddingRight: '48px',
-            borderColor: error ? 'var(--error)' : undefined
+            borderColor: error ? 'var(--danger)' : undefined
           }}
         />
         <button
@@ -56,7 +56,7 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({
             border: 'none',
             cursor: 'pointer',
             padding: 'var(--space-2)',
-            color: 'var(--gray-600)'
+            color: 'var(--text-secondary)'
           }}
         >
           {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -64,7 +64,7 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({
       </div>
       {showStrength && value && <PasswordStrengthIndicator password={value} />}
       {error && (
-        <p style={{ fontSize: '13px', color: 'var(--error)', marginTop: 'var(--space-2)' }}>
+        <p style={{ fontSize: '13px', color: 'var(--danger-fg)', marginTop: 'var(--space-2)' }}>
           {error}
         </p>
       )}

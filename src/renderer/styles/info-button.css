@@ -12,7 +12,7 @@
   border: none;
   padding: var(--space-1);
   cursor: pointer;
-  color: var(--gray-500);
+  color: var(--icon-mid);
   border-radius: var(--radius-sm);
   transition: all 0.2s ease;
   display: flex;
@@ -21,13 +21,13 @@
 }
 
 .info-button:hover {
-  color: var(--gray-700);
-  background: var(--gray-100);
+  color: var(--icon-high);
+  background: var(--surface-inset);
 }
 
 .info-button:focus {
   outline: none;
-  box-shadow: 0 0 0 2px var(--gray-200);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .info-button:active {
@@ -57,11 +57,12 @@
 }
 
 .tooltip-content {
-  background: var(--gray-900) !important;
-  color: white !important;
+  background: var(--surface-overlay) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border);
   padding: var(--space-3);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--elevation-3);
   font-size: 0.8125rem; /* 13px - smaller than default for tooltips */
   line-height: 1.4;
   position: relative;
@@ -77,12 +78,12 @@
   height: 0;
   border-left: 0.25rem solid transparent;
   border-right: 0.25rem solid transparent;
-  border-bottom: 0.25rem solid var(--gray-900);
+  border-bottom: 0.25rem solid var(--surface-overlay);
 }
 
 .tooltip-content p {
   margin: 0 0 var(--space-2) 0;
-  color: white !important; /* Ensure white text */
+  color: var(--text-primary) !important; /* Ensure readable text in both themes */
 }
 
 .tooltip-content p:last-child {
@@ -90,7 +91,7 @@
 }
 
 .learn-more {
-  color: var(--ardrive-primary-100);
+  color: var(--brand);
   text-decoration: none;
   font-weight: 500;
   display: inline-block;
@@ -99,5 +100,5 @@
 
 .learn-more:hover {
   text-decoration: underline;
-  color: var(--ardrive-primary-200);
+  color: var(--brand-hover);
 }

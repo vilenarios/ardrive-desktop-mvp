@@ -154,6 +154,13 @@
   --font-sans: 'Wavehaus', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 
+  /* On-brand loading ring (DESIGN-3): the translucent track of a spinner that
+   * sits inside a --brand-colored (red) button. Constant across themes —
+   * the button's red backdrop doesn't change with light/dark — so it lives
+   * here rather than in the per-theme blocks. The moving arc uses the
+   * existing --text-on-brand (#fff) token. */
+  --spinner-track-on-brand: rgba(255, 255, 255, 0.3);
+
   /* 2.2 Type scale (desktop) — ArDriveDesktopTypography */
   --text-display: 2.8125rem; /* 45px */
   --text-h1: 2.25rem; /* 36px */

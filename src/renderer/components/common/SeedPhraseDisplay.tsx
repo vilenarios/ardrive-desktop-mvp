@@ -25,8 +25,8 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
 
   return (
     <div style={{ position: 'relative' }}>
-      <div style={{ 
-        backgroundColor: showSeedPhrase ? 'var(--gray-50)' : 'var(--gray-900)',
+      <div style={{
+        backgroundColor: 'var(--surface-sunken)',
         padding: 'var(--space-4)',
         borderRadius: 'var(--radius-lg)',
         position: 'relative',
@@ -42,11 +42,11 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: 'rgba(0,0,0,0.8)',
+            backgroundColor: 'var(--overlay)',
             backdropFilter: 'blur(4px)',
             zIndex: 1
           }}>
-            <Eye size={32} style={{ color: 'white', marginBottom: 'var(--space-3)' }} />
+            <Eye size={32} style={{ color: 'var(--text-on-brand)', marginBottom: 'var(--space-3)' }} />
             <button
               className="button"
               onClick={() => setShowSeedPhrase(true)}
@@ -55,7 +55,7 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
             </button>
           </div>
         )}
-        
+
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(3, 1fr)',
@@ -68,26 +68,27 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
               key={index}
               style={{
                 padding: 'var(--space-2)',
-                backgroundColor: 'white',
+                backgroundColor: 'var(--surface-raised)',
                 borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--gray-300)',
+                border: '1px solid var(--border-strong)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 'var(--space-1)'
               }}
             >
-              <span style={{ 
-                fontSize: '12px', 
-                color: 'var(--gray-500)',
+              <span style={{
+                fontSize: '12px',
+                color: 'var(--text-tertiary)',
                 fontWeight: '600',
                 minWidth: '20px'
               }}>
                 {index + 1}.
               </span>
-              <span style={{ 
+              <span style={{
                 fontFamily: 'monospace',
                 fontSize: '14px',
-                fontWeight: '500'
+                fontWeight: '500',
+                color: 'var(--text-primary)'
               }}>
                 {word}
               </span>
@@ -114,8 +115,8 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 'var(--space-2)',
-                backgroundColor: 'white',
-                border: '1px solid var(--gray-300)'
+                backgroundColor: 'var(--surface-overlay)',
+                border: '1px solid var(--border)'
               }}
               title="Hide recovery phrase"
             >
@@ -130,9 +131,9 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
               display: 'flex',
               alignItems: 'center',
               gap: 'var(--space-2)',
-              backgroundColor: showSeedPhrase ? 'white' : 'rgba(255, 255, 255, 0.9)',
-              border: '1px solid var(--gray-300)',
-              color: showSeedPhrase ? 'var(--gray-700)' : 'var(--gray-800)'
+              backgroundColor: 'var(--surface-overlay)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-primary)'
             }}
             title="Copy recovery phrase to clipboard"
           >

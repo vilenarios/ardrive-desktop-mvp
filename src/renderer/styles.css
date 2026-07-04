@@ -371,17 +371,36 @@ label {
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
-  background: var(--gray-50);
+  background: var(--surface);
 }
 
+/* Onboarding card (DESIGN-3) — uses --surface-raised so it's theme-reactive
+ * (fixes the DESIGN-2 dark-mode regression where a literal white card made
+ * theme-reactive headings unreadable). Accent-top bar per DESIGN-SYSTEM.md
+ * §6.3's signature card treatment. */
 .wallet-setup-card {
-  background: white;
-  border-radius: var(--radius-lg);
-  padding: var(--space-8);
-  box-shadow: var(--shadow);
-  max-width: 600px;
+  position: relative;
+  z-index: 2;
+  background: var(--surface-raised);
+  border-radius: var(--radius-xl);
+  padding: var(--space-10);
+  box-shadow: var(--elevation-4);
+  border: 1px solid var(--border);
+  max-width: 520px;
   width: 100%;
+  margin: var(--space-8);
   text-align: center;
+  overflow: hidden; /* clip the accent-top bar to the rounded corners */
+}
+
+.wallet-setup-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: var(--accent);
 }
 
 /* Webkit Scrollbar Styling */
@@ -626,7 +645,8 @@ label {
   border-radius: var(--radius);
   font-size: 14px;
   font-family: var(--font-system);
-  background: white;
+  background: var(--input-bg);
+  color: var(--text-primary);
   transition: all 0.15s ease;
 }
 
