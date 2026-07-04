@@ -135,7 +135,15 @@ const App: React.FC = () => {
         }
       }
       console.log('[initializeApp] Extracted drive list:', driveList);
-      
+
+      // UX-19: populate drive state here so every downstream branch (welcome-back
+      // for a locked primary private drive, welcome-back for all-private drives,
+      // and the eventual dashboard) has the real drive list. Previously only
+      // handleWalletImported() called setDrives(), so a returning user routed to
+      // 'welcome-back' from this function saw `drives` still stuck at its
+      // initial [] — a false "No drives found" state.
+      setDrives(driveList);
+
       if (!driveList || driveList.length === 0) {
         // No drives at all - go to drive setup
         setAppState('drive-setup');

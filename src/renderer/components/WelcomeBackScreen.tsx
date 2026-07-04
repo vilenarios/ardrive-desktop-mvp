@@ -25,19 +25,26 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
 }) => {
   const [drives, setDrives] = useState<DriveInfoWithStatus[]>([]);
   const [selectedDriveId, setSelectedDriveId] = useState<string | null>(null);
-  const [drivesLoading, setDrivesLoading] = useState(!initialDrives);
+  // UX-19: `initialDrives` is never actually `undefined` from the real caller
+  // (App.tsx's `drives` state defaults to `[]`), so `!initialDrives` alone
+  // never distinguishes "still loading" from "confirmed zero drives" — an
+  // empty-but-defined array was being trusted as final data. Treat an empty
+  // array the same as "not loaded yet" until verified below.
+  const [drivesLoading, setDrivesLoading] = useState(!initialDrives || initialDrives.length === 0);
   const [profileLoading, setProfileLoading] = useState(!currentProfile);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!initialDrives) {
-      // If no initial drives provided, try to load them
+    if (!initialDrives || initialDrives.length === 0) {
+      // No drives provided yet, or an empty list that hasn't been confirmed
+      // via a real fetch — verify with the backend before treating it as a
+      // genuine zero-drives account (UX-19).
       loadDrives();
     } else {
       // Use the initial drives (show ALL drives, not just public)
       setDrives(initialDrives as DriveInfoWithStatus[]);
       setDrivesLoading(false);
-      
+
       // Pre-select if there's only one drive
       if (initialDrives.length === 1) {
         setSelectedDriveId(initialDrives[0].id);
