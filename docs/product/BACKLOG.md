@@ -354,6 +354,24 @@ Acceptance: every profile shows a stable generated avatar and editable nickname;
 **Restore the drive-removal surface.** Found via UX-1's QA cycle: no product UI on main can remove a drive mapping — `onDriveDeleted` plumbing (App→Dashboard→StorageTab) is wired but never invoked; zero `driveMappings.remove` callers. A removal implementation exists on the parked `wip/drive-key-persistence` branch (Dashboard.tsx) — review it when implementing (with PRIV-4's wip review). The success toast is already wired (UX-1).
 Acceptance: user can remove a mapped drive from the UI (with confirm); mapping deleted, sync re-targets or stops, removal toast shows; covered by a behavioral test.
 
+### UX-19 · P1 · Phase 3 · `todo`
+**Returning user sees false "No drives found".** Found via flows audit 2026-07-04 (F1; see docs/product/FLOWS-AUDIT-2026-07.md). `initializeApp()` never calls `setDrives(driveList)` on the welcome-back routes (App.tsx:145-188), and `WelcomeBackScreen`'s loading check (`!initialDrives`, WelcomeBackScreen.tsx:28,32-46) treats an empty-but-defined array as final data — so a returning user with a locked/private primary drive is told to "create one". Compounded by PRIV-4 (private drives lock every restart). Quick-win part = the missing `setDrives()` calls + fix the loading-vs-empty distinction; the deeper locked-drive UX pairs with PRIV-4 (needs Phil sign-off).
+Acceptance: a returning user with existing (incl. locked/private) drives sees their drives, never a false "no drives" prompt; empty-state only shows when the account genuinely has zero drives; behavioral test.
+
+### UX-20 · P1 · Phase 3 · `todo`
+**Create-Account persists wallet/profile before confirmation → orphaned wallets.** Flows audit (F2). "Create Account" fully creates + persists wallet+profile at Step 2 (WalletSetup.tsx:391) before the recovery-phrase confirmation, and `completeSetup` is a no-op stub (preload.ts:16-17; wallet-manager-secure.ts:50-214). Going Back and retrying silently spawns a second orphaned profile+wallet with a *different* seed phrase. Data-integrity/UX bug. Fix: defer persistence until after recovery-phrase confirmation, or make Back clean up the provisional profile; make `completeSetup` real (or remove it).
+Acceptance: navigating Back during create and retrying leaves exactly one profile/wallet; no orphaned profiles or divergent seed phrases; behavioral test.
+
+### UX-21 · P1 · Phase 3 · `todo`
+**"Enable Auto Sync" toggle is never persisted.** Flows audit (F4). The setup toggle (DriveAndSyncSetup.tsx:24,197-202,526; SetupSuccessScreen.tsx:177-189) is never saved; the next boot starts sync unconditionally regardless of the user's choice — same fabricated-setting class as the already-fixed MONEY-4/MONEY-11.
+Acceptance: the Auto-Sync choice persists and is honored on boot (off ⇒ no auto-start); behavioral test. (If the answer is "remove the toggle" vs "implement it" — Phil's call; see FLOWS-AUDIT F4.)
+
+### UX-22 · P1 · Phase 3 · `todo`
+**No user control to pause/stop continuous sync.** Flows audit (F3). There is no UI to pause/stop sync once running; the "Sync" button is a one-shot manual pass and the widget's "Sync Paused" state (Dashboard.tsx:790-810,1075-1080; unused preload.ts:94) is read-only/unreachable. Directly relevant to the "sync must be top-tier" bar. Needs a small design call on the control's shape (Phil).
+Acceptance: user can pause/resume (or stop/start) continuous sync from the UI; state is truthful and reachable; behavioral test.
+
+> Flows audit 2026-07-04 also surfaced: F7 dark-mode gaps on drive-selection + WelcomeBackScreen/SetupSuccessScreen surfaces (fold into DESIGN scope — not fully covered by DESIGN-4..7 as written); F10 drive creation defaults to Private/unrecoverable (product decision — Phil); plus ~9 quick-wins (toast consistency, Clear-All confirm, copy-to-clipboard feedback) detailed in docs/product/FLOWS-AUDIT-2026-07.md.
+
 ---
 
 ## INFRA — Build, test, release
