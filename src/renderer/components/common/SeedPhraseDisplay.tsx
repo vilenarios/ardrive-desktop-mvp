@@ -56,13 +56,23 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
           </div>
         )}
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 'var(--space-2)',
-          opacity: showSeedPhrase ? 1 : 0.1,
-          transition: 'opacity 0.3s ease-in'
-        }}>
+        {/* TRUST-4: this grid used to always render the real words and just
+            dim them to opacity 0.1 — the plaintext stayed in the DOM (and
+            in the accessibility tree) the entire time, readable via a
+            screen reader or any DOM inspector regardless of "hidden" state.
+            Mirror the recovery-phrase *import* textarea (which genuinely
+            masks via -webkit-text-security): swap the rendered word text
+            itself for a masked placeholder while hidden, and aria-hide the
+            whole grid so assistive tech gets nothing until it's revealed. */}
+        <div
+          aria-hidden={!showSeedPhrase}
+          data-testid="seed-phrase-grid"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 'var(--space-2)'
+          }}
+        >
           {words.map((word, index) => (
             <div
               key={index}
@@ -88,9 +98,10 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
                 fontFamily: 'monospace',
                 fontSize: '14px',
                 fontWeight: '500',
-                color: 'var(--text-primary)'
+                color: 'var(--text-primary)',
+                letterSpacing: showSeedPhrase ? 'normal' : '1px'
               }}>
-                {word}
+                {showSeedPhrase ? word : '••••••'}
               </span>
             </div>
           ))}
@@ -145,6 +156,21 @@ export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
             )}
           </button>
         </div>
+      )}
+
+      {/* COPY-14: allowCopyWhenHidden lets a user copy the phrase to the OS
+          clipboard without ever revealing it on screen — a nice privacy
+          feature, but clipboard managers/history can retain it afterward.
+          Say so. */}
+      {copied && (
+        <p style={{
+          marginTop: 'var(--space-2)',
+          fontSize: '12px',
+          color: 'var(--text-tertiary)',
+          textAlign: 'right'
+        }}>
+          Copied — remember to clear your clipboard history after pasting somewhere safe.
+        </p>
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle, FolderOpen, Globe, Zap, ArrowRight, ChevronDown, ChevronUp, Copy, ExternalLink } from 'lucide-react';
+import { CheckCircle, FolderOpen, Globe, Lock, Zap, ArrowRight, ChevronDown, ChevronUp, Copy, ExternalLink } from 'lucide-react';
 import { Profile } from '../../types';
 
 interface SetupSuccessScreenProps {
@@ -27,6 +27,14 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
 }) => {
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // TRUST-5: this row used to hardcode a Globe icon regardless of the actual
+  // driveType passed in — a private drive's own confirmation screen showed
+  // the public icon, exactly backwards for the one screen whose job is
+  // letting the user trust what "private" means before they upload anything.
+  // WelcomeBackScreen.tsx branches Lock/Globe off `drive.privacy`; mirror
+  // that here off the `driveType` string this component actually receives.
+  const isPrivateDrive = driveType.toLowerCase().includes('private');
 
   const handleCopy = async (text: string, field: string) => {
     try {
@@ -75,13 +83,17 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
         </div>
 
         {/* Title */}
+        {/* POLISH-3: a party-popper emoji in the largest, boldest text on
+            the confirmation screen undercut the sleek/permanent tone this
+            product is going for — the CheckCircle above already carries
+            the "success" signal, so the emoji was purely redundant. */}
         <h1 style={{
           fontSize: '32px',
           fontWeight: '700',
           marginBottom: 'var(--space-6)',
           color: 'var(--text-primary)'
         }}>
-          🎉 Your Drive Is Ready{currentProfile && (currentProfile.arnsName || currentProfile.name) ? `, ${currentProfile.arnsName || currentProfile.name}` : ''}!
+          Your Drive Is Ready{currentProfile && (currentProfile.arnsName || currentProfile.name) ? `, ${currentProfile.arnsName || currentProfile.name}` : ''}!
         </h1>
 
         {/* Summary Box */}
@@ -127,14 +139,18 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
               <div style={{
                 width: '32px',
                 height: '32px',
-                background: 'var(--warning-surface)',
+                background: isPrivateDrive ? 'var(--warning-surface)' : 'var(--info-surface)',
                 borderRadius: 'var(--radius-sm)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0
               }}>
-                <Globe size={18} style={{ color: 'var(--warning)' }} />
+                {isPrivateDrive ? (
+                  <Lock size={18} style={{ color: 'var(--warning)' }} />
+                ) : (
+                  <Globe size={18} style={{ color: 'var(--info)' }} />
+                )}
               </div>
               <div>
                 <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Drive Type</p>
@@ -322,13 +338,21 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
         )}
 
         {/* Reassurance Copy */}
+        {/* Permanence + public/private framing: this used to be a generic
+            "your files will sync" line with no honest expectation-setting --
+            the exact moment this product differs most from Dropbox (nothing
+            you upload can be edited or deleted, and a public drive is
+            visible to anyone) was never said anywhere in onboarding. */}
         <p style={{
           fontSize: '16px',
           color: 'var(--text-secondary)',
           lineHeight: '1.6',
           marginBottom: 'var(--space-6)'
         }}>
-          Your files will now sync between your local folder and the Permaweb.
+          Your files will now sync between your local folder and the Permaweb. Once uploaded, they&apos;re stored
+          permanently and can&apos;t be edited or deleted, by you or anyone else. {isPrivateDrive
+            ? 'This is a private drive: files are encrypted on your device before they ever reach the network.'
+            : 'This is a public drive: anyone with the link can view these files, forever.'}{' '}
           You can manage uploads, view files, and monitor sync status in the dashboard.
         </p>
 

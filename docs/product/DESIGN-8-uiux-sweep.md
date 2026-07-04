@@ -79,6 +79,19 @@ around it.
 **Fix:** cut the card, or move it to `TurboComingSoonTab` explicitly labeled roadmap.
 
 ### TRUST-3 — Seed-phrase validation shows a factually wrong error, and fires while the user is still typing
+**Status: DONE (DESIGN-8, Onboarding & wallet lane).** `WalletSetup.tsx`'s inline
+error now renders `ClientInputValidator.validateSeedPhrase(seedPhrase).error`
+verbatim (the validator itself was already correct — 12 or 24 — only the
+hand-written copy next to it was wrong) instead of the hardcoded "exactly 12
+words" string. Added a `seedPhraseTouched` state, set on `onBlur` (and on a
+failed submit): the red error/`.invalid` border only ever renders once the
+field has been left or submit was attempted; while actively typing, a neutral
+"`N` words entered (12 or 24 expected)" caption shows instead. Placeholder and
+the field's `InfoButton` copy updated from "12-word" to "12 or 24-word"
+throughout. Covered by
+`tests/unit/components/trust3-seed-phrase-validation.test.tsx` (5 cases: wrong
+message never shown, no error while typing, real message after blur, 12- and
+24-word phrases both accepted).
 `src/renderer/components/WalletSetup.tsx:693-727`, `src/renderer/styles.css:474` ·
 **broken**
 `ClientInputValidator.validateSeedPhrase` (`src/renderer/input-validator.ts:147`)
@@ -92,6 +105,19 @@ string (or fix the copy to "12 or 24 words"), and only validate on blur/submit �
 a neutral "3 of 12 words" counter instead of an error mid-entry.
 
 ### TRUST-4 — "Hidden" recovery-phrase words are only visually dimmed, not actually hidden
+**Status: DONE (DESIGN-8, Onboarding & wallet lane).** The word grid no longer
+renders the real word text at all while hidden — each word span now renders
+`showSeedPhrase ? word : '••••••'`, so the plaintext genuinely never enters
+the DOM until revealed (mirrors the import textarea's real
+`-webkit-text-security` masking, per the item's own suggested fix). The grid
+is also `aria-hidden` while masked, so a screen reader gets nothing until
+reveal. The opacity/blur overlay treatment is kept for the visual
+progressive-disclosure affordance, but no longer does any of the actual
+security work. Also folded in COPY-14 (clipboard-security note) in the same
+file/pass. Covered by
+`tests/unit/components/trust4-seed-phrase-masking.test.tsx` (4 cases: real
+words never in the DOM while hidden, grid `aria-hidden`, words + cleared
+`aria-hidden` after Reveal, direct render when `showByDefault`).
 `src/renderer/components/common/SeedPhraseDisplay.tsx:59-97` · **broken** (security/a11y)
 `opacity: showSeedPhrase ? 1 : 0.1` — the real word text stays in the DOM at 10%
 opacity. A screen reader reads it regardless, and it's trivially visible via DOM
@@ -102,6 +128,19 @@ uses real `-webkit-text-security: disc` masking.
 real words at all) until `showSeedPhrase` is true, mirroring the textarea.
 
 ### TRUST-5 — Drive-setup success screen shows the wrong privacy icon
+**Status: DONE (DESIGN-8, Onboarding & wallet lane).** The "Drive Type" row
+now derives `isPrivateDrive = driveType.toLowerCase().includes('private')`
+from the `driveType` string prop this component actually receives, and
+branches `Lock`(warning tokens)/`Globe`(info tokens) off it — same
+public/private token convention `WelcomeBackScreen.tsx` already uses. Also
+rewrote the screen's reassurance copy to honestly state permanence
+("can't be edited or deleted, by you or anyone else") and branch the
+public/private framing off the same flag, and removed the 🎉 emoji from the
+`<h1>` (POLISH-3, same file, same pass — the `CheckCircle` icon above already
+carries the success signal). Covered by
+`tests/unit/components/trust5-setup-success-icon.test.tsx` (4 cases: Lock +
+private copy, Globe + public copy, permanence copy present regardless of
+type, no emoji in the heading).
 `src/renderer/components/SetupSuccessScreen.tsx:125-143` · **broken**
 The "Drive Type" row hardcodes a `Globe` icon — a **private** drive's own confirmation
 screen shows the public icon. `WelcomeBackScreen.tsx:264-274` correctly branches
@@ -393,6 +432,15 @@ Mechanical, low-risk, same fix shape everywhere.
 Keyboard-unreachable controls and modals with no escape hatch.
 
 ### A11Y-1 — Drive-selection radios are keyboard-unreachable
+**Status: DONE (DESIGN-8, Onboarding & wallet lane).** Replaced
+`style={{ display: 'none' }}` with a standard visually-hidden inline style
+(`position:absolute; width/height:1px; clip:rect(0,0,0,0); overflow:hidden;
+...`, no `.sr-only` class existed yet so defined it locally in the component)
+— the input stays in the tab order and the a11y tree, so
+`.drive-select-card:focus-within` (`modal.css:361`) now actually fires on
+keyboard focus as originally intended. Covered by
+`tests/unit/components/a11y1-drive-radio-keyboard.test.tsx` (asserts no radio
+carries `display:none` and that a radio can receive focus directly).
 `src/renderer/components/WelcomeBackScreen.tsx:254-261` · **broken**
 ```tsx
 <input type="radio" ... style={{ display: 'none' }} />
@@ -434,6 +482,16 @@ announce field names; clicking label text doesn't focus the input.
 **Fix:** add matching `id`/`htmlFor` pairs everywhere.
 
 ### A11Y-5 — No `<h1>` anywhere in the onboarding flow
+**Status: DONE (DESIGN-8, Onboarding & wallet lane).** Promoted every
+`WalletSetup.tsx` step title (`Welcome to ArDrive Desktop`, `Secure Your
+Account`, `Save Your Recovery Phrase`, `Import Your Account`) from `<h2>` to
+`<h1>` — each is mutually exclusive (`step === N && walletAction === X`), so
+exactly one is ever mounted at a time and each is a valid page-level `<h1>`.
+Extended the same fix to `WelcomeBackScreen.tsx`'s `Welcome Back...!` heading
+(same class of onboarding screen, not explicitly named in this item but
+sitting in the same flow with the identical gap) — `SetupSuccessScreen.tsx`
+already used `<h1>` correctly. No dedicated test (heading-level promotion has
+no behavior to assert beyond the tag name; verified by reading the diff).
 `src/renderer/components/WalletSetup.tsx:295,368,455,558` · **inconsistent** (a11y)
 Every screen title in this multi-step, primary-content flow is an `<h2>` — screen
 readers using heading navigation never find a level-1 heading in onboarding at all.
@@ -536,7 +594,7 @@ explanation already exists · `Weak` = some copy exists but isn't accessible/com
 
 | Concept | Surface(s) | Status | Suggested `InfoButton` copy |
 |---|---|---|---|
-| **Permanence / irreversibility** | Welcome tagline (`WalletSetup.tsx:296-298`), `CreateDriveModal.tsx` (absent), `AddExistingDriveModal.tsx` (absent), Activity stream (no "Permanent" chip on completed uploads), Overview Rename quick action (cost modal explains it only after commitment) | **Missing** almost everywhere it matters most — the one place it's said at all is a single unelaborated sentence on the welcome screen | *"Once uploaded to Arweave, files can't be edited or deleted — by you or anyone else, including ArDrive. That's the whole point: your files outlive any single company or server."* |
+| **Permanence / irreversibility** | Welcome tagline (`WalletSetup.tsx:296-298`), `CreateDriveModal.tsx` (absent), `AddExistingDriveModal.tsx` (absent), Activity stream (no "Permanent" chip on completed uploads), Overview Rename quick action (cost modal explains it only after commitment) | **DONE for onboarding** (DESIGN-8, Onboarding & wallet lane): `InfoButton` added on the welcome tagline with this exact copy, plus the same framing folded into `SetupSuccessScreen.tsx`'s summary copy (branched public/private). **Still missing** in `CreateDriveModal.tsx`/`AddExistingDriveModal.tsx`/Activity/Overview — those are other lanes' files. | *"Once uploaded to Arweave, files can't be edited or deleted — by you or anyone else, including ArDrive. That's the whole point: your files outlive any single company or server."* |
 | **Turbo Credits** (what it is, vs. AR) | `UserMenu.tsx:279-282` nav item (missing), Upload Queue balance row (imported `InfoButton` unused), `TurboAboutTab` (have, good) | **Have** in one place, **missing** at every point of entry | *"Turbo Credits are prepaid, instant-upload credits you buy with a card — no crypto wallet required."* |
 | **Free upload under 100 KiB** (100 × 1024 bytes, confirmed `turbo-utils.ts:5-6`) | Upload Queue "FREE" badge (`:654-655`, unexplained), Overview rename-cost modal (have, good: *"This operation is under 100KB and qualifies for free upload via Turbo"*) | **Have** in Overview, **missing** in Upload Queue | *"Files under 100 KiB upload free via Turbo Credits."* |
 | **Permaweb** | Storage tab — literally titled "Permaweb" in the nav, `InfoButton` imported but never rendered | **Missing** — the tab name is undefined jargon | *"Permaweb = Arweave's permanent web. Every file here is stored forever — it can be hidden from view but never truly deleted."* |
@@ -544,8 +602,8 @@ explanation already exists · `Weak` = some copy exists but isn't accessible/com
 | **cloud_only** ("make cloud-only" / cancel download) | Storage tab menu (native `title=` only), `DownloadQueueTab.tsx:440` button (nothing) | **Missing/weak** | *"Cloud-only files stay stored permanently on Arweave but won't take up space on this device."* |
 | **Manifest (ArFS)** | `OverviewTab.tsx:480-493` quick action (nothing), `CreateManifestModal.tsx:284-286` title (no bubble; one paragraph at `:312-324` explains it but isn't a tooltip and never says "permanent") | **Missing/partial** | *"A manifest publishes an index of every file in this folder as one shareable webpage — anyone with the link can browse your files without installing ArDrive."* |
 | **Tx IDs / "view on Arweave"** | `OverviewTab.tsx:384-396` Drive ID row (copy button, no explanation), `OverviewTab.tsx:466-478` Export Metadata (CSV of tx IDs, unexplained), Activity/Storage detail modals (raw values + external links) | **Missing** | *"This is the permanent Arweave transaction ID — a receipt you can use to verify or view this file directly on the network, forever."* |
-| **Private vs. public drive** | `WelcomeBackScreen.tsx:264-274,301-309` badges (unexplained), `CreateDriveModal.tsx:220-247` (two-word subtitles only, no permanence framing), `OverviewTab.tsx:345` vs `:359` (Lucide icon then raw-emoji fallback, inconsistent) | **Missing** almost everywhere except thin two-word hints | Public: *"Anyone with the link can view these files, forever. Don't use this for anything sensitive."* Private: *"Files are encrypted with your password before they ever leave your device. ArDrive never sees or stores this password."* |
-| **Drive fingerprint** (emoji sequence) | `WelcomeBackScreen.tsx:292-299`, `PrivateDriveUnlockModal.tsx:139-145` — also renders as tofu boxes on some fonts with no text fallback | **Missing entirely** | *"This emoji sequence is a visual fingerprint of your drive's encryption key. It should look identical every time you unlock this drive — if it changes, stop and don't enter your password."* |
+| **Private vs. public drive** | `WelcomeBackScreen.tsx:264-274,301-309` badges (unexplained), `CreateDriveModal.tsx:220-247` (two-word subtitles only, no permanence framing), `OverviewTab.tsx:345` vs `:359` (Lucide icon then raw-emoji fallback, inconsistent) | **DONE for `WelcomeBackScreen.tsx`** (DESIGN-8, Onboarding & wallet lane): `InfoButton` added on the "Choose a drive to sync:" heading with this near-verbatim copy; `SetupSuccessScreen.tsx`'s summary also now states the drive's actual privacy honestly. **Still missing** in `CreateDriveModal.tsx`/`OverviewTab.tsx` — other lanes' files. | Public: *"Anyone with the link can view these files, forever. Don't use this for anything sensitive."* Private: *"Files are encrypted with your password before they ever leave your device. ArDrive never sees or stores this password."* |
+| **Drive fingerprint** (emoji sequence) | `WelcomeBackScreen.tsx:292-299`, `PrivateDriveUnlockModal.tsx:139-145` — also renders as tofu boxes on some fonts with no text fallback | **DONE for `WelcomeBackScreen.tsx`** (DESIGN-8, Onboarding & wallet lane, see POLISH-14): `InfoButton` with this exact copy, plus a `(fingerprint)` text label and `title` attribute as the no-glyph fallback. **`PrivateDriveUnlockModal.tsx` still missing** — different lane's file. | *"This emoji sequence is a visual fingerprint of your drive's encryption key. It should look identical every time you unlock this drive — if it changes, stop and don't enter your password."* |
 | **Remember-this-drive** (key persistence) | `DriveSelector.tsx:181-192` (native `title=` only), `PrivateDriveUnlockModal.tsx:220-225` (have, good, explained inline with an opt-out) | **Have** in one place, **weak/inaccessible** in the other | Reuse the good copy: *"Your drive's decryption key is stored encrypted on this device, so you won't be asked for this password again here. Turn off anytime."* |
 | **Gateway** | Backend fully wired (`src/main/gateway.ts`, `config:set-gateway` IPC); no UI anywhere | **Missing entirely** (see INFO-3 — the control itself doesn't exist yet) | *"Gateway — the server ArDrive uses to reach the Arweave network. Default: turbo-gateway.com. Change this only if uploads or downloads are failing."* |
 | **Profiles** | `ProfileManagement.tsx`, `ProfileSwitcher.tsx`, `UserMenu.tsx` "Manage Profiles" | **Missing** — never defined for a first-time user | *"A profile is a separate encrypted wallet + settings on this device. Use multiple profiles to keep different Arweave accounts fully isolated."* |
@@ -674,6 +732,21 @@ modals), and uses `--ardrive-primary` instead of the dedicated `--focus-ring` to
 2px; }`.
 
 ### DSI-8 — Onboarding never adopted the type-scale tokens; global `h1`/`h2` still render at the legacy scale
+**Status: PARTIALLY DONE (DESIGN-8, Onboarding & wallet lane).** Fixed just
+the badge micro-item, since this lane's pass through `WelcomeBackScreen.tsx`
+was already touching that exact block for an info-bubble/fingerprint fix:
+the Private/Public badge (`:301-309`, now further down the file after this
+lane's edits) is `--radius-pill`/`--text-caption`/weight `600` instead of
+`--radius-sm`/raw `12px`/implicit weight. **The full type-scale migration
+(replacing ~46 raw `fontSize` literals across all three files with
+`var(--text-h1..caption)`) was left undone this pass** — it's explicitly
+Lane F's item (design-system integrity, not this lane's trust/copy/a11y
+priorities), it's large (3 files), and it carries real regression risk
+without a live-rendered pass to confirm nothing clips/wraps at the new
+sizes. Promoting several headings from `<h2>`→`<h1>` in this same pass
+(A11Y-5) did shift some of them from the legacy 24px h2 scale to the legacy
+30px h1 scale (still not the DESIGN-SYSTEM-spec'd 36px/28px) — a
+side-effect of the a11y fix, not a type-scale migration attempt.
 `WalletSetup.tsx`, `WelcomeBackScreen.tsx`, `SetupSuccessScreen.tsx` (raw inline
 `fontSize` on every heading/body string — WalletSetup: 16 occurrences across 12-15px;
 WelcomeBackScreen: 12 across 12-32px; SetupSuccessScreen: 18 across 13-32px; zero use
@@ -750,6 +823,13 @@ a remote change, can propagate — because it's never surfaced anywhere.
 and your drive."*
 
 ### COPY-7 — Welcome screen's "permanent"/"decentralized web" tagline is the app's biggest unexplained concept
+**Status: DONE (DESIGN-8, Onboarding & wallet lane).** Added an `InfoButton`
+directly on the step-1 tagline: *"Once uploaded to Arweave, files can't be
+edited or deleted by you or anyone else, including ArDrive. That's the point:
+your files outlive any single company or server."* (Wrapped the tagline in a
+`<div>` instead of a `<p>` since `InfoButton` renders a block-level
+container — a `<div>` inside a `<p>` gets implicitly closed by the HTML
+parser.)
 `src/renderer/components/WalletSetup.tsx:293-298` · **copy-clarity** The single most
 important mental-model shift for a Dropbox user ("forever, no delete") is stated once
 in passing, with zero elaboration anywhere in the entire onboarding flow. See the
@@ -765,6 +845,11 @@ default mental model is "rename = free, instant, local."
 permanent record."
 
 ### COPY-9 — "Wallet" and "account" are used interchangeably with no acknowledgment they're the same thing
+**Status: DONE (DESIGN-8, Onboarding & wallet lane).** Added an `InfoButton`
+on the step-1 `<h1>` with essentially the suggested copy: *"Your ArDrive
+account is powered by a cryptographic wallet, not a company login. There's no
+'forgot password' email reset. Your wallet plus your recovery phrase together
+are your account."*
 `src/renderer/components/WalletSetup.tsx:293-360` · **copy-clarity** Buttons say
 "Create New Account"/"Import Existing Account"; the drop zone says "Select Wallet
 File"; the toggle says "Wallet File"; the CTA says "Import Wallet" — zero
@@ -775,6 +860,15 @@ cryptographic wallet. There's no company-side password reset: your wallet + reco
 phrase together are your account."*
 
 ### COPY-10 — Password-loss warning omits the actual safety net
+**Status: DONE (DESIGN-8, Onboarding & wallet lane).** Rewrote both warning
+boxes with context-appropriate copy instead of one shared "you lose
+everything" line. Create step: *"If you forget this password, your recovery
+phrase (shown next) can restore access with a new password — but there's no
+way to reset just the password itself. Keep both safe."* Import step (no
+future reveal to point to, since the user brings their own phrase/keyfile):
+*"If you forget this password, you can restore access anytime using your
+wallet file or recovery phrase to set a new one — but there's no way to reset
+just the password itself. Keep them safe."*
 `src/renderer/components/WalletSetup.tsx:369-401` · **copy-clarity** "There is no way
 to recover this password if you forget it" appears *before* the user has even seen
 the recovery phrase (step 2 vs. step 3), and never mentions that re-importing via the
@@ -786,6 +880,10 @@ access with a new password — but there's no way to reset just the password its
 Keep both safe."*
 
 ### COPY-11 — Password-encryption tooltip is inconsistent between Create and Import
+**Status: DONE (DESIGN-8, Onboarding & wallet lane).** Extracted a single
+module-level `PASSWORD_TOOLTIP` constant (the fuller Create-flow string,
+including "never leave your computer") and pass it to both `PasswordForm`
+call sites.
 `WalletSetup.tsx:378` vs `:748` · **copy-clarity** Create: *"This password encrypts
 your wallet file. You'll need it every time you sign in, and it will never leave your
 computer."* Import: *"Choose a password to encrypt your wallet on this device."* The
@@ -793,12 +891,25 @@ import version drops the "never leaves your computer" reassurance.
 **Fix:** use one shared tooltip string for both flows.
 
 ### COPY-12 — "Recovery phrase" vs. "seed phrase" used interchangeably app-wide
+**Status: Onboarding & wallet lane's surfaces already compliant, rest
+untouched (out of file ownership).** Audited every user-facing string in
+`WalletSetup.tsx`, `SetupSuccessScreen.tsx`, `WelcomeBackScreen.tsx`, and
+`SeedPhraseDisplay.tsx`: all already say "recovery phrase" consistently
+("seed phrase" only appears in internal variable/state names, e.g.
+`seedPhrase`/`generatedSeedPhrase`, never in rendered copy). The cited
+offending sites (`Settings.tsx`, `WalletExport.tsx`, `ProfileSelection.tsx`)
+are outside this lane's file ownership — left for whichever lane owns them.
 `Settings.tsx:126` ("recovery phrase") vs. `WalletExport.tsx:48` ("Seed Phrase") vs.
 `ProfileSelection.tsx:410` ("12-word recovery phrase") · **copy-clarity** Pick one
 term; a non-crypto user benefits from exactly one name for this concept.
 **Fix:** standardize on "recovery phrase" (the more plain-language of the two) app-wide.
 
 ### COPY-13 — "Skip Setup" doesn't say what it skips to
+**Status: DONE (DESIGN-8, Onboarding & wallet lane).** The screen already had
+a generic help line ("You can add more drives or change your selection later
+from the dashboard.") that partially covered this; reworded it to answer the
+actual question directly: *"Skip for now and land on your dashboard — you
+can add or switch drives anytime from there."*
 `src/renderer/components/WelcomeBackScreen.tsx:408-419` · **copy-clarity** No
 tooltip/subtext explains the consequence — does the user land on an empty dashboard?
 No drive configured? Presented as a peer option next to "Continue with Selected
@@ -807,6 +918,10 @@ Drive," a returning user can't make an informed choice from the label alone.
 dashboard."*
 
 ### COPY-14 — No clipboard-security note when copying the recovery phrase
+**Status: DONE (DESIGN-8, Onboarding & wallet lane, same pass as TRUST-4).**
+Added the suggested note, shown for the 2s the "Copied!" button state is
+active: *"Copied — remember to clear your clipboard history after pasting
+somewhere safe."*
 `src/renderer/components/common/SeedPhraseDisplay.tsx:125-146` · **copy-clarity**
 `allowCopyWhenHidden` lets a user copy the recovery phrase to the OS clipboard without
 ever visually revealing it — nice privacy feature, but no accompanying note that
@@ -830,6 +945,11 @@ Nitpicks. Each is cheap; most should be swept up opportunistically by whichever 
 already has the file open (noted per item) rather than dispatched as standalone work.
 
 ### POLISH-1 — Password field's autoFocus outline reads as an error before any error exists
+**Status: DONE (DESIGN-8, Onboarding & wallet lane).** Took the "drop
+autoFocus" option (the other option, a distinct non-error-adjacent `:focus`
+treatment, needs a shared-token change out of this lane's file ownership) —
+`WalletSetup.tsx:380`'s Create-Account `PasswordForm` now passes
+`autoFocus={false}`.
 `common/PasswordInput.tsx:36-46` + `styles.css:868-872`, `WalletSetup.tsx:380` ·
 **polish** `--focus-ring: #D31721` is in the same hue family as `--danger`. Because
 the Create-Account password field has `autoFocus`, the first thing a new user sees
@@ -839,6 +959,11 @@ before typing anything. *(Bundle with Lane E — same file as several COPY items
 non-error-adjacent treatment.
 
 ### POLISH-2 — Dead "getting started guide" link
+**Status: DONE (DESIGN-8, Onboarding & wallet lane).** Points to
+`https://docs.ardrive.io` (opens in a new tab), matching the "Help
+Documentation" convention already used in `docs/user/user-guide.md`; no more
+specific "getting started" path is documented anywhere in the repo, so this
+is the real, honest destination rather than a guessed URL.
 `src/renderer/components/WalletSetup.tsx:352-361` · **polish** `href="#"` on the very
 first screen, offered specifically to a confused newcomer. The app already has a real
 pattern for this (`TurboCreditsManager.tsx:257`'s `helpUrl`,
@@ -846,12 +971,20 @@ pattern for this (`TurboCreditsManager.tsx:257`'s `helpUrl`,
 **Fix:** point to a real docs.ardrive.io page using the existing convention.
 
 ### POLISH-3 — Emoji in the confirmation screen's H1 undercuts the "sleek/permanent" tone
+**Status: DONE (DESIGN-8, Onboarding & wallet lane, same pass as TRUST-5).**
+Removed the 🎉; the `CheckCircle` icon above the heading already carries the
+success signal.
 `src/renderer/components/SetupSuccessScreen.tsx:84` · **polish** "🎉 Your Drive Is
 Ready...!" — a party-popper emoji in the largest, boldest text on the confirmation
 screen. *(Bundle with Lane E.)*
 **Fix:** use a `CheckCircle`/`Shield`-style icon (already used at line 74) instead.
 
 ### POLISH-4 — Toggle icons don't match their concepts
+**Status: DONE (DESIGN-8, Onboarding & wallet lane — picked up opportunistically;
+this item lived in a file this lane strictly owns).** `Key` → `FileJson`
+("Wallet File" is a `.json` keyfile — matches the exact suggested fix);
+`Hexagon` → `KeyRound` (the closer of the two suggested options to the
+existing icon set's register; `ListOrdered` was the alternative).
 `src/renderer/components/WalletSetup.tsx:571,580` · **polish** "Wallet File" uses a
 `Key` icon (reads as password/security); "Recovery Phrase" uses a `Hexagon` icon (no
 established association with a word list). *(Bundle with Lane F.)*
@@ -859,12 +992,22 @@ established association with a word list). *(Bundle with Lane F.)*
 screen); `KeyRound`/`ListOrdered` for "Recovery Phrase."
 
 ### POLISH-5 — Same `Shield` icon marks both advisory and critical warnings
+**Status: DONE (DESIGN-8, Onboarding & wallet lane — same reasoning as
+POLISH-4).** The "Critical: Save This Phrase" box (recovery-phrase loss) now
+uses `AlertTriangle`; the two "Important Security Notice" advisory boxes
+(Create + Import password steps) keep `Shield`.
 `WalletSetup.tsx:390-401,467-486,762-773` · **polish** Relies entirely on color to
 distinguish "important" from "critical, irreversible." *(Bundle with Lane F.)*
 **Fix:** `AlertTriangle` for the danger/critical box (recovery-phrase loss) to
 differentiate from the softer advisory box.
 
 ### POLISH-6 — An 8-character password the app's own meter calls "weak" is allowed through with no confirmation
+**Status: DEFERRED (DESIGN-8, Onboarding & wallet lane).** Not fixed this
+pass — `common/PasswordStrengthIndicator.tsx` and `common/PasswordInput.tsx`
+are shared components also consumed by `ProfileManagement.tsx` (a different
+lane's file), outside this lane's strict ownership boundary. A fix here
+would need either a cross-lane-safe change to the shared component or a
+wrapper local to `WalletSetup.tsx`; left for a coordinated follow-up.
 `common/PasswordStrengthIndicator.tsx` + `WalletSetup.tsx:415` · **polish** The
 Create-Account button disables only on `password.length < 8`, so a "weak"-rated
 password can be submitted with no soft warning — notable given the password can
@@ -872,18 +1015,30 @@ never be reset. *(Bundle with Lane E.)*
 **Fix:** a lightweight "Use anyway?" confirmation, or require "fair" or better.
 
 ### POLISH-7 — No password minimum-length hint before typing
+**Status: DEFERRED (DESIGN-8, Onboarding & wallet lane) — same reason as
+POLISH-6:** `common/PasswordInput.tsx`/`common/PasswordForm.tsx` are shared
+outside this lane's file ownership (also used by `ProfileManagement.tsx`).
 `common/PasswordInput.tsx` / `common/PasswordForm.tsx` · **polish** The 8-character
 minimum isn't stated until after typing starts or the button silently stays disabled.
 *(Bundle with Lane E.)*
 **Fix:** small helper text under the label: "At least 8 characters."
 
 ### POLISH-8 — No "success" input state
+**Status: DEFERRED (DESIGN-8, Onboarding & wallet lane) — same reason as
+POLISH-6/7:** shared component + shared `styles.css` rule, both outside this
+lane's file ownership.
 `common/PasswordInput.tsx` / `styles.css:851-893` · **polish** DESIGN-SYSTEM.md §6.2
 documents five text-input states including a green-border Success state; password
 fields here only ever implement Error. *(Bundle with Lane F.)*
 **Fix:** add the Success state when both passwords match and meet length.
 
 ### POLISH-9 — Import step overflows the app's own default window size
+**Status: DEFERRED (DESIGN-8, Onboarding & wallet lane).** Not fixed —
+verifying this needs an actual rendered window at the real 1000×700 default
+(or the cited screenshots, which this pass didn't have access to); this
+lane's verification method is CSS reasoning only, no runtime screenshots, so
+a vertical-rhythm change couldn't be confidently confirmed against the
+regression it's meant to fix. Left for a pass that can drive the real app.
 `src/main/main.ts:246-247` (1000×700 default) · **polish** Confirmed via
 `5-import-LIGHT-with-hover.png`/`6-import-DARK-with-hover.png`: the wallet-file drop
 zone + password fields + warning box requires scrolling before reaching Submit, with
@@ -892,6 +1047,9 @@ the warning box visibly clipped at the fold. *(Bundle with Lane E.)*
 verify against the actual default size, not a larger dev monitor.
 
 ### POLISH-10 — No loading reassurance during Import, unlike Create
+**Status: DONE (DESIGN-8, Onboarding & wallet lane).** Added a matching
+loading caption to the Import step's `loading` branch: *"This may take a
+moment while we import and encrypt your wallet..."*
 `WalletSetup.tsx:408-419` vs. `:436-446` · **polish** Create shows "This may take a
 moment while we generate your secure wallet..."; Import has no equivalent despite
 likely similar crypto-derivation time. *(Bundle with Lane E.)*
@@ -917,6 +1075,15 @@ text that changes as files sync. *(Bundle with Lane D — same a11y concern as A
 `aria-live="polite"`.
 
 ### POLISH-14 — Emoji-fingerprint has no text fallback if glyphs fail to render
+**Status: PARTIALLY DONE (DESIGN-8, Onboarding & wallet lane).** Fixed the
+onboarding instance this lane owns: `WelcomeBackScreen.tsx`'s drive-list
+fingerprint (`drive.emojiFingerprint`, not cited by file above but the same
+bug, same coverage-table row) now has a `title` attribute, a literal
+`(fingerprint)` text label next to the emoji, and an `InfoButton` explaining
+what it is — so the concept survives even if the glyphs render as tofu boxes.
+`PrivateDriveUnlockModal.tsx:139-145`'s own fingerprint is a different
+surface (drive-unlock modal), out of this lane's file ownership — still
+needs the same treatment from whichever lane owns that file.
 `src/renderer/components/PrivateDriveUnlockModal.tsx:139-145` · **polish** Renders as
 tofu boxes in the Linux screenshot environment — likely a font-availability artifact,
 but there's no fallback if it happens on a real target machine, which is worse than
@@ -998,10 +1165,10 @@ sites.
 |---|---|---|---|
 | **A — DESIGN-5 restyle** | Finish the Upload Approval Queue + Download Queue + Turbo Credits Manager restyle: legacy→semantic tokens, column headers, off-brand glow, balance-message color, dead search/filter wiring, CreateManifestModal's modal-shell port + debug-log removal. Sweeps in: POLISH-16/17/18/19 (same files). | RESTYLE-1..8 (8) + 4 polish sweep-ins | **Bigger** — largest lane by file-touch count; RESTYLE-9 (hover-handler fix) can be done here in the same pass since it's the same files |
 | **B — Dark-mode + `styles.css` dead-block purge** | Token-swap every hardcoded `white`/literal color to the correct surface/overlay/input token (DARK-1, 11+ sites); fix `.button.secondary` (DARK-2); delete or rename the two dead `.file-icon` blocks (DARK-3); resolve the `--radius-xl` split-brain (DARK-4); delete the 3 dead components carrying the same bugs (DSI-6, which also clears POLISH-23 for free). | DARK-1..4 (4) + DSI-6 (1) | **Quick win** for the token swaps (mechanical, same recipe as the already-shipped "F7" fix); **medium** for DARK-3/4 (need cascade investigation before deleting). **Status:** DONE for the shared/global-foundation slice (DESIGN-8 "Foundation" implementer pass) — DARK-2/3/4 fully done; DARK-1 done for onboarding/setup + Wallet Export only (Turbo/Upload/Download surfaces remain for the parallel restyle lane); DSI-6 fully done (all 3 components deleted); one DSI-2 site (`.sync-progress-bar`) fixed as a bonus find. `typecheck`/`lint`/`build`/`test` all pass. |
-| **C — Info-bubble distribution pass** | Wire the already-built, accessible `InfoButton` onto ~20 surfaces per the coverage table; standardize on it over native `title=`/custom hover tooltips (INFO-2); build the missing Gateway Settings UI (INFO-3, bigger — new control, not just a bubble). Sweeps in: POLISH-14 (fingerprint fallback, same session as its bubble), POLISH-20/21 (same files). | INFO-1..8 (8) + 16-concept table + 3 polish sweep-ins | **Quick win** for wiring existing `InfoButton`s (cheapest fix in this whole sweep); **bigger** only for INFO-3 (Gateway UI doesn't exist yet) |
-| **D — Modal a11y + hover-control keyboard reach** | Escape/backdrop-click/focus-trap on `CreateDriveModal`/`AddExistingDriveModal`/`CreateManifestModal` (ideally one shared `<DriveModal>` wrapper); WelcomeBackScreen radio fix; ActivityTab context-menu keyboard reach; label/input `htmlFor` pairs; onboarding `<h1>` promotion. Sweeps in: POLISH-13 (same a11y concern as A11Y-2). | A11Y-1..5 (5) + 1 polish sweep-in | **Quick win** for A11Y-1/4/5 (small, contained diffs); **bigger** for A11Y-3 if done as a shared wrapper (recommended — do it once, not 3x) |
-| **E — Trust & copy fixes** | Every Theme 1 (trust/honesty) and Theme 7 (copy/permanence) item — mostly copy edits, a few conditional/data-wiring fixes (TRUST-1's fake stats, TRUST-3's validator wiring). Sweeps in the onboarding-adjacent Theme 8 polish items that live in the same files (POLISH-1/2/3/6/7/9/10/22). | TRUST-1..6 (6) + COPY-1..15 (15) + 8 polish sweep-ins | **Quick win** for the vast majority (localized copy/conditional fixes); **bigger** only for TRUST-1 if real usage counters are wired instead of a "Coming soon" swap, and COPY-5 if submitted-vs-confirmed needs new state tracking |
-| **F — Design-system integrity** | Token-naming consolidation (DSI-1), status-hue misuse (DSI-2), emoji→lucide (DSI-3), status-pill consolidation (DSI-4), Cancel-button standardization (DSI-5), focus-visible fix (DSI-7), onboarding type-scale migration (DSI-8). Sweeps in: POLISH-4/5/8/11/12/15 (same consistency theme). | DSI-1..8 minus DSI-6 (7, since DSI-6 moved to Lane B) + 6 polish sweep-ins | **Quick win** for DSI-2/3/5/7 (small, mechanical); **bigger** for DSI-1 (6+ files) and DSI-8 (3 files, full type-scale pass) |
+| **C — Info-bubble distribution pass** | Wire the already-built, accessible `InfoButton` onto ~20 surfaces per the coverage table; standardize on it over native `title=`/custom hover tooltips (INFO-2); build the missing Gateway Settings UI (INFO-3, bigger — new control, not just a bubble). Sweeps in: POLISH-14 (fingerprint fallback, same session as its bubble), POLISH-20/21 (same files). | INFO-1..8 (8) + 16-concept table + 3 polish sweep-ins | **Quick win** for wiring existing `InfoButton`s (cheapest fix in this whole sweep); **bigger** only for INFO-3 (Gateway UI doesn't exist yet) — **Status:** the onboarding/wallet slice is DONE (Onboarding & wallet lane): permanence, wallet=account, seed-phrase-secrecy, public-vs-private, and drive-fingerprint bubbles wired on `WalletSetup.tsx`/`WelcomeBackScreen.tsx`/`SetupSuccessScreen.tsx`, plus POLISH-14's onboarding instance. Dashboard/settings/Turbo surfaces (the bulk of INFO-1..8) remain for whichever lane picks up Lane C proper. |
+| **D — Modal a11y + hover-control keyboard reach** | Escape/backdrop-click/focus-trap on `CreateDriveModal`/`AddExistingDriveModal`/`CreateManifestModal` (ideally one shared `<DriveModal>` wrapper); WelcomeBackScreen radio fix; ActivityTab context-menu keyboard reach; label/input `htmlFor` pairs; onboarding `<h1>` promotion. Sweeps in: POLISH-13 (same a11y concern as A11Y-2). | A11Y-1..5 (5) + 1 polish sweep-in | **Quick win** for A11Y-1/4/5 (small, contained diffs); **bigger** for A11Y-3 if done as a shared wrapper (recommended — do it once, not 3x) — **Status:** A11Y-1 and A11Y-5 DONE (Onboarding & wallet lane, both contained to owned onboarding files). A11Y-2/3/4 untouched — modal/dashboard files outside this lane's ownership. |
+| **E — Trust & copy fixes** | Every Theme 1 (trust/honesty) and Theme 7 (copy/permanence) item — mostly copy edits, a few conditional/data-wiring fixes (TRUST-1's fake stats, TRUST-3's validator wiring). Sweeps in the onboarding-adjacent Theme 8 polish items that live in the same files (POLISH-1/2/3/6/7/9/10/22). | TRUST-1..6 (6) + COPY-1..15 (15) + 8 polish sweep-ins | **Quick win** for the vast majority (localized copy/conditional fixes); **bigger** only for TRUST-1 if real usage counters are wired instead of a "Coming soon" swap, and COPY-5 if submitted-vs-confirmed needs new state tracking — **Status:** the onboarding slice is DONE (Onboarding & wallet lane): TRUST-3/TRUST-4/TRUST-5 (all 3 onboarding trust bugs), COPY-7/9/10/11/13/14 (COPY-12 already compliant in-scope), and the onboarding-file POLISH sweep-ins (1/2/3/9\*/10 — 9 deferred, needs a live window; 6/7/8 deferred, shared `PasswordInput`/`PasswordForm`/`PasswordStrengthIndicator` outside file ownership). TRUST-1/2/6 and COPY-1..6/8/15 (Turbo/dashboard/drive-modal files) remain for Lane E proper. |
+| **F — Design-system integrity** | Token-naming consolidation (DSI-1), status-hue misuse (DSI-2), emoji→lucide (DSI-3), status-pill consolidation (DSI-4), Cancel-button standardization (DSI-5), focus-visible fix (DSI-7), onboarding type-scale migration (DSI-8). Sweeps in: POLISH-4/5/8/11/12/15 (same consistency theme). | DSI-1..8 minus DSI-6 (7, since DSI-6 moved to Lane B) + 6 polish sweep-ins | **Quick win** for DSI-2/3/5/7 (small, mechanical); **bigger** for DSI-1 (6+ files) and DSI-8 (3 files, full type-scale pass) — **Status:** picked up opportunistically by the Onboarding & wallet lane, contained to owned files only: POLISH-4/5 DONE (icon fixes in `WalletSetup.tsx`); DSI-8 PARTIALLY DONE (badge token fix only, in `WelcomeBackScreen.tsx`) — the full 3-file/~46-site type-scale migration is still open for Lane F proper. DSI-1..7 and POLISH-8/11/12/15 untouched. |
 
 **Suggested dispatch order:** B and E first (both are almost entirely quick wins and
 fix the two categories — visible breakage and dishonest copy — that damage trust
