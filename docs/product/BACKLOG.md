@@ -313,8 +313,9 @@ Acceptance: switch profile from the dashboard → UI shows the new profile's dri
 **Auto-login: implement or remove.** Evidence: §4.1 (circular gate — dead code). Pair with SEC-4: with opt-in consent, fix `hasStoredWallet` to check profiles independent of `currentProfileId` so `attemptAutoLoad` can run; without opt-in, don't store the password at all.
 Acceptance: opted-in returning user lands on the dashboard without typing a password; opted-out user gets the login screen and no keychain entry exists.
 
-### UX-7 · P1 · Phase 3 · `in-progress`
-**Fail-safe boot routing.** Evidence: §4.10 (initializeApp catch → wallet-setup; listDrives `[]` on network error → auto-create-drive routing). Claimed 2026-07-04 (overnight loop, branch fix/UX-7-failsafe-boot, Sonnet impl / Opus gate).
+### UX-7 · P1 · Phase 3 · `done`
+**Fail-safe boot routing.** Evidence: §4.10 (initializeApp catch → wallet-setup; listDrives `[]` on network error → auto-create-drive routing).
+Done 2026-07-04 (branch fix/UX-7-failsafe-boot, Opus qa-gate PASS): root cause was `listDrives()` swallowing network errors into `[]` (killed the envelope error path) — fixed at source to propagate genuine fetch failures. `App.tsx` gains an `existingProfileConfirmed` gate + a `boot-error`+Retry state: post-confirmation failures route there, never create-account/create-drive; confirmed-empty still → drive-setup; new user still → wallet-setup. `loadWallet` outer catch preserves the real error ("Invalid password" vs corruption) via a `getLastAuthError()` side-channel + `wallet:get-last-auth-error` (D-005), surfaced distinctly in ProfileManagement — without changing `switchProfile`'s pinned boolean contract. listDrives blast radius fully audited (all callers safe). Crypto unchanged. Full suite 406 green; 27 tests. FOLLOW-UPS (non-blocking): (a) `handleWalletImported` import-path has the same fetch-failure mis-route UX-7 didn't extend to (candidate); (b) drive:unlock post-unlock re-list network-fail now returns `{success:false}` (no crash); (c) the boot re-auth dead-end → UX-23.
 Fix: distinguish "no drives" from "couldn't fetch drives" (error state + retry); boot exceptions route to an error screen with retry, never to create-account for existing profiles.
 Also (implementer finding 2026-07-03): `loadWallet` swallows its specific "Invalid password" error — the outer catch (wallet-manager-secure.ts:434) rethrows everything as generic "Failed to decrypt wallet"; surface the real cause to the login UI.
 Acceptance: booting offline with an existing profile shows retry, not "Create New Account" or the create-drive flow; a wrong password says so, distinctly from corruption/IO failures.
@@ -379,6 +380,10 @@ Acceptance: the Auto-Sync choice persists and is honored on boot (off ⇒ no aut
 Acceptance: user can pause/resume (or stop/start) continuous sync from the UI; state is truthful and reachable; behavioral test.
 
 > Flows audit 2026-07-04 also surfaced: F7 dark-mode gaps on drive-selection + WelcomeBackScreen/SetupSuccessScreen surfaces (fold into DESIGN scope — not fully covered by DESIGN-4..7 as written); F10 drive creation defaults to Private/unrecoverable (product decision — Phil); plus ~9 quick-wins (toast consistency, Clear-All confirm, copy-to-clipboard feedback) detailed in docs/product/FLOWS-AUDIT-2026-07.md.
+
+### UX-23 · P2 · Phase 3 · `todo`
+**Boot: route "needs re-auth" to password entry, not a dead-end error.** Found via UX-7's gate 2026-07-04. After UX-7, if an active profile + stored wallet exist but the wallet can't be auto-loaded (OS keychain unavailable/empty, or auto-load fails), `initializeApp` routes to `boot-error` whose Retry loops forever — it can't load a wallet without a password. Distinguish "couldn't fetch drives" (boot-error + Retry, correct) from "need to re-authenticate" (route `!wallet` → profile-management / password entry). Narrow edge (keychain-less systems), but a hard dead-end for those users.
+Acceptance: a bootable existing profile that needs a password reaches a password-entry screen, never a Retry-only dead-end; the offline-with-working-keychain case still shows boot-error+Retry.
 
 ---
 
