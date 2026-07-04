@@ -8,7 +8,7 @@
 //    v3 fixture database with realistic DB-shaped rows (integer booleans,
 //    NULLs, an EMPTY schema_version table — exactly what the pre-framework
 //    createTables() path produced) is opened by the new migration runner and
-//    must come out at v4 with every row intact. Also: fresh-DB stamping,
+//    must come out at the current version with every row intact. Also: fresh-DB stamping,
 //    failing-migration rollback, future-version refusal, idempotence, and a
 //    fresh-vs-migrated schema-convergence guard.
 //    node:sqlite needs Node >= 22.5; on older runtimes the suite skips itself.
@@ -451,7 +451,7 @@ describe.skipIf(!DatabaseSync)('database migrations — real SQLite (INFRA-7)', 
     expect(normalize(MIGRATIONS[0].sql)).toBe(normalize(V3_FIXTURE_DDL));
   });
 
-  it('migrates a v3 profile DB to v4 losslessly: every row survives byte-identical, index appears', async () => {
+  it('migrates a v3 profile DB to the current version losslessly: every row survives byte-identical, index appears', async () => {
     const engine = new DatabaseSync(':memory:');
     engine.exec(V3_FIXTURE_DDL);
     seedV3Rows(engine);
@@ -461,13 +461,20 @@ describe.skipIf(!DatabaseSync)('database migrations — real SQLite (INFRA-7)', 
     const { dm } = managerOn(engine);
     await (dm as any).runMigrations();
 
-    expect(userVersion(engine)).toBe(4);
-    expect(CURRENT_SCHEMA_VERSION).toBe(4);
+    expect(userVersion(engine)).toBe(CURRENT_SCHEMA_VERSION);
+    expect(CURRENT_SCHEMA_VERSION).toBe(5);
 
     // Lossless: all rows of all tables identical to the pre-migration dump —
     // including the integer booleans, NULLs, and the empty schema_version.
+    // v5 (SYNC-5) additively adds drive_metadata_cache.isHidden (default 0);
+    // strip that additive column for the byte-identical comparison.
     const after = dumpAllRows(engine);
-    expect(after).toEqual(before);
+    const stripHidden = (d: Record<string, any[]>) => ({
+      ...d,
+      drive_metadata_cache: (d.drive_metadata_cache ?? []).map(({ isHidden, ...rest }: any) => rest),
+    });
+    expect(stripHidden(after)).toEqual(before);
+    expect(after.drive_metadata_cache.every((r: any) => r.isHidden === 0)).toBe(true);
     expect(after.uploads).toHaveLength(2);
     expect(after.drive_metadata_cache).toHaveLength(2);
     expect(after.schema_version).toHaveLength(0);
@@ -567,7 +574,7 @@ describe.skipIf(!DatabaseSync)('database migrations — real SQLite (INFRA-7)', 
 
     const { dm } = managerOn(engine);
     await expect((dm as any).runMigrations()).rejects.toThrow(
-      /schema version 99.*only supports up to version 4/
+      /schema version 99.*only supports up to version 5/
     );
 
     expect(userVersion(engine)).toBe(99); // not downgraded
@@ -581,7 +588,7 @@ describe.skipIf(!DatabaseSync)('database migrations — real SQLite (INFRA-7)', 
 
     const first = managerOn(engine);
     await (first.dm as any).runMigrations();
-    expect(userVersion(engine)).toBe(4);
+    expect(userVersion(engine)).toBe(CURRENT_SCHEMA_VERSION);
     const afterFirst = dumpAllRows(engine);
 
     // Second open: spy on every write-capable shim method.
@@ -592,7 +599,7 @@ describe.skipIf(!DatabaseSync)('database migrations — real SQLite (INFRA-7)', 
 
     expect(execSpy).not.toHaveBeenCalled();
     expect(runSpy).not.toHaveBeenCalled();
-    expect(userVersion(engine)).toBe(4);
+    expect(userVersion(engine)).toBe(CURRENT_SCHEMA_VERSION);
     expect(dumpAllRows(engine)).toEqual(afterFirst);
   });
 });
@@ -695,9 +702,10 @@ describe('initialize() wiring (capturing stub)', () => {
       'COMMIT',
     ]);
     expect(stub.execCalls).toEqual(expected);
-    // Pins the shipped versions: baseline v3 then the v4 index migration.
+    // Pins the shipped versions: baseline v3 then the later migrations, ending
+    // at the current version (the last stamp before the final COMMIT).
     expect(stub.execCalls).toContain('PRAGMA user_version = 3');
-    expect(stub.execCalls[stub.execCalls.length - 2]).toBe('PRAGMA user_version = 4');
+    expect(stub.execCalls[stub.execCalls.length - 2]).toBe(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);
     expect((dm as any).db).toBe(stub); // ready
   });
 
@@ -750,7 +758,7 @@ describe('initialize() wiring (capturing stub)', () => {
     const dm = managerWithStub(stub);
 
     await expect(dm.initialize()).rejects.toThrow(
-      /schema version 99.*only supports up to version 4.*update ArDrive Desktop/i
+      /schema version 99.*only supports up to version 5.*update ArDrive Desktop/i
     );
 
     expect(stub.execCalls).toEqual([]); // data never touched

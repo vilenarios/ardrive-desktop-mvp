@@ -207,6 +207,49 @@ describe('UploadApprovalQueueModern cost display (MONEY-3)', () => {
   });
 });
 
+describe('Delete -> ArFS hide honesty (SYNC-5 / D-011)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('labels a delete-driven hide op as hidden-not-erased (permanent storage cannot delete)', () => {
+    const { container } = renderQueue([
+      makeUpload({
+        fileName: 'secret.txt',
+        operationType: 'hide',
+        previousPath: '/sync/folder/secret.txt',
+        estimatedCost: 0,
+        estimatedTurboCost: 0,
+        hasSufficientTurboBalance: true,
+        metadata: { isHidden: true },
+      }),
+    ]);
+
+    // Honest permanence: the op says it is HIDDEN on Arweave, not erased.
+    expect(screen.getByText(/hide on Arweave \(can't be erased\)/i)).toBeInTheDocument();
+    // The old dishonest wording must be gone.
+    expect(container.textContent).not.toMatch(/Delete from permaweb/i);
+    expect(container.textContent).not.toMatch(/Hide file from view/i);
+    // A hide is free (metadata-only) — no fabricated price.
+    expect(screen.getAllByText(/^FREE$/i).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('labels an unhide op as a restore-to-view action', () => {
+    renderQueue([
+      makeUpload({
+        fileName: 'secret.txt',
+        operationType: 'unhide',
+        estimatedCost: 0,
+        estimatedTurboCost: 0,
+        hasSufficientTurboBalance: true,
+        metadata: { isHidden: false },
+      }),
+    ]);
+
+    expect(screen.getByText(/Unhide on Arweave — restore to view/i)).toBeInTheDocument();
+  });
+});
+
 describe('Batch approval semantics (MONEY-6)', () => {
   beforeEach(() => {
     vi.clearAllMocks();

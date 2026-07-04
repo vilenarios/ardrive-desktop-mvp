@@ -27,6 +27,10 @@ interface PendingFileOperation {
   timeout: NodeJS.Timeout;
   hash?: string;
   hashPromise?: Promise<string>;
+  // Invoked when the delete is CONFIRMED (i.e. not resolved as a move/rename
+  // within the detection window). SYNC-5: this is how a confirmed local delete
+  // becomes an ArFS hide operation in the approval queue.
+  onConfirmDelete?: (detection: FileOperationDetection) => void | Promise<void>;
 }
 
 interface FileMetadata {
@@ -57,7 +61,12 @@ export class FileOperationDetector {
   /**
    * Called when a file is deleted - starts tracking for potential move
    */
-  async onFileDelete(filePath: string, existingHash?: string, arfsFileId?: string): Promise<void> {
+  async onFileDelete(
+    filePath: string,
+    existingHash?: string,
+    arfsFileId?: string,
+    onConfirmDelete?: (detection: FileOperationDetection) => void | Promise<void>
+  ): Promise<void> {
     console.log(`FileOperationDetector: File delete detected - ${filePath}`);
     if (existingHash) {
       console.log(`FileOperationDetector: Using existing hash: ${existingHash.substring(0, 16)}... (full: ${existingHash})`);
@@ -99,11 +108,12 @@ export class FileOperationDetector {
         await this.confirmDelete(filePath);
       }, this.DETECTION_WINDOW_MS);
 
-      this.pendingDeletes.set(filePath, { 
-        snapshot, 
-        timeout, 
+      this.pendingDeletes.set(filePath, {
+        snapshot,
+        timeout,
         hash: existingHash,
-        hashPromise 
+        hashPromise,
+        onConfirmDelete
       });
       
       // Track batch operations
@@ -486,9 +496,9 @@ export class FileOperationDetector {
   private async confirmDelete(filePath: string): Promise<void> {
     const pending = this.pendingDeletes.get(filePath);
     if (!pending) return;
-    
+
     console.log(`FileOperationDetector: Confirming delete for ${filePath}`);
-    
+
     const deleteOperation: FileOperationDetection = {
       type: 'delete',
       oldPath: filePath,
@@ -496,9 +506,20 @@ export class FileOperationDetector {
       oldArfsFileId: pending.snapshot.arfsFileId,
       reason: `File deleted and not recreated within ${this.DETECTION_WINDOW_MS}ms window`
     };
-    
+
     this.cacheOperation(filePath, deleteOperation);
     this.pendingDeletes.delete(filePath);
+
+    // SYNC-5: hand the confirmed delete to the consumer (sync-manager) so it can
+    // create an ArFS hide operation in the approval queue. Guarded so a throwing
+    // consumer can never break the detector's internal state.
+    if (pending.onConfirmDelete) {
+      try {
+        await pending.onConfirmDelete(deleteOperation);
+      } catch (error) {
+        console.error(`FileOperationDetector: onConfirmDelete handler failed for ${filePath}:`, error);
+      }
+    }
   }
 
   /**

@@ -90,6 +90,18 @@ function dumpAll(engine: any): Record<string, any[]> {
   return out;
 }
 
+// v5 (SYNC-5) adds an additive `isHidden` column to drive_metadata_cache. It is
+// purely additive (default 0) and leaves every existing value untouched, so for
+// the losslessness comparison we strip it from the post-migration dump and
+// assert its default separately.
+const CURRENT_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
+function stripAddedColumns(dump: Record<string, any[]>): Record<string, any[]> {
+  return {
+    ...dump,
+    drive_metadata_cache: (dump.drive_metadata_cache ?? []).map(({ isHidden, ...rest }: any) => rest),
+  };
+}
+
 const sha256 = (p: string) => createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 
 describe.skipIf(!DatabaseSync)('QA gate probe: INFRA-7 adversarial (file-backed, real engine)', () => {
@@ -109,9 +121,12 @@ describe.skipIf(!DatabaseSync)('QA gate probe: INFRA-7 adversarial (file-backed,
     (dm as any).db = createShim(engine);
     await (dm as any).runMigrations();
 
-    expect(Number(engine.prepare('PRAGMA user_version').get().user_version)).toBe(4);
+    expect(Number(engine.prepare('PRAGMA user_version').get().user_version)).toBe(CURRENT_VERSION);
     const after = dumpAll(engine);
-    expect(after).toEqual(before); // every row of every table, deep-equal
+    // Every pre-existing value survives byte-equal (ignoring v5's additive column)
+    expect(stripAddedColumns(after)).toEqual(before);
+    // ...and the new column defaulted to 0 (not hidden) on the migrated row
+    expect(after.drive_metadata_cache.every((r: any) => r.isHidden === 0)).toBe(true);
     expect(after.file_operations[0].metadata).toHaveLength(NASTY_TEXT.length);
     expect(after.schema_version).toEqual([expect.objectContaining({ version: 2 })]);
     engine.close();
@@ -171,8 +186,8 @@ describe.skipIf(!DatabaseSync)('QA gate probe: INFRA-7 adversarial (file-backed,
     engineA.close();
     engineB.close();
     const check = new DatabaseSync(dbPath);
-    expect(Number(check.prepare('PRAGMA user_version').get().user_version)).toBe(4);
-    expect(dumpAll(check)).toEqual(before); // data untouched by the race
+    expect(Number(check.prepare('PRAGMA user_version').get().user_version)).toBe(CURRENT_VERSION);
+    expect(stripAddedColumns(dumpAll(check))).toEqual(before); // data untouched by the race
     // v4 index exists exactly once
     const idx = check
       .prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name='idx_metadata_mapping_sync_status'")

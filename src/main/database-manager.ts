@@ -1670,6 +1670,29 @@ export class DatabaseManager {
     });
   }
   
+  // SYNC-5: reflect ArFS hidden state (local delete -> hide) in the cache so the
+  // Permaweb view shows it without waiting for a fresh network listing. Keyed on
+  // fileId, which for the cache is the entity id (file OR folder). Deliberately
+  // does NOT touch lastModifiedDate — an ArFS hide is a no-op on that field
+  // (CORE-4 mechanism), so edit-detection must not see a spurious change.
+  async updateDriveMetadataHidden(entityId: string, isHidden: boolean): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        UPDATE drive_metadata_cache
+        SET isHidden = ?, lastSyncedAt = CURRENT_TIMESTAMP
+        WHERE fileId = ?
+      `;
+
+      this.db!.run(sql, [isHidden ? 1 : 0, entityId], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
   async updateDriveMetadataParent(fileId: string, newParentFolderId: string, newPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       // Update lastModifiedDate to current time (in milliseconds, matching our patched ArDrive Core)

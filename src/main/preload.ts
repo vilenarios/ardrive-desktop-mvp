@@ -94,8 +94,11 @@ const api = {
       ipcRenderer.invoke('sync:stop'),
     getStatus: () => 
       ipcRenderer.invoke('sync:status'),
-    manual: () => 
+    manual: () =>
       ipcRenderer.invoke('sync:manual'),
+    // SYNC-5: queue an ArFS unhide for a previously-hidden (locally-deleted) entity
+    unhideEntity: (params: { driveId: string; entityId: string; entityType: 'file' | 'folder'; name?: string }) =>
+      ipcRenderer.invoke('sync:unhide-entity', params),
     // DEBUG methods
     getState: () => 
       ipcRenderer.invoke('sync:get-state'),
