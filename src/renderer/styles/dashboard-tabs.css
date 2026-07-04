@@ -1,19 +1,202 @@
-/* Dashboard Tab Content Standardization */
-/* Following ArDrive Design System Guidelines */
+/* Dashboard Tab Bar + Content Shell (DESIGN-4) */
+/* Tokens per docs/product/DESIGN-SYSTEM.md §6.5 (tab bar) + §5A (polish). */
 
-/* Base tab content wrapper - provides consistent width and padding */
+/* -----------------------------------------------------------------------
+ * Tab bar — mirrors ArDriveTabBar (DESIGN-SYSTEM.md §6.5). Markup lives in
+ * components/common/TabNavigation.tsx; styles moved here from that
+ * component's inline <style> tag so they follow the same file-organization
+ * convention as the rest of styles/*.css (and so the raw rgba() literals
+ * that lived in that tag could be ported onto tokens).
+ * -------------------------------------------------------------------- */
+.tab-navigation-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-6);
+  background: var(--surface);
+}
+
+.tab-navigation {
+  background: var(--ardrive-surface);
+  border: 1px solid var(--ardrive-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-2);
+  overflow: hidden;
+}
+
+.tab-list {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--ardrive-text-secondary);
+  transition: background-color var(--motion-moderate) var(--ease-standard),
+              color var(--motion-moderate) var(--ease-standard),
+              border-color var(--motion-moderate) var(--ease-standard);
+  white-space: nowrap;
+  position: relative;
+  margin-bottom: -1px;
+  min-height: 48px;
+}
+
+.tab-button:hover:not(.active) {
+  color: var(--ardrive-text-primary);
+  background: var(--surface-inset);
+  border-bottom-color: var(--ardrive-border-hover);
+}
+
+.tab-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+  z-index: 10;
+}
+
+.tab-button.active {
+  color: var(--ardrive-primary);
+  background: var(--surface-inset);
+  border-bottom-color: var(--ardrive-primary);
+  z-index: 5;
+}
+
+.tab-button.active:hover {
+  color: var(--brand-hover);
+}
+
+.tab-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--motion-moderate) var(--ease-standard);
+}
+
+.tab-label {
+  flex: 1;
+}
+
+.tab-button:hover .tab-icon {
+  transform: translateY(-1px);
+}
+
+.tab-button.active .tab-icon {
+  transform: scale(1.05);
+}
+
+.tab-count {
+  background: var(--gray-200);
+  color: var(--ardrive-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: var(--radius-pill);
+  min-width: 20px;
+  text-align: center;
+  box-shadow: var(--elevation-1);
+  transition: background-color var(--motion-moderate) var(--ease-standard),
+              color var(--motion-moderate) var(--ease-standard);
+}
+
+.tab-button:hover:not(.active) .tab-count {
+  background: var(--gray-300);
+  color: var(--ardrive-text-primary);
+}
+
+.tab-button.active .tab-count {
+  background: var(--ardrive-primary);
+  color: var(--text-on-brand);
+  /* branded glow (§5A) instead of the old hardcoded rgba(220,38,38,.3) */
+  box-shadow: 0 2px 4px rgba(var(--brand-rgb), 0.3);
+}
+
+.tab-badge {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: var(--space-2);
+  border: 2px solid var(--ardrive-surface);
+  box-shadow: var(--elevation-1);
+}
+
+.tab-badge.attention {
+  background: var(--warning);
+}
+
+.tab-badge.error {
+  background: var(--danger);
+}
+
+.tab-badge.success {
+  background: var(--success);
+}
+
+@media (max-width: 768px) {
+  .tab-list {
+    padding: 0 var(--space-2);
+  }
+
+  .tab-button {
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--text-xs);
+    min-height: 44px;
+  }
+
+  .tab-count {
+    padding: 2px 5px;
+    min-width: 16px;
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .tab-button {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .tab-label {
+    display: none;
+  }
+
+  .tab-button .tab-icon {
+    margin: 0;
+  }
+}
+
+/* -----------------------------------------------------------------------
+ * Tab content shell — the card the active tab renders into. Consolidated
+ * to a single definition here (a second, conflicting .tab-content rule in
+ * styles.css was silently winning the cascade — dead duplication removed
+ * as part of this pass; see the note left in styles.css).
+ * -------------------------------------------------------------------- */
 .tab-content {
   background: var(--ardrive-surface);
   border: 1px solid var(--ardrive-border);
   border-radius: var(--radius-lg);
   min-height: 600px;
   width: 100%;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--elevation-2);
   margin-top: -1px; /* Connect to tab navigation */
-  
+
   /* Remove padding from here - let inner containers handle it */
   padding: 0;
-  
+
   /* Ensure consistent max-width for all tabs */
   display: flex;
   justify-content: center;

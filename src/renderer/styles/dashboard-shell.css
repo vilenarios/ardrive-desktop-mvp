@@ -1,0 +1,168 @@
+/* Dashboard shell (DESIGN-4) — the app frame around the tabbed content:
+ * top header (logo / drive selector / sync / user menu), the "no drive"
+ * empty state, the empty-upload-queue state, and the floating sync-status
+ * widget. Ported off Dashboard.tsx's inline style={{}} objects onto
+ * docs/product/DESIGN-SYSTEM.md tokens; markup/behavior unchanged.
+ */
+
+/* -----------------------------------------------------------------------
+ * Header
+ * -------------------------------------------------------------------- */
+.dashboard-header {
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-4) var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+}
+
+.dashboard-header-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 200px;
+}
+
+.dashboard-header-logo {
+  height: 32px;
+}
+
+/* Wordmark art swaps with theme so it stays legible on either header surface.
+ * Dark is the default (:root has no data-theme), so the light-art wordmark
+ * shows by default and the dark-art one only under an explicit light theme. */
+.dashboard-header-logo-onlight {
+  display: none;
+}
+.dashboard-header-logo-ondark {
+  display: block;
+}
+:root[data-theme='light'] .dashboard-header-logo-onlight {
+  display: block;
+}
+:root[data-theme='light'] .dashboard-header-logo-ondark {
+  display: none;
+}
+
+.dashboard-header-center {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  justify-content: center;
+}
+
+.dashboard-header-actions {
+  min-width: 200px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* -----------------------------------------------------------------------
+ * Empty state — no drive configured
+ * -------------------------------------------------------------------- */
+.empty-drive-state {
+  text-align: center;
+  padding: var(--space-12) var(--space-8);
+  background: var(--surface-inset);
+  border-radius: var(--radius-lg);
+  margin: var(--space-8) var(--space-8) var(--space-6);
+}
+
+.empty-drive-state-icon {
+  color: var(--icon-low);
+  margin-bottom: var(--space-4);
+}
+
+.empty-drive-state-title {
+  margin-bottom: var(--space-3);
+  font-size: 24px;
+}
+
+.empty-drive-state-description {
+  font-size: 16px;
+  color: var(--text-secondary);
+  margin: 0 auto var(--space-6);
+  max-width: 500px;
+}
+
+.empty-drive-state-note {
+  display: inline-block;
+  padding: var(--space-4) var(--space-8);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* -----------------------------------------------------------------------
+ * Floating sync-status widget
+ * -------------------------------------------------------------------- */
+.sync-status-widget {
+  position: fixed;
+  bottom: var(--space-6);
+  right: var(--space-6);
+  background: var(--surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-4);
+  padding: var(--space-4);
+  min-width: 280px;
+  z-index: 1000;
+  border: 1px solid var(--border);
+}
+
+.sync-status-widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.sync-status-widget-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sync-status-widget-status-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.sync-status-widget-status.is-active {
+  color: var(--success-fg);
+}
+
+.sync-status-widget-status.is-paused {
+  color: var(--icon-mid);
+}
+
+.sync-status-widget-body {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.sync-status-widget-current-file {
+  margin-bottom: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.sync-status-widget-filename {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-status-widget-footer {
+  display: flex;
+  justify-content: space-between;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sync-status-widget-failed {
+  color: var(--danger-fg);
+}

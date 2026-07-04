@@ -11,6 +11,8 @@
 @import './styles/user-menu.css';
 @import './styles/settings.css';
 @import './styles/dashboard-tabs.css';
+@import './styles/dashboard-shell.css';
+@import './styles/drive-selector.css';
 @import './styles/upload-queue-modern.css';
 
 /*
@@ -1753,68 +1755,19 @@ label {
   flex-direction: column;
 }
 
-/* Top Navigation Bar */
-.top-navbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-3) var(--space-6);
-  background: white;
-  border-bottom: 1px solid var(--gray-200);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.navbar-brand {
-  display: flex;
-  align-items: center;
-}
-
-.navbar-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-}
-
-/* User Profile Section */
-.user-profile {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  background: var(--gray-50);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--gray-200);
-}
-
+/* NOTE (DESIGN-4): this section used to hold an entire unused "top navbar /
+ * user profile / drive header" implementation — Dashboard.tsx has rendered
+ * its own header (see .dashboard-header below) for a while now and none of
+ * those selectors were referenced anywhere. Removed the dead rules while
+ * restyling this block; .user-avatar and .user-name survive because
+ * UserMenu.tsx (DESIGN-7 scope, untouched here) still renders them. */
 .user-avatar {
   width: 36px;
   height: 36px;
   border-radius: 50%;
   object-fit: cover;
-  border: 2px solid white;
+  border: 2px solid var(--surface-raised);
   box-shadow: var(--shadow-sm);
-}
-
-.user-avatar-placeholder {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--gray-600);
-  border: 2px solid var(--gray-200);
-}
-
-.user-info {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 150px;
 }
 
 .user-name {
@@ -1827,157 +1780,6 @@ label {
   white-space: nowrap;
 }
 
-.user-address {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--gray-700);
-  font-family: monospace;
-}
-
-.user-balances {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 13px;
-}
-
-.balance-ar {
-  font-weight: 600;
-  color: var(--gray-800);
-}
-
-.balance-divider {
-  color: var(--gray-400);
-  font-size: 11px;
-}
-
-.turbo-balance-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--ardrive-warning);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.2s ease;
-}
-
-.turbo-balance-btn:hover {
-  opacity: 0.8;
-}
-
-/* ArNS CTA */
-.arns-cta {
-  margin-left: var(--space-2);
-  padding-left: var(--space-3);
-  border-left: 1px solid var(--gray-200);
-}
-
-.get-arns-btn {
-  padding: var(--space-2) var(--space-3);
-  background: var(--ardrive-primary);
-  color: white;
-  border: none;
-  border-radius: var(--radius);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-
-.get-arns-btn:hover {
-  background: var(--ardrive-primary-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
-}
-
-.navbar-buttons {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.navbar-btn {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--gray-300);
-  background: white;
-  border-radius: var(--radius);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  color: var(--gray-700);
-}
-
-.navbar-btn:hover {
-  background: var(--gray-50);
-  border-color: var(--gray-400);
-}
-
-.navbar-btn.logout {
-  color: var(--ardrive-danger);
-  border-color: var(--ardrive-danger-light);
-}
-
-.navbar-btn.logout:hover {
-  background: var(--ardrive-danger-light);
-  border-color: var(--ardrive-danger);
-}
-
-/* Drive Header */
-.drive-header {
-  padding: var(--space-5) var(--space-6);
-  background: var(--gray-50);
-  border-bottom: 1px solid var(--gray-200);
-  margin-bottom: var(--space-6);
-}
-
-.drive-info {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.drive-icon {
-  width: 48px;
-  height: 48px;
-  background: white;
-  border: 2px solid var(--gray-200);
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ardrive-primary);
-}
-
-.drive-text h1 {
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0 0 var(--space-1) 0;
-  color: var(--gray-900);
-}
-
-.drive-status {
-  font-size: 14px;
-  color: var(--gray-600);
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.sync-indicator {
-  color: var(--ardrive-secondary);
-  font-weight: 500;
-}
-
-
 /* Dashboard Content */
 .dashboard-content {
   padding: var(--space-6);
@@ -1989,16 +1791,10 @@ label {
   margin-bottom: 0; /* Remove gap - tabs now connect to content */
 }
 
-.tab-content {
-  background: var(--ardrive-surface);
-  border: 1px solid var(--ardrive-border);
-  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-lg);
-  min-height: 600px;
-  width: 100%;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  margin-top: -1px; /* Connect to tab navigation */
-  /* Padding moved to dashboard-tabs.css for consistency */
-}
+/* .tab-content / .tab-content-inner: see styles/dashboard-tabs.css — this
+ * used to be redefined here too (a dead-duplicate that happened to win the
+ * cascade over the imported file's own rule); consolidated to one
+ * definition as part of the DESIGN-4 tab-shell restyle. */
 
 /* Status Overview */
 .status-overview {
@@ -5015,17 +4811,31 @@ label {
   color: var(--gray-500);
 }
 
+/* Icon roundel above the empty-state heading (Dashboard.tsx's empty upload
+ * queue) — was an ad-hoc inline-styled div; ported onto tokens (DESIGN-4). */
+.empty-queue-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto var(--space-6);
+  background: var(--brand-surface);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand);
+}
+
 .empty-queue h3 {
   margin: 0 0 var(--space-3) 0;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
-  color: var(--gray-700);
+  color: var(--gray-900);
 }
 
 .empty-queue p {
-  margin: 0;
-  font-size: 14px;
-  color: var(--gray-500);
+  margin: 0 auto var(--space-6);
+  font-size: 15px;
+  color: var(--gray-600);
   max-width: 400px;
 }
 

@@ -17,25 +17,15 @@ import Settings from './Settings';
 import { DriveSelector } from './DriveSelector';
 import { CreateDriveModal } from './CreateDriveModal';
 import { AddExistingDriveModal } from './AddExistingDriveModal';
-import { 
-  Pause, 
-  RefreshCw, 
-  Download, 
+import {
+  Pause,
+  RefreshCw,
+  Download,
   FolderOpen,
   Cloud,
   Clock,
-  FileText,
   Upload,
-  File,
-  FileCode,
-  FileSpreadsheet,
-  FileImage,
-  FileVideo,
-  FileAudio,
-  Archive,
-  BookOpen,
-  HardDrive,
-  FileJson
+  HardDrive
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -131,63 +121,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     
     return matchesSearch && matchesStatus;
   });
-
-  // File type icon mapping
-  const getFileTypeIcon = (fileName: string, size: number = 16) => {
-    const extension = fileName.toLowerCase().split('.').pop() || '';
-    
-    // Arweave manifest files
-    if (fileName.toLowerCase().endsWith('.arweave-manifest.json')) {
-      return <FileJson size={size} className="file-type-icon manifest" style={{ color: '#dc2626' }} />;
-    }
-    
-    // Image files
-    if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico', 'tiff', 'tif'].includes(extension)) {
-      return <FileImage size={size} className="file-type-icon image" />;
-    }
-    
-    // Video files
-    if (['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', 'mkv', 'm4v', '3gp', 'ogv'].includes(extension)) {
-      return <FileVideo size={size} className="file-type-icon video" />;
-    }
-    
-    // Audio files
-    if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'wma', 'opus', 'aiff'].includes(extension)) {
-      return <FileAudio size={size} className="file-type-icon audio" />;
-    }
-    
-    // Code files
-    if (['js', 'ts', 'jsx', 'tsx', 'html', 'css', 'scss', 'sass', 'less', 'json', 'xml', 'yaml', 'yml', 'py', 'java', 'cpp', 'c', 'cs', 'php', 'rb', 'go', 'rs', 'swift', 'kt', 'dart', 'vue', 'svelte', 'sh', 'bat', 'ps1', 'sql', 'r', 'scala', 'clj', 'hs', 'elm', 'fs', 'ml', 'pl', 'lua', 'nim', 'cr', 'ex', 'exs'].includes(extension)) {
-      return <FileCode size={size} className="file-type-icon code" />;
-    }
-    
-    // Spreadsheet files
-    if (['xlsx', 'xls', 'csv', 'ods', 'numbers'].includes(extension)) {
-      return <FileSpreadsheet size={size} className="file-type-icon spreadsheet" />;
-    }
-    
-    // Archive files
-    if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'dmg', 'iso', 'img'].includes(extension)) {
-      return <Archive size={size} className="file-type-icon archive" />;
-    }
-    
-    // Document files
-    if (['pdf'].includes(extension)) {
-      return <FileText size={size} className="file-type-icon pdf" />;
-    }
-    
-    if (['doc', 'docx', 'odt', 'rtf', 'pages'].includes(extension)) {
-      return <BookOpen size={size} className="file-type-icon document" />;
-    }
-    
-    // Text files
-    if (['txt', 'md', 'rst', 'tex', 'log'].includes(extension)) {
-      return <FileText size={size} className="file-type-icon text" />;
-    }
-    
-    // Default file icon
-    return <File size={size} className="file-type-icon default" />;
-  };
 
   const copyToClipboard = async (text: string, message: string) => {
     try {
@@ -764,32 +697,24 @@ const Dashboard: React.FC<DashboardProps> = ({
       />
 
       {/* Unified Header */}
-      <div style={{
-        backgroundColor: 'white',
-        borderBottom: '1px solid var(--gray-200)',
-        padding: 'var(--space-4) var(--space-6)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 'var(--space-6)'
-      }}>
-        {/* Left: Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', minWidth: '200px' }}>
-          <img 
-            src="ArDrive-Logo-Wordmark-Dark.png" 
-            alt="ArDrive" 
-            style={{ height: '32px' }} 
+      <div className="dashboard-header">
+        {/* Left: Logo — dark-art wordmark on light theme, light-art on dark;
+            CSS toggles which <img> is shown (no JS/theme-context read). */}
+        <div className="dashboard-header-brand">
+          <img
+            src="ArDrive-Logo-Wordmark-Dark.png"
+            alt="ArDrive"
+            className="dashboard-header-logo dashboard-header-logo-onlight"
+          />
+          <img
+            src="ArDrive-Logo-Wordmark-Light.png"
+            alt="ArDrive"
+            className="dashboard-header-logo dashboard-header-logo-ondark"
           />
         </div>
-        
+
         {/* Center: Drive Selector + Sync */}
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 'var(--space-3)',
-          flex: 1,
-          justifyContent: 'center'
-        }}>
+        <div className="dashboard-header-center">
           <DriveSelector
             currentDrive={selectedDrive}
             drives={drives}
@@ -798,33 +723,20 @@ const Dashboard: React.FC<DashboardProps> = ({
             onCreateDrive={handleCreateDrive}
             onAddExistingDrive={handleAddExistingDrive}
           />
-          
+
           {/* Sync Button */}
           <button
+            className="button"
             onClick={handleSync}
             disabled={isSyncing}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)',
-              padding: 'var(--space-2) var(--space-4)',
-              backgroundColor: isSyncing ? 'var(--gray-100)' : 'var(--ardrive-primary)',
-              color: isSyncing ? 'var(--gray-600)' : 'white',
-              border: 'none',
-              borderRadius: 'var(--radius-md)',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: isSyncing ? 'not-allowed' : 'pointer',
-              transition: 'all 0.2s ease'
-            }}
           >
             <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
             {isSyncing ? 'Syncing...' : 'Sync'}
           </button>
         </div>
-        
+
         {/* Right: User Menu */}
-        <div style={{ minWidth: '200px', display: 'flex', justifyContent: 'flex-end' }}>
+        <div className="dashboard-header-actions">
           <UserMenu
             currentProfile={currentProfile}
             walletBalance={walletInfo.balance}
@@ -854,32 +766,14 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Empty State - No Drive */}
       {!selectedDrive ? (
-        <div className="empty-drive-state" style={{
-          textAlign: 'center',
-          padding: 'var(--space-12) var(--space-8)',
-          backgroundColor: 'var(--gray-50)',
-          borderRadius: 'var(--radius-lg)',
-          margin: 'var(--space-8) var(--space-8) var(--space-6)'
-        }}>
-          <Cloud size={64} style={{ color: 'var(--gray-400)', marginBottom: 'var(--space-4)' }} />
-          <h2 style={{ marginBottom: 'var(--space-3)', fontSize: '24px' }}>Welcome to ArDrive!</h2>
-          <p style={{ 
-            fontSize: '16px', 
-            color: 'var(--gray-600)', 
-            marginBottom: 'var(--space-6)',
-            maxWidth: '500px',
-            margin: '0 auto var(--space-6)'
-          }}>
-            Let&apos;s get you started with permanent file storage on Arweave. 
+        <div className="empty-drive-state">
+          <Cloud size={64} className="empty-drive-state-icon" />
+          <h2 className="empty-drive-state-title">Welcome to ArDrive!</h2>
+          <p className="empty-drive-state-description">
+            Let&apos;s get you started with permanent file storage on Arweave.
             First, you&apos;ll need to create or select a drive.
           </p>
-          <div style={{ 
-            padding: 'var(--space-4) var(--space-8)', 
-            backgroundColor: 'var(--gray-100)', 
-            borderRadius: 'var(--radius-md)',
-            fontSize: '14px',
-            color: 'var(--gray-600)'
-          }}>
+          <div className="empty-drive-state-note">
             No drive configured. Please restart the application.
           </div>
         </div>
@@ -955,32 +849,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                   />
                 ) : (
                   <div className="empty-queue">
-                    <div style={{
-                      width: '80px',
-                      height: '80px',
-                      margin: '0 auto var(--space-6)',
-                      backgroundColor: 'var(--ardrive-primary-50)',
-                      borderRadius: '50%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      <Upload size={40} style={{ color: 'var(--ardrive-primary)' }} />
+                    <div className="empty-queue-icon">
+                      <Upload size={40} />
                     </div>
-                    <h3 style={{ 
-                      fontSize: '20px', 
-                      fontWeight: '600', 
-                      marginBottom: 'var(--space-3)',
-                      color: 'var(--gray-900)'
-                    }}>
-                      No Pending Uploads
-                    </h3>
-                    <p style={{ 
-                      fontSize: '15px', 
-                      marginBottom: 'var(--space-6)',
-                      maxWidth: '400px',
-                      margin: '0 auto var(--space-6)'
-                    }}>
+                    <h3>No Pending Uploads</h3>
+                    <p>
                       Files you add to your sync folder will appear here for approval before uploading to Arweave.
                     </p>
                     <button
@@ -989,11 +862,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                         if (config.syncFolder) {
                           await window.electronAPI.shell.openPath(config.syncFolder);
                         }
-                      }}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 'var(--space-2)'
                       }}
                     >
                       <FolderOpen size={16} />
@@ -1058,75 +926,44 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Floating Sync Status Widget */}
       {syncStatus && (
-        <div style={{
-          position: 'fixed',
-          bottom: 'var(--space-6)',
-          right: 'var(--space-6)',
-          backgroundColor: 'white',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-          padding: 'var(--space-4)',
-          minWidth: '280px',
-          zIndex: 1000,
-          border: '1px solid var(--gray-200)'
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 'var(--space-3)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <div className="sync-status-widget">
+          <div className="sync-status-widget-header">
+            <div className={`sync-status-widget-status ${syncStatus.isActive ? 'is-active' : 'is-paused'}`}>
               {syncStatus.isActive ? (
                 <>
-                  <RefreshCw size={16} style={{ 
-                    color: 'var(--success-600)',
-                    animation: 'spin 2s linear infinite'
-                  }} />
-                  <span style={{ fontWeight: '600', fontSize: '14px' }}>Syncing</span>
+                  <RefreshCw size={16} className="animate-spin" />
+                  <span className="sync-status-widget-status-label">Syncing</span>
                 </>
               ) : (
                 <>
-                  <Pause size={16} style={{ color: 'var(--gray-500)' }} />
-                  <span style={{ fontWeight: '600', fontSize: '14px' }}>Sync Paused</span>
+                  <Pause size={16} />
+                  <span className="sync-status-widget-status-label">Sync Paused</span>
                 </>
               )}
             </div>
-            
           </div>
-          
+
           {/* Progress info */}
-          <div style={{ fontSize: '13px', color: 'var(--gray-600)' }}>
+          <div className="sync-status-widget-body">
             {syncStatus.currentFile ? (
-              <div style={{ marginBottom: 'var(--space-2)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-                  <Upload size={12} />
-                  <span style={{ 
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap'
-                  }}>
-                    {syncStatus.currentFile}
-                  </span>
-                </div>
+              <div className="sync-status-widget-current-file">
+                <Upload size={12} />
+                <span className="sync-status-widget-filename">
+                  {syncStatus.currentFile}
+                </span>
               </div>
             ) : (
               syncStatus.isActive && (
-                <div style={{ marginBottom: 'var(--space-2)' }}>
+                <div className="sync-status-widget-current-file">
                   Watching for changes...
                 </div>
               )
             )}
-            
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between',
-              paddingTop: 'var(--space-2)',
-              borderTop: '1px solid var(--gray-100)'
-            }}>
+
+            <div className="sync-status-widget-footer">
               <span>{syncStatus.uploadedFiles} uploaded</span>
               {syncStatus.failedFiles > 0 && (
-                <span style={{ color: 'var(--error-600)' }}>
+                <span className="sync-status-widget-failed">
                   {syncStatus.failedFiles} failed
                 </span>
               )}
