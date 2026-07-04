@@ -480,6 +480,7 @@ Done 2026-07-03 (merged to main c815a5c via ff): WalletSetup + all onboarding sc
 ### DESIGN-4..7 · P2 · Design · `todo` (fan out after DESIGN-2)
 Restyle each surface against the system, in parallel: **DESIGN-4** dashboard shell + tabs + drive selector · **DESIGN-5** upload approval queue + Turbo/payments · **DESIGN-6** permaweb/activity/storage views · **DESIGN-7** settings + modals + toasts + user menu.
 Acceptance (each): surface matches DESIGN-SYSTEM.md in light+dark; token-driven; screenshots attached; no behavior change.
+DESIGN-4 in-progress 2026-07-04 (overnight, branch design/DESIGN-4-dashboard) — built + screenshotted, **HELD for Phil's aesthetic sign-off** (D-023), not merged.
 
 ## CORE — ardrive-core-js upstream (sibling repo, per D-016/D-018)
 
