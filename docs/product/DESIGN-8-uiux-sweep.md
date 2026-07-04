@@ -17,6 +17,40 @@ mode) · **inconsistent** (works, violates the design system or a sibling surfac
 **copy-clarity** (jargon/ambiguous/misleading wording) · **missing-info-bubble** ·
 **polish** (nitpick).
 
+## ✅ Execution status — COMPLETE (2026-07-04)
+
+All six execution lanes are implemented, QA-gated, and merged to `main`. Final
+integration on `main` @ `75d19db`: typecheck clean · 0 lint errors · build
+compiles · **483 tests pass** (+28 new behavioral tests added across the sweep,
+up from 455). Lanes (each behind its own gate, merged in order):
+
+| Lane | Scope | Lane commit | Merge |
+|---|---|---|---|
+| Foundation | `.button.secondary` dark-mode, `--radius` bridge drift, dead `.file-icon` cascade, status-hue, hardcoded-white→token on setup screens, 3 dead components deleted | `fdc5b74` | `9999b6d` |
+| DESIGN-5 / Turbo | Upload Approval + Download Queue + Turbo/payment restyle; **trust bugs** (fake stats wired-to-real or removed, "Enterprise Ready" overclaim cut, balance AR→Credits); cost/credit info-bubbles | `65a051b`+`f41ffd3` | `9293084` |
+| Dashboard content | Context-menu keyboard a11y (+test), status-hue (error no longer hidden as gray), info-bubbles, emoji→lucide, permanence copy | `6dd4eba` | `8d10882` |
+| Settings + Gateway | Built the Gateway UI (reused existing validated `config:set-gateway` IPC — no new handler), UserMenu tooltips→InfoButton, status-hue, Switch-Profile wired (+7 tests) | `4e24593` | `ca7c489` |
+| Drives & modals | Shared `useModalA11y` hook (Escape/backdrop/focus-trap/return-focus) across 4 modals, keyboard-reachable folder tree, DSI-2/DSI-5, drive-name truncation, info-bubbles | `2076975` | `4f593b4` |
+| Onboarding & wallet | Seed validation (12-or-24, deferred), **real seed masking** (was `opacity:0.1` w/ plaintext in DOM), privacy-icon fix, honest permanence/recovery copy, A11Y radios+h1 (+17 tests) | `3a4e80b` | `75d19db` |
+
+**Deferred to a follow-up pass (tracked as DESIGN-9 in BACKLOG):** DSI-1 (legacy
+token-naming consolidation, 6+ files) · DSI-4 (status-pill architectural
+consolidation) · DSI-8 (onboarding type-scale migration, ~46 sites) · POLISH-6/7/8
+(shared `PasswordInput`/`PasswordForm`/`PasswordStrengthIndicator`, also used by
+`ProfileManagement`) · POLISH-9 (needs a live window) · full RESTYLE-7
+(`CreateManifestModal` cosmetic shell — a11y-critical bits done) · delete
+unreferenced `StoredFilesBrowser.tsx`.
+
+**Open product question (for Phil):** free-tier copy now consistently says
+**100 KiB** — the value the code actually enforces (`turbo-utils.ts`, 100×1024).
+Phil has referred to **105 KiB**. If Turbo's real subsidy is 105 KiB, bump the
+constant so users get the full free tier; if 100, the copy is already correct.
+Copy deliberately uses the smaller (never over-promises "free"). See D-025.
+
+Per-item annotations below record each lane's specific changes (some interim
+"remaining" notes predate the final lane merges — this banner is authoritative
+for overall status).
+
 ## Totals
 
 **78 deduped items** (down from ~142 raw findings — the reduction is almost entirely

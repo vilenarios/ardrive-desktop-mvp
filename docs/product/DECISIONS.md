@@ -135,3 +135,11 @@ Phil reviewed DESIGN-1 (docs/product/DESIGN-SYSTEM.md) and made the 5 aesthetic 
 5. **Font: system fallback stack — Wavehaus NOT bundled** (proprietary; not clearing desktop licensing). Optional future: a free OFL geometric sans (Manrope/Inter) as a drop-in brand upgrade.
 DESIGN-2 implements the CSS-variable token layer + ThemeProvider from this doc.
 
+## D-025 · DESIGN-8 UI/UX sweep: trust bugs removed; free-tier copy standardized on the code-enforced 100 KiB · CONFIRMED · 2026-07-04
+
+Phil green-lit a full top-to-bottom UI/UX sweep ("Begin. I don't have any nitpicks — it's all you.") after reviewing the consolidated punch-list (docs/product/DESIGN-8-uiux-sweep.md, 78 items). Executed as **six file-disjoint lanes** (foundation first to fix shared button/radius/cascade, then five surface lanes onto the clean base) — each QA-gated and merged behind its own gate; final `main` @ 75d19db, 483 tests green.
+- **Trust/honesty is a release bar, not polish.** Three surfaces were showing dishonest UI and are fixed: fabricated Turbo usage stats (wired to real `files.getUploads()` data, or the tile removed where no real source exists — never invented numbers); a false "Enterprise Ready" marketing claim (removed — those features don't exist in this MVP); the wallet balance mislabeled "AR" when it's Turbo Credits (relabeled). The seed phrase was only visually dimmed (`opacity:0.1`) while "hidden" — real plaintext stayed in the DOM/a11y tree — now genuinely masked.
+- **Free-tier copy standardized on 100 KiB** (100×1024 = 102400 bytes), the value the code actually enforces (`turbo-utils.ts`). Phil has referred to **105 KiB**. Copy deliberately uses the *smaller* number so the UI never over-promises "free." **Open action:** if Turbo's real subsidy threshold is 105 KiB, bump the enforced constant so users get the full free tier (a MONEY follow-up); if it's 100 KiB, the copy is already correct. Not blocking.
+- **Modal a11y baseline set**: a shared `useModalA11y` hook (Escape / backdrop-close / focus-trap / return-focus) is now the standard for dialogs.
+- **Residual design-system debt** (legacy token names, status-pill architecture, onboarding type-scale, shared PasswordInput polish) is explicitly deferred to **DESIGN-9**, not silently dropped.
+

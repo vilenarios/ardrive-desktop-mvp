@@ -18,11 +18,11 @@ Beta scope = Phases 1–4 + the design foundation. Tracks A–E are explicitly *
 
 - **Milestone 1 — "Safe to hand to a tester":** ✅ code-complete (all 11 items merged + gated). One caveat open: live-Electron smoke UAT on a real display (see Gate 5).
 - **Milestone 2 — "Sync you can trust":** 🟡 in progress. Core paths done (SYNC-1/2/3/4/5/7, PRIV-1/2/3/5, MONEY-2/6, INFRA-12, DESIGN foundation); **remaining below**.
-- **Milestone 3 — "Feels finished":** 🔴 not started as a block (all Phase-3 items `todo`).
+- **Milestone 3 — "Feels finished":** 🟡 substantially advanced (2026-07-04). The full **DESIGN-8 UI/UX sweep** delivered the "feels finished" surface polish, honesty (trust bugs removed), a11y baseline (modal focus-management, keyboard reach), and info-bubble coverage across every surface. Remaining M3 work: the envelope enforcement (UX-3) and a live-display UI walkthrough (UAT plan in flight).
 - **Milestone 4 — "Sustainable to iterate":** 🟡 INFRA-2/7 done; CI-gating (INFRA-3) and test-money (INFRA-9) in progress.
-- **Design foundation:** ✅ DESIGN-1/2/3 done (token/theme layer + onboarding restyle + polish); per-surface DESIGN-4..7 continue to GA.
+- **Design foundation & polish:** ✅ DESIGN-1/2/3 (tokens/theme + onboarding) **and DESIGN-4/5/6/7 + the full DESIGN-8 sweep done** — every user-visible surface tokenized in light+dark, trust bugs removed, modal a11y + info-bubbles + the Gateway settings UI landed (483 tests). Residual design-system debt → DESIGN-9 (GA-track). Caveat: static-verified; live-display walkthrough pending (UAT).
 
-**Rough completion:** ~31 of ~61 beta-scoped items verified-done. The critical path is now **4 open P0s + the Milestone-2/3 P1 correctness & finish work**, and — the single biggest risk — **all real-money on-chain verification is blocked on the test wallet (INFRA-9).**
+**Rough completion:** the critical path is now **the open P0s (UX-3 envelope, INFRA-3 CI) + the Milestone-2 P1 sync/privacy/money correctness batch**. On-chain verification (Gate 4) — previously the single biggest risk — is now **largely done** against Phil's capped test wallet via turbo-gateway.com (2026-07-04): private round-trip, hide→verify→restore, and a real capped Turbo payment all proven. The remaining top risk is the **live-Electron UI walkthrough** (Gate 5) — the app has only ever been static-verified in this headless environment.
 
 ---
 
@@ -30,7 +30,7 @@ Beta scope = Phases 1–4 + the design foundation. Tracks A–E are explicitly *
 
 Every P0 in beta scope must be `done` and QA-gated. Currently open:
 
-- [ ] **PRIV-4** (Phase 3) — drive-key persistence: fixed serialization + session restore + settings UI. *(Parked WIP on `wip/drive-key-persistence`.)*
+- [x] **PRIV-4** (Phase 3) — drive-key persistence — **done** 2026-07-04: opt-in per drive, encrypted at rest (scrypt + AES-256-GCM, session-password), **no plaintext key on disk**; session restore wired. (Superseded the parked WIP.)
 - [ ] **UX-3** (Phase 3) — unified IPC envelope (D-005) enforced across handlers. *Unblocks the SEC-2/SEC-4 raw-shape debt.*
 - [ ] **INFRA-3** (Phase 4) — CI gates PRs (unit + integration + smoke) — *in progress.*
 - [ ] **CORE-4** (Track C, blocks nothing now) — hide/unhide upstream PR #270 merged to core-js `master`; desktop consumes a pinned commit today, so this is *functionally satisfied for beta* — downgrade to "nice-to-have upstream merge" unless Phil wants the pin off a fork before shipping.
@@ -53,19 +53,20 @@ Must be `done`-or-explicit-known-issue before shipping (a deferred one moves to 
 - [x] **SYNC-13** — download-eviction feedback loop — **done** (Opus gate PASS, 2026-07-03).
 - [ ] **SYNC-6** — 2 GiB upload cap surfaced (D-014) · **SYNC-10** — streaming hashing (prereq for 2 GiB) · **SYNC-9** — offline visibility · **SYNC-11** — watcher hygiene · **SYNC-16** — (see BACKLOG).
 - [ ] **PRIV-6** — private move/rename/hide paths · **PRIV-7** — unlock password validation · **PRIV-8** — fail-closed privacy.
-- [ ] **MONEY-9** — upload-queue serialization (in progress) · **MONEY-10** — upload-time cost revalidation · **MONEY-7** — payment-window hardening.
-- [ ] **UX finish batch:** UX-4 listener redesign · UX-5 real profile switching · UX-6 auto-login/no-keychain (w/ SEC-4) · UX-7 fail-safe boot routing · UX-8 progress-modal error state · UX-10 copy-link · UX-15 truthful single-drive UI · UX-18.
-- [ ] **SEC-5** — no plaintext JWK temp files.
+- [ ] **MONEY-9** — upload-queue serialization (in progress) · **MONEY-10** — upload-time cost revalidation · ~~**MONEY-7** payment-window hardening~~ **done** · *(also done this session: MONEY-13 AR-balance NaN-during-429)*.
+- [ ] **UX finish batch:** UX-4 listener redesign · UX-5 real profile switching · UX-6 auto-login/no-keychain (w/ SEC-4) · ~~UX-7 fail-safe boot routing~~ **done** · UX-8 progress-modal error state · ~~UX-10 copy-link~~ **done** · UX-15 truthful single-drive UI · UX-18. *(Also done: UX-19 returning-user drives, UX-20 orphaned-wallets, PRIV-7 unlock password validation, SYNC-17/18 gateway.)*
+- [x] **SEC-5** — no plaintext JWK temp files — **done** (in-memory `JWKWallet`, no tmpdir).
 
-## Gate 4 — Real-world verification (⚠️ blocked on the test wallet — INFRA-9)
+## Gate 4 — Real-world verification (✅ largely done, 2026-07-04 — via turbo-gateway.com)
 
-Everything above is currently **mock-verified**. These need real on-chain execution with a funded, disposable test wallet (**never** production funds; **D-** budget rules). This is the gate most likely to surface surprises.
+Previously all **mock-verified** and blocked. Executed 2026-07-04 against Phil's capped, disposable test wallet (referenced by path/env only; never production funds; spend hard-capped). Run on **turbo-gateway.com** (arweave.net rate-limits this environment). This was the gate most likely to surface surprises — it surfaced the owner-scoped-GQL issue, fixed upstream in ardrive-core-js (CORE-1, PR #271).
 
-- [ ] Test wallet provisioned + funded with a small AR/Turbo budget (INFRA-9). *(Phil's task — the one thing only he can set up.)*
-- [ ] **Hide → verify** round-trip: local delete propagates as an ArFS hide and the file reads as hidden from a fresh fetch (the one untested link in the hide chain).
-- [ ] **Private drive** round-trip: create → upload → download decrypts to correct plaintext; wrong password fails closed.
-- [ ] **Payment approval:** a real Turbo upload spends only after explicit approval; the approved amount matches the charge; free-tier (<100KB) stays free.
-- [ ] **Upload integrity:** a >free-tier file uploads, downloads, and hashes identically.
+- [x] Test wallet provisioned + funded (Phil's "most complicated" wallet — public + private drives, snapshots, hidden/pinned/licensed files).
+- [x] **Hide → verify** round-trip: local delete propagates as an ArFS hide and the file reads as hidden from a fresh owner-scoped fetch — **and reverses** (unhide restores), run non-destructively on real data.
+- [x] **Private drive** round-trip: create/unlock → private crypto round-trips to correct plaintext via the derived drive key; wrong password fails closed.
+- [x] **Payment approval:** a real Turbo upload spent only after explicit approval; free-tier (<100 KiB) stayed free; one capped >free-tier paid upload proved the payment path (~0.0012 credits, one-shot, Phil-authorized).
+- [x] **Upload integrity:** public upload → download → SHA-256 identical.
+- [ ] *Remaining:* re-run the full multi-round matrix (R2–R5 + Batch 2) end-to-end through the **live app UI** rather than the service-level harness — folds into the UAT plan / Gate 5.
 
 ## Gate 5 — Release mechanics & known-issues
 
