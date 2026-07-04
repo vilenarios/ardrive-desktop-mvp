@@ -14,6 +14,7 @@
 @import './styles/dashboard-shell.css';
 @import './styles/drive-selector.css';
 @import './styles/upload-queue-modern.css';
+@import './styles/modal.css';
 
 /*
  * BRIDGE LAYER (DESIGN-2): every legacy custom property below is kept for
@@ -881,6 +882,16 @@ label {
   cursor: not-allowed;
 }
 
+/* Error/invalid state (DESIGN-7: drive-name/password validation in the drive
+ * modals) — mirrors .seed-phrase-textarea.invalid's pattern. */
+.form-group input.is-invalid {
+  border-color: var(--danger);
+}
+
+.form-group input.is-invalid:focus {
+  box-shadow: 0 0 0 3px var(--danger-surface);
+}
+
 /* Status Indicators */
 .status-indicator {
   display: inline-block;
@@ -933,7 +944,12 @@ label {
   font-size: 14px;
 }
 
-/* Messages */
+/* Messages
+ * NOTE: `.error-message` is redeclared twice more below (search other
+ * occurrences) with different property subsets; those later same-specificity
+ * rules already win the color/background cascade, so this block's raw hex
+ * was inert dead code — replaced with tokens for hygiene, not a visual
+ * change (DESIGN-7). */
 .error-message {
   background: var(--danger-surface);
   color: var(--danger-fg);
@@ -4786,7 +4802,12 @@ label {
   color: var(--gray-400);
 }
 
-/* File Details Modal */
+/* File Details Modal — shared chrome, also used by PrivateDriveUnlockModal,
+ * FileMetadataModal, WalletExport, StorageTab and ActivityTab's detail
+ * dialogs. Was hardcoded to a literal white panel over a literal black
+ * scrim, so it rendered as a near-invisible white-on-white sheet in dark
+ * mode (F7) for every one of those surfaces. Token-only fix — same
+ * appearance in light, correct now in dark. */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -4803,7 +4824,8 @@ label {
 
 .modal-content {
   background: var(--surface-overlay);
-  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
   box-shadow: var(--elevation-4);
   max-width: 600px;
   width: 100%;
@@ -4811,6 +4833,24 @@ label {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* Opt-in signature accent-top bar (§6.3/§6.4/§6.10) for consumers that want
+ * the full ArDrive modal treatment without changing the base look of every
+ * other .modal-content consumer. */
+.modal-content.has-accent-bar {
+  position: relative;
+}
+
+.modal-content.has-accent-bar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: var(--accent);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
 }
 
 .modal-header {
@@ -5228,167 +5268,22 @@ label {
   color: var(--gray-900);
 }
 
-/* User Menu Dropdown Styles */
-.user-menu {
-  position: relative;
-}
-
-.user-menu-trigger {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: white;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--gray-700);
-  transition: all 0.2s ease;
-}
-
-.user-menu-trigger:hover {
-  background: var(--gray-50);
-  border-color: var(--gray-300);
-}
-
-.user-menu-trigger .user-avatar {
-  width: 24px;
-  height: 24px;
-  background: var(--gray-200);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--gray-600);
-  position: relative;
-  overflow: hidden;
-}
-
-.user-menu-trigger .user-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-
-.user-menu-trigger .user-name {
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.user-menu-trigger .chevron {
-  transition: transform 0.2s ease;
-  color: var(--gray-500);
-}
-
-.user-menu-trigger .chevron.rotated {
-  transform: rotate(180deg);
-}
-
-.user-menu-dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: var(--space-2);
-  min-width: 280px;
-  background: white;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  z-index: 1000;
-  overflow: hidden;
-  animation: dropdown-fade-in 0.2s ease;
-}
-
-@keyframes dropdown-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.menu-section {
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--gray-100);
-}
-
-.menu-section:last-child {
-  border-bottom: none;
-}
-
-.profile-info {
-  padding: var(--space-4);
-}
-
-.profile-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
-
-.profile-avatar {
-  width: 48px;
-  height: 48px;
-  background: var(--gray-100);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--gray-600);
-  position: relative;
-  overflow: hidden;
-}
-
-.profile-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-
-.profile-details {
-  flex: 1;
-  min-width: 0;
-}
-
-.profile-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--gray-900);
-  margin-bottom: var(--space-1);
-}
-
-.profile-arns {
-  font-size: 13px;
-  color: var(--ardrive-primary);
-  font-weight: 500;
-}
-
-.profile-address {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--gray-50);
-  border-radius: var(--radius);
-  font-family: monospace;
-  font-size: 13px;
-  color: var(--gray-700);
-}
-
+/* User Menu Dropdown Styles
+ * F7 finding (DESIGN-7): this whole section duplicated styles/user-menu.css
+ * under the SAME selectors (.user-menu-trigger, .user-menu-dropdown,
+ * .menu-section, .profile-info/.profile-header/.profile-avatar/
+ * .profile-details, .profile-address) — dead leftover from before that file
+ * was split out. Because styles.css's own body loads AFTER its @imports
+ * (including user-menu.css), this later, un-migrated copy was WINNING the
+ * cascade and shadowing every token fix in user-menu.css: `background:
+ * white` on both the trigger pill and the dropdown panel, so the always-
+ * visible header trigger and its dropdown rendered as literal white in dark
+ * mode regardless of what user-menu.css said. Removed as dead/superseded
+ * (verified no other component references these exact class names — the
+ * only other user of `.profile-info`/`.profile-avatar`/`.profile-details`,
+ * ProfileSwitcher.tsx, carries its own scoped <style> block that already
+ * wins the cascade independently). `.copy-button` below is kept in place —
+ * it's also used by StorageTab/ActivityTab (out of this item's scope). */
 .copy-button {
   padding: var(--space-1);
   background: none;
@@ -5405,55 +5300,6 @@ label {
 .copy-button:hover {
   background: var(--gray-200);
   color: var(--gray-700);
-}
-
-.balance-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-3) var(--space-4);
-  font-size: 14px;
-}
-
-.balance-label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--gray-600);
-}
-
-.balance-value {
-  font-weight: 600;
-  color: var(--gray-900);
-}
-
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  padding: var(--space-3) var(--space-4);
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--gray-700);
-  text-align: left;
-  transition: all 0.2s ease;
-}
-
-.menu-item:hover {
-  background: var(--gray-50);
-  color: var(--gray-900);
-}
-
-.menu-item.logout {
-  color: var(--error-600);
-}
-
-.menu-item.logout:hover {
-  background: var(--error-50);
-  color: var(--error-700);
 }
 
 /* Animations */

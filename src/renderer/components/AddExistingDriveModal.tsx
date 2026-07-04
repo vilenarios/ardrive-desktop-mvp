@@ -33,7 +33,7 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
     try {
       setIsLoading(true);
       setError(null);
-      
+
       // Get all drives from the wallet (UX-3: IpcResult envelope)
       const allDrivesResult = await window.electronAPI.drive.getAll();
       if (!allDrivesResult.success) {
@@ -44,9 +44,9 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
       const unmappedDrives = allDrivesResult.data.filter(
         (drive: DriveInfo) => !existingDriveIds.includes(drive.id)
       );
-      
+
       setAvailableDrives(unmappedDrives);
-      
+
       if (unmappedDrives.length === 0) {
         setError('All your drives are already added to this device.');
       }
@@ -87,7 +87,7 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
           uploadPriority: 0
         }
       };
-      
+
       // Add the drive mapping via IPC (UX-3: unwrap the envelope)
       const addMappingResult = await window.electronAPI.driveMappings.add(driveMapping);
       if (!addMappingResult.success) {
@@ -108,59 +108,19 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 9999
-    }}>
-      <div style={{
-        backgroundColor: 'white',
-        borderRadius: 'var(--radius-lg)',
-        padding: 'var(--space-6)',
-        maxWidth: '600px',
-        width: '90%',
-        maxHeight: '80vh',
-        overflow: 'auto',
-        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
-      }}>
+    <div className="drive-modal-overlay">
+      <div className="drive-modal-panel size-lg">
         {/* Header */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 'var(--space-6)'
-        }}>
-          <h2 style={{
-            fontSize: '20px',
-            fontWeight: '600',
-            margin: 0,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-2)'
-          }}>
+        <div className="drive-modal-header">
+          <h2 className="drive-modal-title">
             <HardDrive size={24} />
             Add Existing Drive
           </h2>
           <button
+            className="drive-modal-close"
             onClick={onClose}
             disabled={isAdding}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 'var(--space-1)',
-              color: 'var(--gray-600)',
-              transition: 'color 0.2s ease'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--gray-900)'}
-            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--gray-600)'}
+            aria-label="Close"
           >
             <X size={20} />
           </button>
@@ -168,29 +128,17 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
 
         {/* Error Message */}
         {error && (
-          <div style={{
-            padding: 'var(--space-3)',
-            backgroundColor: 'var(--error-50)',
-            border: '1px solid var(--error-200)',
-            borderRadius: 'var(--radius-md)',
-            marginBottom: 'var(--space-4)',
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 'var(--space-2)'
-          }}>
-            <AlertCircle size={20} style={{ color: 'var(--error-600)', flexShrink: 0 }} />
-            <span style={{ fontSize: '14px', color: 'var(--error-700)' }}>{error}</span>
+          <div className="modal-banner is-error">
+            <AlertCircle size={20} />
+            <span>{error}</span>
           </div>
         )}
 
         {/* Loading State */}
         {isLoading && (
-          <div style={{
-            textAlign: 'center',
-            padding: 'var(--space-8)'
-          }}>
-            <div className="spinner" style={{ margin: '0 auto var(--space-4)' }} />
-            <p style={{ color: 'var(--gray-600)' }}>Loading your drives...</p>
+          <div style={{ textAlign: 'center', padding: 'var(--space-8)' }}>
+            <div className="loading-spinner" style={{ margin: '0 auto var(--space-4)' }} />
+            <p style={{ color: 'var(--text-secondary)', marginTop: 'var(--space-4)' }}>Loading your drives...</p>
           </div>
         )}
 
@@ -199,69 +147,31 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
           <>
             <p style={{
               fontSize: '14px',
-              color: 'var(--gray-600)',
+              color: 'var(--text-secondary)',
               marginBottom: 'var(--space-4)'
             }}>
               Select a drive to add to this device. It will be synced to a subfolder in your current sync location.
             </p>
 
-            <div style={{
-              marginBottom: 'var(--space-6)',
-              maxHeight: '300px',
-              overflowY: 'auto',
-              border: '1px solid var(--gray-200)',
-              borderRadius: 'var(--radius-md)'
-            }}>
+            <div className="drive-list">
               {availableDrives.map((drive) => (
                 <button
                   key={drive.id}
+                  className={`drive-list-item ${selectedDrive?.id === drive.id ? 'is-selected' : ''}`}
                   onClick={() => setSelectedDrive(drive)}
                   disabled={isAdding}
-                  style={{
-                    width: '100%',
-                    padding: 'var(--space-4)',
-                    border: 'none',
-                    borderBottom: '1px solid var(--gray-100)',
-                    backgroundColor: selectedDrive?.id === drive.id ? 'var(--ardrive-primary-50)' : 'white',
-                    cursor: isAdding ? 'not-allowed' : 'pointer',
-                    transition: 'background-color 0.2s ease',
-                    textAlign: 'left',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-3)'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isAdding && selectedDrive?.id !== drive.id) {
-                      e.currentTarget.style.backgroundColor = 'var(--gray-50)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (selectedDrive?.id !== drive.id) {
-                      e.currentTarget.style.backgroundColor = 'white';
-                    }
-                  }}
                 >
-                  {selectedDrive?.id === drive.id && (
-                    <CheckCircle size={20} style={{ color: 'var(--ardrive-primary)' }} />
+                  {selectedDrive?.id === drive.id ? (
+                    <CheckCircle size={20} className="drive-list-item-check" />
+                  ) : (
+                    <div style={{ width: '20px', flexShrink: 0 }} />
                   )}
-                  {selectedDrive?.id !== drive.id && (
-                    <div style={{ width: '20px' }} />
-                  )}
-                  
-                  <HardDrive size={20} style={{ color: 'var(--gray-600)' }} />
-                  
-                  <div style={{ flex: 1 }}>
-                    <div style={{
-                      fontWeight: '500',
-                      fontSize: '15px',
-                      marginBottom: '2px'
-                    }}>
-                      {drive.name}
-                    </div>
-                    <div style={{
-                      fontSize: '12px',
-                      color: 'var(--gray-500)'
-                    }}>
+
+                  <HardDrive size={20} className="drive-list-item-icon" />
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="drive-list-item-name">{drive.name}</div>
+                    <div className="drive-list-item-meta">
                       Created {(() => {
                         try {
                           if (!drive.dateCreated || drive.dateCreated <= 0) return 'Unknown date';
@@ -273,11 +183,11 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
                       })()}
                     </div>
                   </div>
-                  
+
                   {drive.privacy === 'private' ? (
-                    <Lock size={16} style={{ color: 'var(--gray-400)' }} />
+                    <Lock size={16} className="drive-list-item-privacy-icon" />
                   ) : (
-                    <Globe size={16} style={{ color: 'var(--gray-400)' }} />
+                    <Globe size={16} className="drive-list-item-privacy-icon" />
                   )}
                 </button>
               ))}
@@ -285,18 +195,9 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
 
             {/* Selected Drive Info */}
             {selectedDrive && currentSyncFolder && (
-              <div style={{
-                padding: 'var(--space-3)',
-                backgroundColor: 'var(--gray-50)',
-                borderRadius: 'var(--radius-md)',
-                marginBottom: 'var(--space-4)',
-                fontSize: '13px',
-                color: 'var(--gray-700)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  <FolderOpen size={16} />
-                  <span>Will be synced to: <strong>{currentSyncFolder}/{selectedDrive.name}</strong></span>
-                </div>
+              <div className="modal-banner is-neutral" style={{ marginBottom: 'var(--space-4)' }}>
+                <FolderOpen size={16} />
+                <span>Will be synced to: <strong>{currentSyncFolder}/{selectedDrive.name}</strong></span>
               </div>
             )}
           </>
@@ -304,44 +205,18 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
 
         {/* Action Buttons */}
         {!isLoading && availableDrives.length > 0 && (
-          <div style={{
-            display: 'flex',
-            gap: 'var(--space-3)',
-            justifyContent: 'flex-end'
-          }}>
+          <div className="drive-modal-footer">
             <button
+              className="button outline"
               onClick={onClose}
               disabled={isAdding}
-              style={{
-                padding: 'var(--space-2) var(--space-4)',
-                border: '1px solid var(--gray-300)',
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: 'white',
-                cursor: isAdding ? 'not-allowed' : 'pointer',
-                fontSize: '14px',
-                fontWeight: '500',
-                color: 'var(--gray-700)',
-                transition: 'all 0.2s ease'
-              }}
             >
               Cancel
             </button>
             <button
+              className={`button ${isAdding ? 'loading' : ''}`}
               onClick={handleAddDrive}
               disabled={isAdding || !selectedDrive}
-              style={{
-                padding: 'var(--space-2) var(--space-4)',
-                border: 'none',
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: isAdding || !selectedDrive
-                  ? 'var(--gray-300)' 
-                  : 'var(--ardrive-primary)',
-                color: 'white',
-                cursor: isAdding || !selectedDrive ? 'not-allowed' : 'pointer',
-                fontSize: '14px',
-                fontWeight: '500',
-                transition: 'all 0.2s ease'
-              }}
             >
               {isAdding ? 'Adding...' : 'Add Drive'}
             </button>

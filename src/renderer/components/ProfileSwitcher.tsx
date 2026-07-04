@@ -318,13 +318,19 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
           border: 1px solid var(--gray-300);
           border-radius: var(--radius-md);
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: background-color var(--motion-base) var(--ease-standard),
+                      border-color var(--motion-base) var(--ease-standard);
           min-width: 200px;
         }
 
         .profile-trigger:hover {
           background: var(--gray-50);
           border-color: var(--gray-400);
+        }
+
+        .profile-trigger:focus-visible {
+          outline: 2px solid var(--focus-ring);
+          outline-offset: 2px;
         }
 
         .profile-trigger:disabled {
@@ -396,10 +402,10 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
           top: calc(100% + var(--space-2));
           left: 0;
           right: 0;
-          background: white;
+          background: var(--surface-overlay);
           border: 1px solid var(--gray-200);
           border-radius: var(--radius-lg);
-          box-shadow: var(--shadow-lg);
+          box-shadow: var(--elevation-4);
           z-index: 1000;
           overflow: hidden;
           min-width: 280px;
@@ -428,11 +434,16 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
           border: none;
           border-radius: var(--radius-md);
           cursor: pointer;
-          transition: background 0.2s ease;
+          transition: background-color var(--motion-base) var(--ease-standard);
         }
 
         .profile-option:hover {
           background: var(--gray-50);
+        }
+
+        .profile-option:focus-visible {
+          outline: none;
+          box-shadow: inset 0 0 0 2px var(--focus-ring);
         }
 
         .profile-option.active {
@@ -515,7 +526,8 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
           border: none;
           border-radius: var(--radius-md);
           cursor: pointer;
-          transition: background 0.2s ease;
+          transition: background-color var(--motion-base) var(--ease-standard),
+                      color var(--motion-base) var(--ease-standard);
           font-size: 13px;
           color: var(--gray-700);
         }
@@ -525,18 +537,24 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
           color: var(--gray-900);
         }
 
+        .dropdown-action:focus-visible {
+          outline: none;
+          box-shadow: inset 0 0 0 2px var(--focus-ring);
+        }
+
         .dropdown-action svg {
           color: var(--gray-500);
         }
 
-        /* Password Modal Styles */
+        /* Password Modal Styles — F7: literal black scrim + literal white
+         * panel, invisible on dark. */
         .password-modal-backdrop {
           position: fixed;
           top: 0;
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(0, 0, 0, 0.5);
+          background: var(--overlay);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -545,9 +563,10 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
         }
 
         .password-modal {
-          background: white;
+          background: var(--surface-overlay);
+          border: 1px solid var(--border);
           border-radius: var(--radius-xl);
-          box-shadow: var(--shadow-2xl);
+          box-shadow: var(--elevation-4);
           width: 90%;
           max-width: 400px;
           overflow: hidden;
@@ -584,6 +603,11 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
         .close-button:hover {
           background: var(--gray-100);
           color: var(--gray-700);
+        }
+
+        .close-button:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 2px var(--focus-ring);
         }
 
         .password-modal-body {
@@ -654,13 +678,21 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
           border: 1px solid var(--gray-300);
           border-radius: var(--radius-md);
           font-size: 14px;
-          transition: all 0.2s ease;
+          background: var(--input-bg);
+          color: var(--text-primary);
+          transition: border-color var(--motion-base) var(--ease-standard),
+                      box-shadow var(--motion-base) var(--ease-standard);
         }
 
         .password-input:focus {
           outline: none;
           border-color: var(--ardrive-primary);
-          box-shadow: 0 0 0 3px rgba(71, 134, 255, 0.1);
+          box-shadow: 0 0 0 3px var(--brand-surface);
+        }
+
+        .password-input:focus-visible {
+          outline: 2px solid var(--focus-ring);
+          outline-offset: 1px;
         }
 
         .password-modal-footer {
@@ -675,18 +707,24 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
 
         .cancel-button {
           padding: var(--space-2) var(--space-4);
-          background: white;
+          background: var(--surface-raised);
           border: 1px solid var(--gray-300);
           border-radius: var(--radius-md);
           font-size: 14px;
           color: var(--gray-700);
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: background-color var(--motion-base) var(--ease-standard),
+                      border-color var(--motion-base) var(--ease-standard);
         }
 
         .cancel-button:hover {
-          background: var(--gray-50);
+          background: var(--surface-inset);
           border-color: var(--gray-400);
+        }
+
+        .cancel-button:focus-visible {
+          outline: 2px solid var(--focus-ring);
+          outline-offset: 2px;
         }
 
         .unlock-button {
@@ -695,17 +733,28 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
           gap: var(--space-2);
           padding: var(--space-2) var(--space-4);
           background: var(--ardrive-primary);
-          color: white;
+          color: var(--text-on-brand);
           border: none;
           border-radius: var(--radius-md);
           font-size: 14px;
           font-weight: 500;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: background-color var(--motion-base) var(--ease-standard),
+                      transform var(--motion-base) var(--ease-standard);
         }
 
         .unlock-button:hover:not(:disabled) {
           background: var(--ardrive-primary-dark);
+          transform: translateY(-1px);
+        }
+
+        .unlock-button:active:not(:disabled) {
+          transform: translateY(0);
+        }
+
+        .unlock-button:focus-visible {
+          outline: 2px solid var(--focus-ring);
+          outline-offset: 2px;
         }
 
         .unlock-button:disabled {

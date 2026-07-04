@@ -1,30 +1,44 @@
 /* Settings Modal Styles */
 /* Following ArDrive Design System Guidelines */
 
-/* Modal Backdrop */
+/* Modal Backdrop — F7: literal black scrim, invisible-on-dark. */
 .settings-modal-backdrop {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2500; /* Higher than most modals but lower than WalletExport */
 }
 
-/* Modal Container */
+/* Modal Container — F7: literal white panel, invisible-on-dark. */
 .settings-modal {
-  background: white;
+  position: relative;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-xl);
+  box-shadow: var(--elevation-4);
   width: 90%;
   max-width: 35rem; /* 560px */
   max-height: 80vh;
   overflow: hidden;
-  animation: settingsModalIn 0.2s ease-out;
+  animation: settingsModalIn var(--motion-moderate) var(--ease-out);
+}
+
+/* Signature ArDrive accent-top bar (§6.3/§6.4/§6.10) */
+.settings-modal::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: var(--accent);
+  z-index: 1;
 }
 
 @keyframes settingsModalIn {
@@ -38,14 +52,14 @@
   }
 }
 
-/* Modal Header */
+/* Modal Header — F7: literal white bg, invisible-on-dark. */
 .settings-modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: var(--space-6);
   border-bottom: 1px solid var(--gray-200);
-  background: white;
+  background: var(--surface-overlay);
 }
 
 .settings-modal-header h2 {
@@ -65,12 +79,22 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: color var(--motion-base) var(--ease-standard),
+              background-color var(--motion-base) var(--ease-standard);
 }
 
 .settings-close-button:hover {
   background: var(--gray-100);
   color: var(--gray-700);
+}
+
+.settings-close-button:active {
+  transform: scale(0.95);
+}
+
+.settings-close-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 /* Modal Body */
@@ -89,18 +113,22 @@
   margin-bottom: 0;
 }
 
-/* Settings Items */
+/* Settings Items — F7: hover state fell back to a literal white fill,
+ * invisible-on-dark. */
 .settings-item {
   border: 1px solid var(--gray-200);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   background: var(--gray-50);
-  transition: all 0.2s ease;
+  transition: border-color var(--motion-moderate) var(--ease-standard),
+              background-color var(--motion-moderate) var(--ease-standard),
+              box-shadow var(--motion-moderate) var(--ease-standard);
 }
 
 .settings-item:hover {
   border-color: var(--gray-300);
-  background: white;
+  background: var(--surface-raised);
+  box-shadow: var(--elevation-2);
 }
 
 .settings-item-header {
@@ -143,12 +171,12 @@
   gap: var(--space-4);
 }
 
-/* Folder Path Display */
+/* Folder Path Display — F7: literal white bg, invisible-on-dark. */
 .folder-path {
   font-family: var(--font-mono);
   font-size: 0.875rem; /* 14px */
   color: var(--gray-700);
-  background: white;
+  background: var(--input-bg);
   padding: var(--space-3);
   border-radius: var(--radius-md);
   border: 1px solid var(--gray-200);
@@ -164,18 +192,29 @@
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   background: var(--ardrive-primary);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--radius-md);
   font-size: 0.875rem; /* 14px */
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              transform var(--motion-base) var(--ease-standard);
   white-space: nowrap;
 }
 
 .settings-button:hover:not(:disabled) {
   background: var(--ardrive-primary-700);
+  transform: translateY(-1px);
+}
+
+.settings-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.settings-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .settings-button:disabled {
@@ -183,26 +222,34 @@
   cursor: not-allowed;
 }
 
+/* F7: literal white bg, invisible-on-dark. */
 .settings-button-secondary {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  background: white;
+  background: var(--surface-overlay);
   color: var(--gray-700);
   border: 1px solid var(--gray-300);
   border-radius: var(--radius-md);
   font-size: 0.875rem; /* 14px */
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              border-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
   white-space: nowrap;
 }
 
 .settings-button-secondary:hover {
-  background: var(--gray-50);
+  background: var(--surface-inset);
   border-color: var(--gray-400);
   color: var(--gray-900);
+}
+
+.settings-button-secondary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .settings-button-secondary svg {

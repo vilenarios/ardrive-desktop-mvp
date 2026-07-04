@@ -225,7 +225,7 @@ const UserMenu: React.FC<UserMenuProps> = ({
                 <span>AR Balance</span>
                 <div className="balance-tooltip">
                   <HelpCircle size={14} />
-                  <div className="tooltip-content">Your Arweave token balance for permanent storage</div>
+                  <div className="menu-tooltip-content">Your Arweave token balance for permanent storage</div>
                 </div>
               </div>
               <div className="balance-controls">
@@ -250,7 +250,7 @@ const UserMenu: React.FC<UserMenuProps> = ({
                   <span>Turbo Credits</span>
                   <div className="balance-tooltip">
                     <HelpCircle size={14} />
-                    <div className="tooltip-content">Credits for fast, gasless uploads via Turbo</div>
+                    <div className="menu-tooltip-content">Credits for fast, gasless uploads via Turbo</div>
                   </div>
                 </div>
                 <div className="balance-controls">

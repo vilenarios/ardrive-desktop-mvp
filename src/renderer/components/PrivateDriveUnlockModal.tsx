@@ -72,212 +72,129 @@ export const PrivateDriveUnlockModal: React.FC<PrivateDriveUnlockModalProps> = (
   if (!isOpen) return null;
 
   return (
-    <div 
-      className="modal-overlay" 
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000
-      }}
+    <div
+      className="modal-overlay"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onCancel();
         }
       }}
     >
-      <div 
-        className="modal-content" 
-        style={{
-          backgroundColor: 'white',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-          maxWidth: '420px',
-          width: '90%',
-          maxHeight: '90vh',
-          overflow: 'auto'
-        }}
+      <div
+        className="modal-content has-accent-bar"
+        style={{ maxWidth: '420px', maxHeight: '90vh', overflow: 'auto' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div 
+        <div
           style={{
             padding: 'var(--space-5)',
-            borderBottom: '1px solid var(--gray-200)',
+            borderBottom: '1px solid var(--border)',
             display: 'flex',
             alignItems: 'center',
             gap: 'var(--space-3)'
           }}
         >
-          <div 
+          <div
             style={{
               width: '40px',
               height: '40px',
               borderRadius: '50%',
-              backgroundColor: 'var(--ardrive-primary-100)',
+              background: 'var(--brand-surface)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              flexShrink: 0
             }}
           >
-            <Lock size={20} style={{ color: 'var(--ardrive-primary)' }} />
+            <Lock size={20} style={{ color: 'var(--brand)' }} />
           </div>
           <div>
-            <h2 style={{ 
-              margin: 0, 
-              fontSize: '18px', 
-              fontWeight: '600',
-              color: 'var(--gray-900)'
+            <h2 style={{
+              margin: 0,
+              fontSize: '18px',
+              fontWeight: 600,
+              color: 'var(--text-primary)'
             }}>
               Unlock Private Drive
             </h2>
-            <p style={{ 
-              margin: 0, 
-              fontSize: '14px', 
-              color: 'var(--gray-600)',
+            <p style={{
+              margin: 0,
+              fontSize: '14px',
+              color: 'var(--text-secondary)',
               marginTop: '4px'
             }}>
               Enter your password to access this drive
             </p>
           </div>
         </div>
-        
+
         {/* Drive Info */}
-        <div style={{ 
+        <div style={{
           padding: 'var(--space-5)',
-          borderBottom: '1px solid var(--gray-100)',
+          borderBottom: '1px solid var(--border-subtle)',
           textAlign: 'center',
-          backgroundColor: 'var(--gray-50)'
+          background: 'var(--surface-inset)'
         }}>
-          <div style={{ 
-            fontSize: '24px', 
+          <div style={{
+            fontSize: '24px',
             marginBottom: 'var(--space-2)',
             lineHeight: 1
           }}>
             {drive.emojiFingerprint}
           </div>
-          <div style={{ 
-            fontSize: '16px', 
-            fontWeight: '500',
-            color: 'var(--gray-900)',
+          <div style={{
+            fontSize: '16px',
+            fontWeight: 500,
+            color: 'var(--text-primary)',
             marginBottom: 'var(--space-1)'
           }}>
             {drive.name || 'Private Drive'}
           </div>
-          <div style={{ 
+          <div style={{
             fontSize: '13px',
-            color: 'var(--gray-500)',
-            fontFamily: 'monospace'
+            color: 'var(--text-tertiary)',
+            fontFamily: 'var(--font-mono)'
           }}>
             {drive.id.slice(0, 8)}...{drive.id.slice(-4)}
           </div>
         </div>
-        
+
         {/* Password Input */}
         <div style={{ padding: 'var(--space-5)' }}>
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <label 
-              htmlFor="password"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-                fontSize: '14px',
-                fontWeight: '500',
-                color: 'var(--gray-700)',
-                marginBottom: 'var(--space-2)'
-              }}
-            >
+          <div className="form-group">
+            <label htmlFor="password" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
               <Key size={16} />
               Drive Password
             </label>
-            <div 
-              style={{
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center'
-              }}
-            >
+            <div style={{ position: 'relative' }}>
               <input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
+                className={error ? 'is-invalid' : ''}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={handleKeyPress}
                 placeholder="Enter your drive password"
                 autoFocus
                 disabled={loading}
-                style={{
-                  width: '100%',
-                  padding: 'var(--space-3)',
-                  paddingRight: '48px',
-                  border: `1px solid ${error ? 'var(--error-300)' : 'var(--gray-300)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: '14px',
-                  outline: 'none',
-                  transition: 'border-color 0.2s ease',
-                  backgroundColor: loading ? 'var(--gray-50)' : 'white'
-                }}
-                onFocus={(e) => {
-                  if (!error) {
-                    e.target.style.borderColor = 'var(--ardrive-primary)';
-                  }
-                }}
-                onBlur={(e) => {
-                  if (!error) {
-                    e.target.style.borderColor = 'var(--gray-300)';
-                  }
-                }}
+                style={{ paddingRight: '48px' }}
               />
               <button
                 type="button"
+                className="password-toggle-eye"
                 onClick={() => setShowPassword(!showPassword)}
                 disabled={loading}
-                style={{
-                  position: 'absolute',
-                  right: '12px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  color: 'var(--gray-500)',
-                  padding: '4px',
-                  borderRadius: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-                onMouseEnter={(e) => {
-                  if (!loading) {
-                    e.currentTarget.style.backgroundColor = 'var(--gray-100)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
           </div>
-          
+
           {/* Security Note */}
-          <div style={{
-            padding: 'var(--space-3)',
-            backgroundColor: 'var(--gray-50)',
-            borderRadius: 'var(--radius-md)',
-            marginBottom: error ? 'var(--space-4)' : 'var(--space-5)',
-            fontSize: '13px',
-            color: 'var(--gray-600)',
-            lineHeight: '1.5',
-            border: '1px solid var(--gray-200)'
-          }}>
-            <strong>Security:</strong> Your password is kept in memory for this session only and will be cleared when you logout.
+          <div className="modal-banner is-neutral" style={{ marginBottom: error ? 'var(--space-4)' : 'var(--space-5)' }}>
+            <span><strong>Security:</strong> Your password is kept in memory for this session only and will be cleared when you logout.</span>
           </div>
 
           {/* PRIV-4: Remember this drive (opt-in key persistence) */}
@@ -300,9 +217,9 @@ export const PrivateDriveUnlockModal: React.FC<PrivateDriveUnlockModalProps> = (
               onChange={(e) => setRememberDrive(e.target.checked)}
               style={{ marginTop: '3px', cursor: loading ? 'not-allowed' : 'pointer' }}
             />
-            <span style={{ fontSize: '13px', color: 'var(--gray-700)', lineHeight: '1.5' }}>
+            <span style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.5' }}>
               <span style={{ fontWeight: 500 }}>Remember this drive on this device</span>
-              <span style={{ display: 'block', color: 'var(--gray-500)', marginTop: '2px' }}>
+              <span style={{ display: 'block', color: 'var(--text-tertiary)', marginTop: '2px' }}>
                 The drive key is stored encrypted so you won&apos;t need this password after signing in. Turn off anytime.
               </span>
             </span>
@@ -310,29 +227,15 @@ export const PrivateDriveUnlockModal: React.FC<PrivateDriveUnlockModalProps> = (
 
           {/* Error Message */}
           {error && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)',
-              padding: 'var(--space-3)',
-              backgroundColor: 'var(--error-50)',
-              borderRadius: 'var(--radius-md)',
-              marginBottom: 'var(--space-6)',
-              fontSize: '14px',
-              color: 'var(--error-700)'
-            }}>
-              <AlertCircle size={16} style={{ flexShrink: 0 }} />
+            <div className="modal-banner is-error" style={{ marginBottom: 'var(--space-6)' }}>
+              <AlertCircle size={16} />
               {error}
             </div>
           )}
-          
+
           {/* Action Buttons */}
-          <div style={{
-            display: 'flex',
-            gap: 'var(--space-3)',
-            marginTop: 'var(--space-4)'
-          }}>
-            <button 
+          <div className="drive-modal-footer" style={{ marginTop: 'var(--space-4)' }}>
+            <button
               className="button outline"
               onClick={onCancel}
               disabled={loading}
@@ -340,7 +243,7 @@ export const PrivateDriveUnlockModal: React.FC<PrivateDriveUnlockModalProps> = (
             >
               Cancel
             </button>
-            <button 
+            <button
               className={`button ${loading ? 'loading' : ''}`}
               onClick={handleUnlock}
               disabled={!password.trim() || loading}
