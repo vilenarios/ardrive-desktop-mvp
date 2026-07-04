@@ -480,7 +480,7 @@ Done 2026-07-03 (merged to main c815a5c via ff): WalletSetup + all onboarding sc
 ### DESIGN-4..7 · P2 · Design · `todo` (fan out after DESIGN-2)
 Restyle each surface against the system, in parallel: **DESIGN-4** dashboard shell + tabs + drive selector · **DESIGN-5** upload approval queue + Turbo/payments · **DESIGN-6** permaweb/activity/storage views · **DESIGN-7** settings + modals + toasts + user menu.
 Acceptance (each): surface matches DESIGN-SYSTEM.md in light+dark; token-driven; screenshots attached; no behavior change.
-DESIGN-4 in-progress 2026-07-04 (overnight, branch design/DESIGN-4-dashboard) — built + screenshotted, **HELD for Phil's aesthetic sign-off** (D-023), not merged.
+DESIGN-4 built 2026-07-04 (branch design/DESIGN-4-dashboard @ bb4dab7, pushed, NOT merged) — Dashboard shell/header/widgets + tabs + DriveSelector tokenized + §5A polish; F7 DriveSelector dark-mode fixed; header wordmark theme-aware; dead code/CSS removed; typecheck/eslint/build clean, grep-clean. Screenshots (light+dark) at C:\source\ardrive-design-review\. **HELD for Phil's aesthetic sign-off** (D-023). CAVEAT: shots are a static render of the real compiled CSS (live dashboard needs a post-auth on-chain drive state; network-blocked). INFRA follow-up: seed a drive-state fixture so the harness can render post-auth surfaces LIVE (unblocks DESIGN-5/6/7 + post-auth UAT). Modal dark-mode gaps (CreateDrive/AddExisting/PrivateUnlock/WelcomeBack/SetupSuccess) → DESIGN-7.
 
 ## CORE — ardrive-core-js upstream (sibling repo, per D-016/D-018)
 
