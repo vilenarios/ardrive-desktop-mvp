@@ -393,6 +393,14 @@ Mechanical, low-risk, same fix shape everywhere.
 Keyboard-unreachable controls and modals with no escape hatch.
 
 ### A11Y-1 — Drive-selection radios are keyboard-unreachable
+**Status: NOT done (DESIGN-8, Drives lane).** `WelcomeBackScreen.tsx` is an
+onboarding surface, out of this lane's file ownership (DriveSelector.tsx,
+CreateDriveModal.tsx, AddExistingDriveModal.tsx, PrivateDriveUnlockModal.tsx,
+CreateManifestModal.tsx, drive-selector.css, modal.css only). Checked this
+lane's own drive-selection UI (`DriveSelector.tsx`'s dropdown) for the same
+`display:none`-radio pattern — it doesn't have one; drive options there are
+real `<button>`s, already keyboard-reachable. This item is left for whichever
+lane owns onboarding.
 `src/renderer/components/WelcomeBackScreen.tsx:254-261` · **broken**
 ```tsx
 <input type="radio" ... style={{ display: 'none' }} />
@@ -406,6 +414,12 @@ opacity:0; pointer-events:none` / a standard `.sr-only` class) instead of
 `display:none`, so the input stays tabbable and `:focus-within` fires.
 
 ### A11Y-2 — Activity row context menu is mouse-only
+**Status: NOT done (DESIGN-8, Drives lane).** `ActivityTab.tsx` is a dashboard
+surface, out of this lane's file ownership. No hover-only context menu exists
+in any of this lane's 5 owned files today (checked); the one hover/mouse-only
+gap actually found in-scope — `CreateManifestModal.tsx`'s folder-tree rows,
+which were plain `<div onClick>` with zero keyboard path at all — was fixed
+as part of A11Y-3 below.
 `src/renderer/components/dashboard/ActivityTab.tsx:626-627,745-801` · **broken** (for
 keyboard users) The "…" trigger only mounts when `hoveredItem === activity.id`
 (JS-state-gated, not CSS `:hover`) — no `:focus-within` fallback exists, so
@@ -415,6 +429,23 @@ Also violates §5A (state changes should be CSS, not JS).
 the row in CSS.
 
 ### A11Y-3 — No Escape-to-close, backdrop-click, or focus-trap on 3 of 4 drive modals
+**Status: DONE (DESIGN-8, Drives lane).** Extracted the shared wrapper this
+item recommended: `src/renderer/hooks/useModalA11y.ts` (new file) — a hook
+handling Escape (document-level, capture phase, so it works regardless of
+which descendant has focus — the exact gap that broke `PrivateDriveUnlockModal`),
+Tab-trapping within the panel, focus-into-the-panel on open, and
+focus-back-to-trigger on close. Backdrop-click is a one-line
+`handleBackdropClick` the hook also returns (`e.target === e.currentTarget`).
+Wired into all four: `CreateDriveModal.tsx`, `AddExistingDriveModal.tsx`,
+`PrivateDriveUnlockModal.tsx` (replacing its ad hoc backdrop-click +
+input-only Escape), and `CreateManifestModal.tsx` — the latter renders two
+stacked dialogs (folder picker, then a confirmation step), so it calls the
+hook twice, keyed off `!showConfirmation` / `showConfirmation` respectively,
+so only the topmost layer owns Escape/Tab-trap at a time (Escape backs out
+one level, matching the "Back" button). Verified: typecheck/lint/build/test
+all pass; reasoned through the Tab-order and Escape-from-any-focused-child
+paths by hand for each of the four modals (see PR description for the full
+per-modal walkthrough).
 `CreateDriveModal.tsx`, `AddExistingDriveModal.tsx`, `CreateManifestModal.tsx` ·
 **inconsistent** DESIGN-SYSTEM.md §6.4 requires *"Esc closes; focus trap; return
 focus on close."* `PrivateDriveUnlockModal.tsx` is the only one with backdrop-click
@@ -425,6 +456,17 @@ Escape does nothing once focus moves to the checkbox or eye-toggle.
 shared `<DriveModal>` wrapper) and reuse across all four.
 
 ### A11Y-4 — Labels aren't programmatically associated with their inputs
+**Status: PARTIALLY DONE (DESIGN-8, Drives lane).** Fixed this lane's owned
+slice: `CreateDriveModal.tsx` (Drive Name / Drive Password / Confirm
+Password — 3 pairs) and `CreateManifestModal.tsx` (Manifest Name gets a real
+`htmlFor`/`id` pair; "Select Folder" labels a custom folder-tree widget
+rather than a single `<input>`, so it's wired via `id` +
+`aria-labelledby`/`role="group"` on the tree container instead of a fake
+`htmlFor`). `AddExistingDriveModal.tsx` was checked and has no bare
+`<label>`s in its current form (it's drive-picker buttons + a paragraph, no
+form fields) — the doc's original line refs for it predate the DESIGN-7
+restyle. `DriveAndSyncSetup.tsx`, `SyncFolderSetup.tsx`, `DriveManager.tsx`
+are out of this lane's file ownership, left for whichever lane owns them.
 `CreateDriveModal.tsx`, `AddExistingDriveModal.tsx`, `DriveAndSyncSetup.tsx`,
 `SyncFolderSetup.tsx`, `CreateManifestModal.tsx`, `DriveManager.tsx` ·
 **inconsistent** (a11y) Every `<label>` in these files is bare text with no
@@ -462,6 +504,15 @@ has the highest concentration of unexplained concepts in the app (see INFO-5).
 table below for exact copy.
 
 ### INFO-2 — Three different, inconsistent mechanisms deliver the same "explain this" job
+**Status: PARTIALLY DONE (DESIGN-8, Drives lane).** Fixed the
+`DriveSelector.tsx:181-192` site: the Remember-this-drive toggle's native
+`title=` is replaced with a real `<InfoButton>` reusing
+`PrivateDriveUnlockModal`'s existing good copy ("Your drive's decryption key
+is stored encrypted on this device..."), rendered as a sibling of the toggle
+button (not nested inside it — a button can't contain another button), via a
+new `.drive-selector-remember-row` flex wrapper in `drive-selector.css`.
+`StorageTab.tsx` and `UserMenu.tsx` are out of this lane's file ownership,
+left for whichever lane owns dashboard/turbo surfaces.
 **inconsistent** `InfoButton` (click-triggered, keyboard-accessible) coexists with:
 native HTML `title=` attributes (hover-only, no keyboard/touch access, unstyled) at
 `DriveSelector.tsx:181-192` (Remember-this-drive toggle) and `StorageTab.tsx:836-844`
@@ -516,6 +567,14 @@ a crypto-native user knows; a Dropbox-migrant user does not.
 long address — like a domain name for Arweave."*
 
 ### INFO-8 — "What is a drive" and "drive vs. local sync folder" have no explanation anywhere reachable
+**Status: DONE (DESIGN-8, Drives lane).** Added the suggested copy verbatim
+as an `InfoButton` next to `CreateDriveModal.tsx`'s "Create New Drive" title,
+and a second one (drive-vs-local-folder-mirror wording) next to
+`AddExistingDriveModal.tsx`'s "Select a drive to add..." intro paragraph,
+right where it auto-creates the subfolder. `DriveSelector.tsx`'s header
+dropdown doesn't repeat the same explanation (it's the same concept
+explained twice one click apart in Create/Add — judged as enough coverage
+for now; can revisit if user testing says otherwise).
 `DriveSelector.tsx` header/dropdown, `CreateDriveModal.tsx` title,
 `AddExistingDriveModal.tsx:196-202` (auto-creates a subfolder with no explanation of
 the relationship) · **missing-info-bubble** The only existing explanation
@@ -600,6 +659,12 @@ decoratively teaches users to distrust the "something's wrong" signal.
 - `CreateDriveModal.tsx` privacy-card "selected" state also uses brand red — see the
   aesthetic note below: on the Create Drive screen, a red-selected "Private" card sits
   above an amber warning banner next to red CTA buttons; nothing reads calm-neutral.
+  **Status: DONE (DESIGN-8, Drives lane).** `.drive-privacy-option.is-selected` in
+  `modal.css` remapped from `border-color: var(--brand); background:
+  var(--brand-surface)` to neutral `var(--text-primary)`/`var(--surface-inset)` —
+  "chosen" now reads as a calm, non-alert state, distinct from the amber warning and
+  the red primary CTA still on the same screen. `StorageTab.tsx`, `turbo-credits.css`,
+  `settings.css` remain out of this lane's ownership.
 **Fix:** `--info` for in-progress states; a neutral/brand-adjacent (not warning) tone
 for the decorative Turbo icon; `--icon-mid`/`--icon-high` for neutral settings icons;
 a quieter selection indicator (not red) for "this is chosen" vs. "this is dangerous."
@@ -627,6 +692,12 @@ inline-style pill (`StorageTab.tsx:1317-1335`, hand-rolled rather than reusing e
 states, or the reverse.
 
 ### DSI-5 — Cancel-button class disagreement across sibling modals
+**Status: DONE (DESIGN-8, Drives lane).** `CreateManifestModal.tsx`'s Cancel
+(`:426`) and Back (`:601`) buttons changed from `className="button
+secondary"` to `className="button outline"` — all four drive modals now
+agree. (This also incidentally clears DARK-2's invisible-text bug at these
+two sites, though `.button.secondary` itself was already fixed at the token
+level by the Foundation lane.)
 `CreateDriveModal.tsx:331`, `AddExistingDriveModal.tsx:210`,
 `PrivateDriveUnlockModal.tsx:239` use `className="button outline"` for Cancel;
 `CreateManifestModal.tsx:426,601` uses `className="button secondary"` for the same
@@ -700,6 +771,10 @@ stated once in passing and never reinforced. Several flows also actively underse
 misstate what "permanent" means at the exact moments it matters most.
 
 ### COPY-1 — `CreateDriveModal` never mentions permanence for either privacy option
+**Status: DONE (DESIGN-8, Drives lane).** Both cards now get an `InfoButton`
+(Private: encryption + "ArDrive never sees or stores this password"; Public:
+"Anyone with the link can view these files, forever... don't use this for
+anything sensitive") plus a shared permanence sentence underneath the pair.
 `src/renderer/components/CreateDriveModal.tsx:216-249` · **copy-clarity** The
 Public/Private cards say only "Anyone can view" / "End-to-end encrypted" — two words
 each. No mention that a Public drive's files are permanently, publicly visible
@@ -709,6 +784,9 @@ exactly this with an `InfoButton`.
 coverage table's "private vs. public" row).
 
 ### COPY-2 — No disclosure that the Public/Private choice is permanent
+**Status: DONE (DESIGN-8, Drives lane).** The exact line the fix suggested is
+now in the shared caption under the privacy cards: *"This privacy choice
+can't be changed after the drive is created."*
 `CreateDriveModal.tsx` (nowhere) · **copy-clarity** Nowhere does it say the choice
 can't be changed after the drive is created — a direct miss for a critique whose
 whole brief is "surface irreversibility before commitment."
@@ -716,6 +794,18 @@ whole brief is "surface irreversibility before commitment."
 created."*
 
 ### COPY-3 — No cost information anywhere in drive creation
+**Status: DONE (DESIGN-8, Drives lane).** Added a neutral cost banner above the
+footer. Researched the actual behavior before writing copy (per "honest copy"
+rule): `wallet-manager-secure.ts` always constructs the ardrive-core-js
+factory with `turboSettings` set, so `isTurboUpload()` is always true for
+drive creation in this app — the AR-cost/balance-assertion path is never
+reached, and drive+root-folder metadata is trivially small. Copy: *"Creating
+a drive doesn't cost any AR — the drive and folder records are tiny, so
+they're covered automatically by Turbo Credits at no charge."* Deliberately
+does not reuse `CreateManifestModal`'s full "FREE with Turbo Credits"
+green-panel treatment (that's RESTYLE-7's modal-shell port, out of this
+lane's scope) — a lighter neutral-toned banner conveys the same fact without
+requiring the shell port.
 `CreateDriveModal.tsx` (entire component) · **copy-clarity** Creating a drive is a
 real (if small) on-chain transaction. `CreateManifestModal.tsx:544-574` and the
 Rename-drive surface both show a proper "FREE with Turbo Credits / AR cost / Turbo
@@ -741,6 +831,12 @@ confirmed on Arweave.
 split submitted vs. confirmed if it isn't yet.
 
 ### COPY-6 — Sync direction ("bidirectional") is hardcoded and never surfaced
+**Status: PARTIALLY DONE (DESIGN-8, Drives lane).** Fixed the two sites this
+lane owns: `CreateDriveModal.tsx` (folded into the privacy-cards permanence
+caption: "Files will sync both ways between this drive and your local
+folder.") and `AddExistingDriveModal.tsx` (folded into the new INFO-8
+InfoButton copy). `DriveAndSyncSetup.tsx`/`SyncFolderSetup.tsx` are out of
+this lane's file ownership.
 `CreateDriveModal.tsx:142`, `AddExistingDriveModal.tsx:85`,
 `DriveAndSyncSetup.tsx:201`, `SyncFolderSetup.tsx:72` all hardcode
 `syncDirection: 'bidirectional' as const` with zero UI exposure · **copy-clarity**
@@ -897,18 +993,29 @@ moment while we generate your secure wallet..."; Import has no equivalent despit
 likely similar crypto-derivation time. *(Bundle with Lane E.)*
 
 ### POLISH-11 — Drive names truncate mid-word in the header dropdown despite spare room
+**Status: DONE (DESIGN-8, Drives lane).** `.drive-selector-button` widened
+200px → 240px (max-width 320px, so one long name can't balloon the header).
+`.drive-selector-dropdown` decoupled from the button's width entirely
+(`min-width: 100%; width: max-content; max-width: 360px`), so it now grows to
+fit a drive name instead of inheriting the button's `left:0;right:0` width.
 `drive-selector.css:20,88` (`min-width: 200px` on both button and dropdown) ·
 **polish** Screenshots show "Private Drive ..." / "Work Docum..." with ~250px of
 unused space in a 1280px-wide header. *(Bundle with Lane F.)*
 **Fix:** widen to ~260px and/or decouple the dropdown's width from the button's.
 
 ### POLISH-12 — Privacy icons are too subtle for a security-relevant signal
+**Status: DONE (DESIGN-8, Drives lane).** Dropped `opacity: 0.6` (and the
+redundant `0.9` on the locked variant) from `.drive-selector-lock-icon`/
+`.drive-selector-globe-icon` — full opacity now, per the fix's first option.
 `drive-selector.css:147-162` (`opacity: 0.6`, 14px, `--icon-mid`) · **polish**
 Public-vs-private is arguably the single most consequential fact about a drive,
 relegated to a barely-visible icon. *(Bundle with Lane F.)*
 **Fix:** full opacity, and/or pair with a text label ("Private"/"Public").
 
 ### POLISH-13 — Sync-status widget isn't clickable and has no `aria-live`
+**Status: NOT done (DESIGN-8, Drives lane).** `Dashboard.tsx` is a dashboard
+surface, out of this lane's file ownership — left for whichever lane owns it,
+despite this doc's original "Bundle with Lane D" note.
 `src/renderer/components/Dashboard.tsx:928-974`,
 `src/renderer/styles/dashboard-shell.css:102-113` · **polish** `position: fixed`, no
 close/collapse affordance, not clickable to open Activity, no `aria-live` on status
@@ -917,6 +1024,15 @@ text that changes as files sync. *(Bundle with Lane D — same a11y concern as A
 `aria-live="polite"`.
 
 ### POLISH-14 — Emoji-fingerprint has no text fallback if glyphs fail to render
+**Status: DONE (DESIGN-8, Drives lane).** The fingerprint block now has
+`role="img" aria-label="Drive visual fingerprint — should look identical
+every time you unlock this drive"` (so screen readers get a real name instead
+of a raw emoji run), a broader emoji-capable font stack, a plain-text
+fallback string if `emojiFingerprint` is ever falsy, and — same session, per
+the coverage table — a new `InfoButton` explaining what the fingerprint is
+for. Did not attempt actual Win/Mac glyph verification (no access to those
+OSes in this environment); the accessible-name + text-fallback improvements
+apply regardless of what any given machine's font stack renders.
 `src/renderer/components/PrivateDriveUnlockModal.tsx:139-145` · **polish** Renders as
 tofu boxes in the Linux screenshot environment — likely a font-availability artifact,
 but there's no fallback if it happens on a real target machine, which is worse than
@@ -926,6 +1042,14 @@ table.)*
 **Fix:** verify on Win/Mac; add a text fallback regardless.
 
 ### POLISH-15 — Character-limit color feedback is implemented in one drive-name field but not its sibling
+**Status: DONE for this lane's side (DESIGN-8, Drives lane).**
+`CreateDriveModal.tsx`'s drive-name counter now warns (`--warning-fg`) past 28
+of 32 characters, mirroring `DriveAndSyncSetup.tsx`'s existing threshold —
+using a correct semantic warning token rather than that file's `--error-600`
+(near-limit isn't an error). Did not extract the shared `<CharCounter>`
+component the fix alternately suggests, since `DriveAndSyncSetup.tsx` is out
+of this lane's ownership and a shared component would need to live somewhere
+both lanes can reach.
 `DriveAndSyncSetup.tsx:408` (warns near the limit) vs. `CreateDriveModal.tsx:211-213`
 (always neutral) · **polish** *(Bundle with Lane F.)*
 **Fix:** apply the same near-limit color rule in both, or extract one shared
@@ -999,7 +1123,7 @@ sites.
 | **A — DESIGN-5 restyle** | Finish the Upload Approval Queue + Download Queue + Turbo Credits Manager restyle: legacy→semantic tokens, column headers, off-brand glow, balance-message color, dead search/filter wiring, CreateManifestModal's modal-shell port + debug-log removal. Sweeps in: POLISH-16/17/18/19 (same files). | RESTYLE-1..8 (8) + 4 polish sweep-ins | **Bigger** — largest lane by file-touch count; RESTYLE-9 (hover-handler fix) can be done here in the same pass since it's the same files |
 | **B — Dark-mode + `styles.css` dead-block purge** | Token-swap every hardcoded `white`/literal color to the correct surface/overlay/input token (DARK-1, 11+ sites); fix `.button.secondary` (DARK-2); delete or rename the two dead `.file-icon` blocks (DARK-3); resolve the `--radius-xl` split-brain (DARK-4); delete the 3 dead components carrying the same bugs (DSI-6, which also clears POLISH-23 for free). | DARK-1..4 (4) + DSI-6 (1) | **Quick win** for the token swaps (mechanical, same recipe as the already-shipped "F7" fix); **medium** for DARK-3/4 (need cascade investigation before deleting). **Status:** DONE for the shared/global-foundation slice (DESIGN-8 "Foundation" implementer pass) — DARK-2/3/4 fully done; DARK-1 done for onboarding/setup + Wallet Export only (Turbo/Upload/Download surfaces remain for the parallel restyle lane); DSI-6 fully done (all 3 components deleted); one DSI-2 site (`.sync-progress-bar`) fixed as a bonus find. `typecheck`/`lint`/`build`/`test` all pass. |
 | **C — Info-bubble distribution pass** | Wire the already-built, accessible `InfoButton` onto ~20 surfaces per the coverage table; standardize on it over native `title=`/custom hover tooltips (INFO-2); build the missing Gateway Settings UI (INFO-3, bigger — new control, not just a bubble). Sweeps in: POLISH-14 (fingerprint fallback, same session as its bubble), POLISH-20/21 (same files). | INFO-1..8 (8) + 16-concept table + 3 polish sweep-ins | **Quick win** for wiring existing `InfoButton`s (cheapest fix in this whole sweep); **bigger** only for INFO-3 (Gateway UI doesn't exist yet) |
-| **D — Modal a11y + hover-control keyboard reach** | Escape/backdrop-click/focus-trap on `CreateDriveModal`/`AddExistingDriveModal`/`CreateManifestModal` (ideally one shared `<DriveModal>` wrapper); WelcomeBackScreen radio fix; ActivityTab context-menu keyboard reach; label/input `htmlFor` pairs; onboarding `<h1>` promotion. Sweeps in: POLISH-13 (same a11y concern as A11Y-2). | A11Y-1..5 (5) + 1 polish sweep-in | **Quick win** for A11Y-1/4/5 (small, contained diffs); **bigger** for A11Y-3 if done as a shared wrapper (recommended — do it once, not 3x) |
+| **D — Modal a11y + hover-control keyboard reach** | Escape/backdrop-click/focus-trap on `CreateDriveModal`/`AddExistingDriveModal`/`CreateManifestModal` (ideally one shared `<DriveModal>` wrapper); WelcomeBackScreen radio fix; ActivityTab context-menu keyboard reach; label/input `htmlFor` pairs; onboarding `<h1>` promotion. Sweeps in: POLISH-13 (same a11y concern as A11Y-2). | A11Y-1..5 (5) + 1 polish sweep-in | **Quick win** for A11Y-1/4/5 (small, contained diffs); **bigger** for A11Y-3 if done as a shared wrapper (recommended — do it once, not 3x). **Status:** the actual dispatch ran as a file-owned "Drives lane" (`DriveSelector.tsx`, `CreateDriveModal.tsx`, `AddExistingDriveModal.tsx`, `PrivateDriveUnlockModal.tsx`, `CreateManifestModal.tsx`, `drive-selector.css`, `modal.css`) rather than this doc's original A–F split, so it picked up a cross-cutting slice of several lanes' items scoped to those files, not just Lane D's. DONE: A11Y-3 (shared `useModalA11y` hook, new file `src/renderer/hooks/useModalA11y.ts`, wired into all 4 modals); A11Y-4 for this lane's 2 files (CreateDriveModal/CreateManifestModal); DSI-2's CreateDriveModal site; DSI-5 (now fully resolved — all 4 modals agree on `button outline`); INFO-2's DriveSelector site; INFO-8; COPY-1/2/3 (full); COPY-6 (partial — 2 of 4 sites); POLISH-11/12/14/15. NOT done (out of file ownership): A11Y-1 (WelcomeBackScreen), A11Y-2 (ActivityTab), A11Y-5 (WalletSetup), POLISH-13 (Dashboard.tsx). `typecheck`/`lint`/`build`/`test` all pass. |
 | **E — Trust & copy fixes** | Every Theme 1 (trust/honesty) and Theme 7 (copy/permanence) item — mostly copy edits, a few conditional/data-wiring fixes (TRUST-1's fake stats, TRUST-3's validator wiring). Sweeps in the onboarding-adjacent Theme 8 polish items that live in the same files (POLISH-1/2/3/6/7/9/10/22). | TRUST-1..6 (6) + COPY-1..15 (15) + 8 polish sweep-ins | **Quick win** for the vast majority (localized copy/conditional fixes); **bigger** only for TRUST-1 if real usage counters are wired instead of a "Coming soon" swap, and COPY-5 if submitted-vs-confirmed needs new state tracking |
 | **F — Design-system integrity** | Token-naming consolidation (DSI-1), status-hue misuse (DSI-2), emoji→lucide (DSI-3), status-pill consolidation (DSI-4), Cancel-button standardization (DSI-5), focus-visible fix (DSI-7), onboarding type-scale migration (DSI-8). Sweeps in: POLISH-4/5/8/11/12/15 (same consistency theme). | DSI-1..8 minus DSI-6 (7, since DSI-6 moved to Lane B) + 6 polish sweep-ins | **Quick win** for DSI-2/3/5/7 (small, mechanical); **bigger** for DSI-1 (6+ files) and DSI-8 (3 files, full type-scale pass) |
 

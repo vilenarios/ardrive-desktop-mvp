@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, FileJson, Folder, ChevronRight, ChevronDown, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useModalA11y } from '../hooks/useModalA11y';
+import '../styles/manifest-modal.css';
 
 interface CreateManifestModalProps {
   driveId: string;
@@ -36,6 +38,19 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [folderInfo, setFolderInfo] = useState<{ fileCount: number; estimatedCost: number } | null>(null);
   const [estimatingCost, setEstimatingCost] = useState(false);
+
+  // A11Y-3: Escape closes, backdrop click closes, focus trapped, focus
+  // returns to the trigger on close — same shared hook as the other 3 drive
+  // modals. This modal renders as two stacked layers (folder picker, then a
+  // confirmation step); only the topmost layer should own Escape/Tab-trap at
+  // any given time, so each gets its own hook call keyed off the inverse of
+  // `showConfirmation`.
+  const { containerRef, handleBackdropClick } = useModalA11y<HTMLDivElement>(
+    !showConfirmation,
+    onClose
+  );
+  const { containerRef: confirmContainerRef, handleBackdropClick: handleConfirmBackdropClick } =
+    useModalA11y<HTMLDivElement>(showConfirmation, () => setShowConfirmation(false));
 
   useEffect(() => {
     console.log('CreateManifestModal mounted for drive:', driveId);
@@ -198,12 +213,30 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
       const isExpanded = expandedFolders.has(folder.id);
       const isSelected = selectedFolder === folder.id;
       
+      // Keyboard reachability: this row used to be a plain <div onClick>,
+      // 100% mouse-only — a keyboard user had no way to select a folder in
+      // this modal at all. Now a real tab stop with Enter/Space activation,
+      // matching the click handler exactly. Hover feedback moved to CSS
+      // (manifest-modal.css) so the same treatment applies on :focus-visible.
+      const selectFolder = () => {
+        setSelectedFolder(folder.id);
+        if (hasChildren) toggleFolder(folder.id);
+      };
+
       return (
         <div key={folder.id}>
           <div
-            onClick={() => {
-              setSelectedFolder(folder.id);
-              if (hasChildren) toggleFolder(folder.id);
+            role="button"
+            tabIndex={0}
+            aria-pressed={isSelected}
+            aria-label={`${folder.name}${hasChildren ? (isExpanded ? ', expanded' : ', collapsed') : ''}`}
+            className={`manifest-folder-row ${isSelected ? 'is-selected' : ''}`}
+            onClick={selectFolder}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                selectFolder();
+              }
             }}
             style={{
               display: 'flex',
@@ -211,19 +244,8 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
               padding: '8px 12px',
               paddingLeft: `${12 + level * 20}px`,
               cursor: 'pointer',
-              backgroundColor: isSelected ? 'var(--ardrive-primary-50)' : 'transparent',
               borderRadius: '4px',
               margin: '2px 0'
-            }}
-            onMouseEnter={(e) => {
-              if (!isSelected) {
-                e.currentTarget.style.backgroundColor = 'var(--gray-100)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!isSelected) {
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }
             }}
           >
             {hasChildren && (
@@ -251,29 +273,35 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    }}>
-      <div style={{
-        background: 'var(--ardrive-surface)',
-        borderRadius: 'var(--radius-lg)',
-        padding: 'var(--space-6)',
-        width: '90%',
-        maxWidth: '600px',
-        maxHeight: '80vh',
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
         display: 'flex',
-        flexDirection: 'column',
-        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
-      }}>
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000
+      }}
+      onClick={handleBackdropClick}
+    >
+      <div
+        ref={containerRef}
+        style={{
+          background: 'var(--ardrive-surface)',
+          borderRadius: 'var(--radius-lg)',
+          padding: 'var(--space-6)',
+          width: '90%',
+          maxWidth: '600px',
+          maxHeight: '80vh',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+        }}
+      >
         {/* Header */}
         <div style={{
           display: 'flex',
@@ -286,24 +314,9 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
             <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 600 }}>Create Arweave Manifest</h2>
           </div>
           <button
+            className="manifest-close-button"
             onClick={onClose}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '8px',
-              borderRadius: 'var(--radius-sm)',
-              color: 'var(--gray-500)',
-              transition: 'all 0.2s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--gray-100)';
-              e.currentTarget.style.color = 'var(--gray-700)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.color = 'var(--gray-500)';
-            }}
+            aria-label="Close"
           >
             <X size={20} />
           </button>
@@ -325,20 +338,29 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
 
         {/* Folder Selection */}
         <div style={{ marginBottom: 'var(--space-4)' }}>
-          <label style={{ 
-            display: 'block', 
+          {/* A11Y-4: bare <label>s with no id/htmlFor pairing anywhere in
+              this component. This one labels a custom folder-tree widget
+              rather than a single <input>, so it's wired via
+              aria-labelledby on the tree container instead of a fake
+              htmlFor. */}
+          <label id="manifest-folder-label" style={{
+            display: 'block',
             marginBottom: 'var(--space-2)',
             fontWeight: 500
           }}>
             Select Folder
           </label>
-          <div style={{
-            border: '1px solid var(--gray-200)',
-            borderRadius: 'var(--radius-sm)',
-            maxHeight: '300px',
-            overflowY: 'auto',
-            backgroundColor: 'var(--gray-50)'
-          }}>
+          <div
+            role="group"
+            aria-labelledby="manifest-folder-label"
+            style={{
+              border: '1px solid var(--gray-200)',
+              borderRadius: 'var(--radius-sm)',
+              maxHeight: '300px',
+              overflowY: 'auto',
+              backgroundColor: 'var(--gray-50)'
+            }}
+          >
             {loading ? (
               <div style={{ 
                 padding: 'var(--space-4)', 
@@ -376,14 +398,15 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
 
         {/* Manifest Name */}
         <div style={{ marginBottom: 'var(--space-4)' }}>
-          <label style={{ 
-            display: 'block', 
+          <label htmlFor="manifest-name" style={{
+            display: 'block',
             marginBottom: 'var(--space-2)',
             fontWeight: 500
           }}>
             Manifest Name
           </label>
           <input
+            id="manifest-name"
             type="text"
             value={manifestName}
             onChange={(e) => setManifestName(e.target.value)}
@@ -423,7 +446,7 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
           justifyContent: 'flex-end'
         }}>
           <button
-            className="button secondary"
+            className="button outline"
             onClick={onClose}
             disabled={creating}
           >
@@ -453,24 +476,29 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
 
       {/* Confirmation Dialog */}
       {showConfirmation && folderInfo && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1001
-        }}>
-          <div style={{
-            background: 'var(--ardrive-surface)',
-            borderRadius: 'var(--radius-lg)',
-            padding: 'var(--space-6)',
-            width: '90%',
-            maxWidth: '500px',
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1001
+          }}
+          onClick={handleConfirmBackdropClick}
+        >
+          <div
+            ref={confirmContainerRef}
+            style={{
+              background: 'var(--ardrive-surface)',
+              borderRadius: 'var(--radius-lg)',
+              padding: 'var(--space-6)',
+              width: '90%',
+              maxWidth: '500px',
             boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
           }}>
             {/* Header */}
@@ -599,7 +627,7 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
               justifyContent: 'flex-end'
             }}>
               <button
-                className="button secondary"
+                className="button outline"
                 onClick={() => setShowConfirmation(false)}
                 disabled={creating}
               >

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check, Plus, HardDrive, Lock, Globe, Star } from 'lucide-react';
 import { DriveInfo, DriveInfoWithStatus } from '../../types';
 import { PrivateDriveUnlockModal } from './PrivateDriveUnlockModal';
+import { InfoButton } from './common/InfoButton';
 
 interface DriveSelectorProps {
   currentDrive: DriveInfo | null;
@@ -131,7 +132,11 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
       >
         <span className="drive-selector-button-label">
           <HardDrive size={16} />
-          <span className="drive-selector-button-name">
+          {/* POLISH-11: names still truncate at very long lengths even
+              after widening the button/dropdown — a native title gives a
+              full-name fallback on hover without needing another
+              InfoButton (this is overflow help, not a concept to explain). */}
+          <span className="drive-selector-button-name" title={currentDrive?.name || undefined}>
             {isLoading ? 'Loading...' : (currentDrive?.name || 'Select Drive')}
           </span>
         </span>
@@ -158,7 +163,7 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
                     <div className="drive-selector-option-check-spacer" />
                   )}
                   <HardDrive size={16} />
-                  <span className="drive-selector-option-name">
+                  <span className="drive-selector-option-name" title={drive.name}>
                     {drive.name}
                     {drive.privacy === 'private' && drive.isLocked && drive.emojiFingerprint && (
                       <span className="drive-selector-option-fingerprint">
@@ -176,19 +181,23 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
                   )}
                 </button>
 
-                {/* PRIV-4: remember/forget this drive (only for unlocked private drives) */}
+                {/* PRIV-4: remember/forget this drive (only for unlocked private drives).
+                    INFO-2: this used to explain itself only via a native
+                    title= (hover-only, no keyboard/touch access). Reuses the
+                    same InfoButton pattern — and the same good copy — as
+                    PrivateDriveUnlockModal's "remember this drive" checkbox. */}
                 {drive.privacy === 'private' && !drive.isLocked && (
-                  <button
-                    className={`drive-selector-remember-toggle ${remembered ? 'is-remembered' : ''}`}
-                    onClick={(e) => handleTogglePersistence(drive, e)}
-                    disabled={!!persistenceBusy[drive.id]}
-                    title={remembered
-                      ? 'This drive auto-unlocks on this device. Click to forget.'
-                      : 'Remember this drive so it auto-unlocks on this device.'}
-                  >
-                    <Star size={12} className="drive-selector-remember-star" />
-                    <span>{remembered ? 'Remembered · Forget' : 'Remember this drive'}</span>
-                  </button>
+                  <div className="drive-selector-remember-row">
+                    <button
+                      className={`drive-selector-remember-toggle ${remembered ? 'is-remembered' : ''}`}
+                      onClick={(e) => handleTogglePersistence(drive, e)}
+                      disabled={!!persistenceBusy[drive.id]}
+                    >
+                      <Star size={12} className="drive-selector-remember-star" />
+                      <span>{remembered ? 'Remembered · Forget' : 'Remember this drive'}</span>
+                    </button>
+                    <InfoButton tooltip="Your drive's decryption key is stored encrypted on this device, so you won't be asked for this password again here. Turn off anytime." />
+                  </div>
                 )}
               </React.Fragment>
             );
