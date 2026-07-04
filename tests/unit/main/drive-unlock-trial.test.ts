@@ -55,8 +55,13 @@ vi.mock('../../../src/main/drive-key-manager', () => ({
     getPrivateKeyData: vi.fn(),
     clearAllKeys: vi.fn(),
     setWallet: vi.fn(),
+    setProfile: vi.fn(),
     lockDrive: vi.fn(),
     getUnlockedDriveIds: vi.fn(() => []),
+    // PRIV-4
+    setPersistence: vi.fn().mockResolvedValue(true),
+    isPersisted: vi.fn(() => false),
+    restorePersistedKeys: vi.fn().mockResolvedValue(0),
   },
 }));
 vi.mock('ardrive-core-js', () => ({
@@ -160,5 +165,39 @@ describe('unlockPrivateDrive trial decryption (PRIV-2)', () => {
     expect(result.error).toMatch(/Wallet not loaded/);
     expect(driveKeyManager.deriveKey).not.toHaveBeenCalled();
     expect(driveKeyManager.cacheKey).not.toHaveBeenCalled();
+  });
+
+  // PRIV-4: opt-in persistence plumbing through unlockPrivateDrive.
+  it('persists the key when persistKey=true (opt-in)', async () => {
+    mockGetPrivateDrive.mockResolvedValue({ name: 'Secret Drive' });
+    (walletManager as any).currentProfileId = 'profile-a';
+    vi.spyOn(walletManager as any, 'getSessionPassword').mockResolvedValue('session-pw');
+
+    const result = await walletManager.unlockPrivateDrive(DRIVE_ID, 'correct-password', true);
+
+    expect(result.success).toBe(true);
+    expect(driveKeyManager.setPersistence).toHaveBeenCalledWith(DRIVE_ID, true, 'session-pw');
+  });
+
+  it('does NOT persist the key when persistKey is omitted (opt-out is the default)', async () => {
+    mockGetPrivateDrive.mockResolvedValue({ name: 'Secret Drive' });
+    (walletManager as any).currentProfileId = 'profile-a';
+
+    const result = await walletManager.unlockPrivateDrive(DRIVE_ID, 'correct-password');
+
+    expect(result.success).toBe(true);
+    expect(driveKeyManager.setPersistence).not.toHaveBeenCalled();
+  });
+
+  it('unlock still succeeds even if persisting the key fails', async () => {
+    mockGetPrivateDrive.mockResolvedValue({ name: 'Secret Drive' });
+    (walletManager as any).currentProfileId = 'profile-a';
+    vi.spyOn(walletManager as any, 'getSessionPassword').mockResolvedValue('session-pw');
+    vi.mocked(driveKeyManager.setPersistence).mockRejectedValueOnce(new Error('disk full'));
+
+    const result = await walletManager.unlockPrivateDrive(DRIVE_ID, 'correct-password', true);
+
+    expect(result.success).toBe(true);
+    expect(driveKeyManager.cacheKey).toHaveBeenCalled();
   });
 });

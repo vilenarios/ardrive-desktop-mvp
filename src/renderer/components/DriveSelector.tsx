@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check, Plus, HardDrive, Lock, Globe } from 'lucide-react';
+import { ChevronDown, Check, Plus, HardDrive, Lock, Globe, Star } from 'lucide-react';
 import { DriveInfo, DriveInfoWithStatus } from '../../types';
 import { PrivateDriveUnlockModal } from './PrivateDriveUnlockModal';
 
@@ -23,6 +23,10 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [selectedLockedDrive, setSelectedLockedDrive] = useState<DriveInfoWithStatus | null>(null);
+  // PRIV-4: optimistic per-drive "remembered" state for the settings toggle,
+  // seeded from drive.isRemembered and updated as the user toggles.
+  const [persistenceOverride, setPersistenceOverride] = useState<Record<string, boolean>>({});
+  const [persistenceBusy, setPersistenceBusy] = useState<Record<string, boolean>>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -58,7 +62,8 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
   };
 
   const handleUnlockSuccess = async (
-    password: string
+    password: string,
+    persistKey: boolean
   ): Promise<{ success: boolean; error?: string }> => {
     if (!selectedLockedDrive) return { success: false, error: 'No drive selected.' };
 
@@ -67,7 +72,8 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
       // boolean made {success:false} look like a successful unlock (audit §5.3).
       // PRIV-2: only a verified unlock selects the drive; on failure the
       // envelope's `error` (wrong password vs. network) reaches the modal.
-      const result = await window.electronAPI.drive.unlock(selectedLockedDrive.id, password);
+      // PRIV-4: persistKey forwards the "remember this drive" choice.
+      const result = await window.electronAPI.drive.unlock(selectedLockedDrive.id, password, persistKey);
       if (result.success) {
         onDriveSelect(selectedLockedDrive.id);
         setShowUnlockModal(false);
@@ -87,6 +93,33 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
   const handleUnlockCancel = () => {
     setShowUnlockModal(false);
     setSelectedLockedDrive(null);
+  };
+
+  const isDriveRemembered = (drive: DriveInfoWithStatus): boolean =>
+    persistenceOverride[drive.id] ?? drive.isRemembered ?? false;
+
+  // PRIV-4 settings toggle: opt an unlocked private drive in/out of persistence.
+  const handleTogglePersistence = async (
+    drive: DriveInfoWithStatus,
+    e: React.MouseEvent
+  ) => {
+    e.stopPropagation();
+    if (persistenceBusy[drive.id]) return;
+
+    const next = !isDriveRemembered(drive);
+    setPersistenceBusy(prev => ({ ...prev, [drive.id]: true }));
+    try {
+      const result = await window.electronAPI.drive.setPersistence(drive.id, next);
+      // Only reflect the change if main confirms it (needs unlocked drive +
+      // session password); otherwise leave the prior state.
+      if (result.success && result.data === true) {
+        setPersistenceOverride(prev => ({ ...prev, [drive.id]: next }));
+      }
+    } catch (error) {
+      console.error('Failed to update drive persistence:', error);
+    } finally {
+      setPersistenceBusy(prev => ({ ...prev, [drive.id]: false }));
+    }
   };
 
   return (
@@ -145,8 +178,8 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
           }}
         >
           {drives.map((drive) => (
+            <div key={drive.id}>
             <button
-              key={drive.id}
               className="drive-option"
               onClick={() => handleDriveClick(drive)}
               style={{
@@ -195,6 +228,39 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
                 <Globe size={14} style={{ opacity: 0.6 }} />
               )}
             </button>
+
+            {/* PRIV-4: remember/forget this drive (only for unlocked private drives) */}
+            {drive.privacy === 'private' && !drive.isLocked && (
+              <button
+                className="drive-remember-toggle"
+                onClick={(e) => handleTogglePersistence(drive, e)}
+                disabled={!!persistenceBusy[drive.id]}
+                title={isDriveRemembered(drive)
+                  ? 'This drive auto-unlocks on this device. Click to forget.'
+                  : 'Remember this drive so it auto-unlocks on this device.'}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  width: '100%',
+                  padding: '6px var(--space-3) 8px',
+                  paddingLeft: '40px',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: persistenceBusy[drive.id] ? 'wait' : 'pointer',
+                  fontSize: '12px',
+                  color: isDriveRemembered(drive) ? 'var(--ardrive-primary)' : 'var(--gray-500)',
+                  textAlign: 'left'
+                }}
+              >
+                <Star
+                  size={12}
+                  style={{ fill: isDriveRemembered(drive) ? 'var(--ardrive-primary)' : 'none' }}
+                />
+                <span>{isDriveRemembered(drive) ? 'Remembered · Forget' : 'Remember this drive'}</span>
+              </button>
+            )}
+            </div>
           ))}
           
           <div style={{ borderTop: '1px solid var(--gray-200)', marginTop: '4px', paddingTop: '4px' }}>

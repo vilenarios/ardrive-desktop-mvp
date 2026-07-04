@@ -169,7 +169,8 @@ describe('drive:unlock — accepts EXISTING short passwords (PRIV-7)', () => {
 
     // The short password passed validation and reached trial-decryption —
     // pre-fix this call never happened (rejected at validatePassword).
-    expect(h.walletManagerInstance.unlockPrivateDrive).toHaveBeenCalledWith(DRIVE_ID, SHORT_PASSWORD);
+    // PRIV-4: the handler now also forwards the persistKey flag (false by default).
+    expect(h.walletManagerInstance.unlockPrivateDrive).toHaveBeenCalledWith(DRIVE_ID, SHORT_PASSWORD, false);
     expect(result.success).toBe(true);
     expect(result.data).toEqual(expect.objectContaining({ id: DRIVE_ID }));
     expect(result.error).toBeUndefined();
@@ -190,7 +191,8 @@ describe('drive:unlock — accepts EXISTING short passwords (PRIV-7)', () => {
     };
 
     // It was NOT short-circuited by a length check — the derive/trial ran...
-    expect(h.walletManagerInstance.unlockPrivateDrive).toHaveBeenCalledWith(DRIVE_ID, SHORT_PASSWORD);
+    // PRIV-4: the handler now also forwards the persistKey flag (false by default).
+    expect(h.walletManagerInstance.unlockPrivateDrive).toHaveBeenCalledWith(DRIVE_ID, SHORT_PASSWORD, false);
     // ...and still failed. The security gate is intact.
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/Invalid password/);

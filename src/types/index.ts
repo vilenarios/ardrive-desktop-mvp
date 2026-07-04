@@ -61,6 +61,7 @@ export interface DriveInfo {
 export interface DriveInfoWithStatus extends DriveInfo {
   isLocked: boolean;           // For private drives: whether they need unlocking
   emojiFingerprint?: string;   // For private drives: emoji representation
+  isRemembered?: boolean;      // PRIV-4: whether this drive's key is persisted across sessions
 }
 
 export interface FileUpload {

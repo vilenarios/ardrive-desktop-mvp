@@ -307,6 +307,11 @@ export class SecureWalletManager {
 
       // Initialize Drive Key Manager for private drive support
       driveKeyManager.setWallet(walletJson);
+      // PRIV-4: set the profile so any opt-in drive-key persistence this session
+      // writes to (and forgets from) this profile's encrypted keys file.
+      if (this.currentProfileId) {
+        driveKeyManager.setProfile(this.currentProfileId);
+      }
       console.log('Drive key manager initialized');
 
       // Initialize Turbo
@@ -415,6 +420,11 @@ export class SecureWalletManager {
 
       // Initialize Drive Key Manager for private drive support
       driveKeyManager.setWallet(walletJson);
+      // PRIV-4: set the profile so any opt-in drive-key persistence this session
+      // writes to (and forgets from) this profile's encrypted keys file.
+      if (this.currentProfileId) {
+        driveKeyManager.setProfile(this.currentProfileId);
+      }
       console.log('Drive key manager initialized');
 
       // Initialize Turbo
@@ -499,13 +509,36 @@ export class SecureWalletManager {
         logging: true
       }));
 
-      this.arDrive = arDriveFactory({ 
+      this.arDrive = arDriveFactory({
         wallet,
         arweave: arweaveInstance,
         turboSettings: {
           turboUrl: new URL('https://upload.ardrive.io')
         }
       });
+
+      // Initialize Drive Key Manager for private drive support.
+      // PRIV-4: loadWallet is the choke point every login (auto-load, manual
+      // login, profile switch) passes through, yet it previously never seeded
+      // the drive key manager's wallet — so a returning user could not derive a
+      // drive key to unlock. Seed it here, and restore any opted-in persisted
+      // keys using the (session) password we just decrypted the wallet with.
+      driveKeyManager.setWallet(walletJson);
+      if (this.currentProfileId) {
+        driveKeyManager.setProfile(this.currentProfileId);
+        try {
+          const restored = await driveKeyManager.restorePersistedKeys(password);
+          if (restored > 0) {
+            console.log(`Restored ${restored} persisted drive key(s) for this profile`);
+            // Rebuild ArDrive so the restored private keys are active for
+            // listing/decryption without a manual unlock.
+            await this.recreateArDriveWithPrivateKeys();
+          }
+        } catch (restoreError) {
+          // Fail closed: affected drives simply stay locked.
+          console.error('Failed to restore persisted drive keys:', restoreError);
+        }
+      }
 
       // Initialize Turbo with the same wallet
       try {
@@ -829,8 +862,12 @@ export class SecureWalletManager {
       if (this.currentProfileId) {
         // Securely delete encrypted wallet
         await secureDeleteFile(this.getWalletStoragePath()).catch(() => {});
+        // PRIV-4: also remove any persisted drive keys for this profile so a
+        // full wallet clear leaves no encrypted key file behind.
+        driveKeyManager.setProfile(this.currentProfileId);
+        await driveKeyManager.clearPersistedStorage().catch(() => {});
       }
-      
+
       // Clear memory
       this.clearInMemoryWallet();
       
@@ -1314,11 +1351,12 @@ export class SecureWalletManager {
    */
   async unlockPrivateDrive(
     driveId: string,
-    password: string
+    password: string,
+    persistKey: boolean = false
   ): Promise<{ success: boolean; error?: string }> {
     try {
       console.log(`Attempting to unlock private drive ${driveId.slice(0, 8)}...`);
-      
+
       if (!this.arDrive) {
         return { success: false, error: 'Wallet not loaded. Please log in again.' };
       }
@@ -1352,7 +1390,28 @@ export class SecureWalletManager {
       // Verified — cache for the session and refresh ArDrive with the key
       driveKeyManager.cacheKey(driveId, driveKey);
       await this.recreateArDriveWithPrivateKeys();
-      
+
+      // PRIV-4: opt-in persistence. Only when the user chose "remember" do we
+      // durably store the (encrypted) key. Persistence failures must NOT fail
+      // the unlock — the drive is unlocked for the session regardless.
+      if (persistKey) {
+        try {
+          if (this.currentProfileId) {
+            driveKeyManager.setProfile(this.currentProfileId);
+          }
+          const sessionPassword = await this.getSessionPassword();
+          const saved = await driveKeyManager.setPersistence(driveId, true, sessionPassword);
+          if (sessionPassword) {
+            this.clearPassword(sessionPassword);
+          }
+          if (!saved) {
+            console.warn(`Could not persist key for drive ${driveId.slice(0, 8)}... (no session password?)`);
+          }
+        } catch (persistError) {
+          console.error('Failed to persist drive key (unlock still succeeded):', persistError);
+        }
+      }
+
       console.log(`✅ Private drive ${driveId.slice(0, 8)}... unlocked successfully`);
       return { success: true };
     } catch (error) {
@@ -1422,6 +1481,32 @@ export class SecureWalletManager {
   }
 
   /**
+   * PRIV-4: whether a drive's key is remembered (persisted) across sessions.
+   */
+  isDrivePersisted(driveId: string): boolean {
+    return driveKeyManager.isPersisted(driveId);
+  }
+
+  /**
+   * PRIV-4 settings toggle: opt a drive in/out of persistence. Enabling requires
+   * the drive to be unlocked (its key must be available to persist) and a
+   * session password to encrypt the file at rest. Returns true on success.
+   */
+  async setDrivePersistence(driveId: string, persist: boolean): Promise<boolean> {
+    if (this.currentProfileId) {
+      driveKeyManager.setProfile(this.currentProfileId);
+    }
+    const sessionPassword = await this.getSessionPassword();
+    try {
+      return await driveKeyManager.setPersistence(driveId, persist, sessionPassword);
+    } finally {
+      if (sessionPassword) {
+        this.clearPassword(sessionPassword);
+      }
+    }
+  }
+
+  /**
    * List all drives with their unlock status
    */
   async listDrivesWithStatus(): Promise<DriveInfoWithStatus[]> {
@@ -1430,7 +1515,10 @@ export class SecureWalletManager {
     return drives.map(drive => ({
       ...drive,
       isLocked: drive.privacy === 'private' && !driveKeyManager.isUnlocked(drive.id),
-      emojiFingerprint: drive.privacy === 'private' ? getDriveEmojiFingerprint(drive.id) : undefined
+      emojiFingerprint: drive.privacy === 'private' ? getDriveEmojiFingerprint(drive.id) : undefined,
+      // PRIV-4: whether this drive's key is remembered across sessions (drives
+      // the settings toggle in the drive selector).
+      isRemembered: drive.privacy === 'private' && driveKeyManager.isPersisted(drive.id)
     }));
   }
 

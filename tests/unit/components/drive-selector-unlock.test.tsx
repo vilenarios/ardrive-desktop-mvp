@@ -7,13 +7,16 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { DriveSelector } from '../../../src/renderer/components/DriveSelector';
 
-// Stub the unlock modal with probes wired to the props DriveSelector hands it
+// Stub the unlock modal with probes wired to the props DriveSelector hands it.
+// PRIV-4: onUnlock now takes (password, persistKey); the stub exposes both a
+// "remember" and a "no-remember" submit so the forwarding can be asserted.
 vi.mock('../../../src/renderer/components/PrivateDriveUnlockModal', () => ({
   PrivateDriveUnlockModal: (props: any) =>
     props.isOpen ? (
       <div>
         <div>stub-unlock-modal-open</div>
-        <button onClick={() => props.onUnlock('typed-password')}>stub-submit-password</button>
+        <button onClick={() => props.onUnlock('typed-password', false)}>stub-submit-password</button>
+        <button onClick={() => props.onUnlock('typed-password', true)}>stub-submit-remember</button>
       </div>
     ) : null,
 }));
@@ -21,6 +24,7 @@ vi.mock('../../../src/renderer/components/PrivateDriveUnlockModal', () => ({
 const mockElectronAPI = {
   drive: {
     unlock: vi.fn(),
+    setPersistence: vi.fn().mockResolvedValue({ success: true, data: true }),
   },
   onDriveUpdate: vi.fn(),
   removeDriveUpdateListener: vi.fn(),
@@ -80,11 +84,24 @@ describe('DriveSelector unlock envelope handling (PRIV-2)', () => {
     fireEvent.click(screen.getByText('stub-submit-password'));
 
     await waitFor(() => {
-      expect(mockElectronAPI.drive.unlock).toHaveBeenCalledWith('drive-locked', 'typed-password');
+      expect(mockElectronAPI.drive.unlock).toHaveBeenCalledWith('drive-locked', 'typed-password', false);
     });
     // The pre-fix bug: {success:false} was truthy -> drive selected, modal closed
     expect(defaultProps.onDriveSelect).not.toHaveBeenCalled();
     expect(screen.getByText('stub-unlock-modal-open')).toBeInTheDocument();
+  });
+
+  it('forwards the persistKey ("remember") choice through drive.unlock (PRIV-4)', async () => {
+    mockElectronAPI.drive.unlock.mockResolvedValue({ success: true });
+
+    render(<DriveSelector {...defaultProps} />);
+    await openUnlockModal();
+
+    fireEvent.click(screen.getByText('stub-submit-remember'));
+
+    await waitFor(() => {
+      expect(mockElectronAPI.drive.unlock).toHaveBeenCalledWith('drive-locked', 'typed-password', true);
+    });
   });
 
   it('selects the drive and closes the modal when unlock succeeds', async () => {
@@ -102,5 +119,56 @@ describe('DriveSelector unlock envelope handling (PRIV-2)', () => {
       expect(defaultProps.onDriveSelect).toHaveBeenCalledWith('drive-locked');
     });
     expect(screen.queryByText('stub-unlock-modal-open')).not.toBeInTheDocument();
+  });
+
+  // PRIV-4 settings UI (plan step 6): per-drive Remember/Forget toggle.
+  it('shows a Remember toggle for unlocked private drives and calls setPersistence', async () => {
+    const unlockedPrivate = {
+      id: 'drive-unlocked',
+      name: 'Unlocked Private',
+      privacy: 'private',
+      rootFolderId: 'root-3',
+      isLocked: false,
+      isRemembered: false,
+    } as any;
+
+    render(
+      <DriveSelector {...defaultProps} drives={[publicDrive, unlockedPrivate]} />
+    );
+
+    // Open the dropdown.
+    fireEvent.click(screen.getByText('Public Drive'));
+    const toggle = await screen.findByText('Remember this drive');
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(mockElectronAPI.drive.setPersistence).toHaveBeenCalledWith('drive-unlocked', true);
+    });
+    // Optimistic UI flips to the "remembered" affordance.
+    expect(await screen.findByText('Remembered · Forget')).toBeInTheDocument();
+  });
+
+  it('shows "Remembered · Forget" for an already-remembered drive and forgets it', async () => {
+    const rememberedPrivate = {
+      id: 'drive-remembered',
+      name: 'Remembered Private',
+      privacy: 'private',
+      rootFolderId: 'root-4',
+      isLocked: false,
+      isRemembered: true,
+    } as any;
+
+    render(
+      <DriveSelector {...defaultProps} drives={[publicDrive, rememberedPrivate]} />
+    );
+
+    fireEvent.click(screen.getByText('Public Drive'));
+    const forget = await screen.findByText('Remembered · Forget');
+    fireEvent.click(forget);
+
+    await waitFor(() => {
+      expect(mockElectronAPI.drive.setPersistence).toHaveBeenCalledWith('drive-remembered', false);
+    });
+    expect(await screen.findByText('Remember this drive')).toBeInTheDocument();
   });
 });

@@ -133,7 +133,13 @@ vi.mock('../../../src/main/crypto-utils', () => ({
   decryptData: vi.fn().mockResolvedValue('pw'),
 }));
 vi.mock('../../../src/main/drive-key-manager', () => ({
-  driveKeyManager: { setWallet: vi.fn(), clearAllKeys: vi.fn() },
+  driveKeyManager: {
+    setWallet: vi.fn(),
+    setProfile: vi.fn(),
+    restorePersistedKeys: vi.fn().mockResolvedValue(0),
+    clearPersistedStorage: vi.fn().mockResolvedValue(undefined),
+    clearAllKeys: vi.fn()
+  },
 }));
 
 import { SecureWalletManager } from '../../../src/main/wallet-manager-secure';

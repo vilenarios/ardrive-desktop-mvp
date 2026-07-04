@@ -616,12 +616,13 @@ const App: React.FC = () => {
     setAppState('wallet-setup');
   };
 
-  const handlePrivateDriveUnlock = async (password: string): Promise<{ success: boolean; error?: string }> => {
+  const handlePrivateDriveUnlock = async (password: string, persistKey: boolean): Promise<{ success: boolean; error?: string }> => {
     if (!selectedPrivateDrive) return { success: false, error: 'No drive selected.' };
 
     try {
       console.log('Attempting to unlock private drive:', selectedPrivateDrive.name);
-      const result = await window.electronAPI.drive.unlock(selectedPrivateDrive.id, password);
+      // PRIV-4: forward the "remember this drive" choice so the key is persisted (encrypted).
+      const result = await window.electronAPI.drive.unlock(selectedPrivateDrive.id, password, persistKey);
 
       if (result && result.success) {
         console.log('Private drive unlocked successfully');

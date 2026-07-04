@@ -900,7 +900,7 @@ class ArDriveApp {
       return await this.walletManager.createPrivateDrive(validatedName, validatedPassword);
     }));
 
-    ipcMain.handle('drive:unlock', envelopeHandler(async (_, driveId: string, password: string) => {
+    ipcMain.handle('drive:unlock', envelopeHandler(async (_, driveId: string, password: string, persistKey?: boolean) => {
       const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
       // PRIV-7: unlocking an EXISTING private drive must accept whatever
       // password the user provides (drives from other ArDrive clients may use
@@ -908,8 +908,11 @@ class ArDriveApp {
       // the new-password strength validator here; wrong passwords are still
       // rejected by trial decryption in unlockPrivateDrive (PRIV-2).
       const validatedPassword = InputValidator.validateExistingPassword(password, 'password');
+      // PRIV-4: opt-in "remember this drive". Coerce to a strict boolean so a
+      // stray truthy value can never silently enable persistence.
+      const shouldPersist = persistKey === true;
 
-      const unlockResult = await this.walletManager.unlockPrivateDrive(validatedDriveId, validatedPassword);
+      const unlockResult = await this.walletManager.unlockPrivateDrive(validatedDriveId, validatedPassword, shouldPersist);
 
       if (!unlockResult.success) {
         // Wrong password OR verification (network/gateway) failure — unlockPrivateDrive
@@ -954,6 +957,20 @@ class ArDriveApp {
         console.error('Failed to check drive unlock status:', error);
         return false;
       }
+    }));
+
+    // PRIV-4: whether a drive's key is remembered (persisted) across sessions.
+    ipcMain.handle('drive:is-persisted', envelopeHandler(async (_, driveId: string) => {
+      const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+      return this.walletManager.isDrivePersisted(validatedDriveId);
+    }));
+
+    // PRIV-4 settings toggle: opt a drive in/out of key persistence. Enabling
+    // requires the drive to be unlocked and a session password (to encrypt the
+    // keys file at rest); returns false when either is missing.
+    ipcMain.handle('drive:set-persistence', envelopeHandler(async (_, driveId: string, persist: boolean) => {
+      const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+      return await this.walletManager.setDrivePersistence(validatedDriveId, persist === true);
     }));
 
     ipcMain.handle('drive:listWithStatus', envelopeHandler(async () => {
