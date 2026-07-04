@@ -37,8 +37,9 @@ Note 2026-07-03: done — merged from `fix/SEC-3-sync-logout` (0ed4d21 + QA-find
 Fix (pair with UX-6): opt-in "Keep me signed in" at login → store; opt-out/logout → delete; delete on profile deletion; remove the deterministic-key fallback file (fail closed to "not remembered"); remove hardcoded-salt in-memory obfuscation.
 Acceptance: password reaches the keychain only after explicit opt-in; deleting a profile removes its keychain entry; no keychain-fallback.enc is ever created.
 
-### SEC-5 · P1 · Phase 3 · `todo`
+### SEC-5 · P1 · Phase 3 · `in-progress`
 **Stop writing the decrypted JWK to a temp file.** Evidence: §4.3 (3 sites).
+Claimed 2026-07-04 (overnight loop, branch fix/SEC-5-jwk-tempfile, Opus implementer).
 Fix: construct the wallet object from the decrypted JSON in memory (bypass `readJWKFile`'s path requirement).
 Acceptance: no wallet material is written under os.tmpdir() during import or login.
 
@@ -318,8 +319,9 @@ Acceptance: a failed sync shows the error and the modal is dismissible; no infin
 ### UX-9 · P2 · Track D · `todo`
 **Replace `window.location.reload()`/`alert()`/`confirm()`** with state refresh + in-app dialogs (Dashboard drive flows, ActivityTab retry, add-profile). Evidence: §5.6, §5.10.
 
-### UX-10 · P1 · Phase 3 · `todo`
+### UX-10 · P1 · Phase 3 · `in-progress`
 **Fix Copy Link dead URLs.** Evidence: §5.6 (fileId UUID preferred over dataTxId → dead arweave.net links).
+Claimed 2026-07-04 (overnight loop, branch fix/UX-10-copy-link, Sonnet implementer).
 Acceptance: copied links resolve; files without a dataTxId offer no raw-gateway link.
 
 ### UX-11 · P2 · Track D · `todo`
