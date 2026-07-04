@@ -263,9 +263,9 @@ Gate follow-ups filed: clear-cache-before-list window (list-then-swap, SYNC-9/SY
 **Private move/rename (and hide) paths.** Evidence: §3.7/§1.7 (only `*Public*` ArFS calls exist). Pairs with SYNC-5's hide implementation; upstream ardrive-core-js work allowed (D-016).
 QA finding 2026-07-03: sync-manager.ts:1559/1608 log raw rename/move results — safe today only because public results omit `key` (version-fragile); when touching these paths, route through `summarizeArFSResult` (SEC-1's whitelist util).
 
-### PRIV-7 · P2 · Phase 3 · `in-progress`
+### PRIV-7 · P2 · Phase 3 · `done`
 **Don't gate drive unlock on the 8-char wallet-password validator.** Evidence: §3.10 (drives from other clients with shorter passwords can never unlock).
-Claimed 2026-07-04 (overnight loop, branch fix/PRIV-7-unlock-validation, Opus implementer).
+Done 2026-07-04 (branch fix/PRIV-7-unlock-validation, Opus security qa-gate PASS): new `InputValidator.validateExistingPassword` (non-empty, ≤128, no min-length) on the `drive:unlock` handler only; all 6 password-MINTING paths (wallet import/create/seed, profiles:switch, drive:create-private) keep `validatePassword` (min 8). Wrong-password rejection is unchanged — still owned by trial-decryption in wallet-manager-secure.ts (the length check never rejected wrong passwords). Renderer imposes no length gate. Full suite 370 green, build ok; 12 new tests incl. the 3 required assertions. KNOWN EDGE (pre-existing, not worsened): `validateString` trims, so a cross-client password with leading/trailing whitespace still wouldn't derive — candidate follow-up if that surfaces in real testing.
 
 ---
 
