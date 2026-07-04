@@ -105,10 +105,15 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
     originalItem: FileUpload | FileDownload;
   }
 
+  // File-type icon color comes entirely from the `file-icon <family>`
+  // className (see styles.css "File Type Icons (canonical, DESIGN-6)") —
+  // no inline color styles here. Tokens only; families are grouped onto
+  // the shared status/neutral palette rather than one bespoke hex per
+  // extension (DESIGN-6 consolidation — see report for the mapping).
   const getFileIcon = (fileName: string) => {
     const ext = fileName.toLowerCase().split('.').pop();
     const iconSize = 12; // Compact view: 12px icons
-    
+
     switch (ext) {
       // Images
       case 'jpg':
@@ -120,16 +125,16 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
       case 'bmp':
       case 'tiff':
       case 'ico':
-        return <Image size={iconSize} className="file-icon image" style={{ color: '#10b981' }} />;
-      
+        return <Image size={iconSize} className="file-icon image" />;
+
       // RAW Image formats
       case 'raw':
       case 'cr2':
       case 'nef':
       case 'arw':
       case 'dng':
-        return <Camera size={iconSize} className="file-icon camera" style={{ color: '#059669' }} />;
-      
+        return <Camera size={iconSize} className="file-icon camera" />;
+
       // Videos
       case 'mp4':
       case 'mov':
@@ -140,14 +145,14 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
       case 'wmv':
       case 'm4v':
       case '3gp':
-        return <Video size={iconSize} className="file-icon video" style={{ color: '#dc2626' }} />;
-      
+        return <Video size={iconSize} className="file-icon video" />;
+
       // Professional video
       case 'prores':
       case 'dnxhd':
       case 'avchd':
-        return <Film size={iconSize} className="file-icon film" style={{ color: '#991b1b' }} />;
-      
+        return <Film size={iconSize} className="file-icon film" />;
+
       // Audio
       case 'mp3':
       case 'wav':
@@ -157,120 +162,120 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
       case 'm4a':
       case 'wma':
       case 'opus':
-        return <Music size={iconSize} className="file-icon audio" style={{ color: '#7c3aed' }} />;
-      
+        return <Music size={iconSize} className="file-icon audio" />;
+
       // Professional audio
       case 'aiff':
       case 'au':
       case 'pcm':
-        return <Headphones size={iconSize} className="file-icon headphones" style={{ color: '#5b21b6' }} />;
-      
+        return <Headphones size={iconSize} className="file-icon headphones" />;
+
       // Documents
       case 'pdf':
-        return <FileText size={iconSize} className="file-icon pdf" style={{ color: '#dc2626' }} />;
+        return <FileText size={iconSize} className="file-icon pdf" />;
       case 'doc':
       case 'docx':
       case 'odt':
       case 'rtf':
-        return <BookOpen size={iconSize} className="file-icon document" style={{ color: '#2563eb' }} />;
+        return <BookOpen size={iconSize} className="file-icon document" />;
       case 'txt':
       case 'md':
       case 'readme':
-        return <ScrollText size={iconSize} className="file-icon text" style={{ color: '#6b7280' }} />;
-      
+        return <ScrollText size={iconSize} className="file-icon text" />;
+
       // Presentations
       case 'ppt':
       case 'pptx':
       case 'odp':
       case 'key':
-        return <Presentation size={iconSize} className="file-icon presentation" style={{ color: '#ea580c' }} />;
-      
+        return <Presentation size={iconSize} className="file-icon presentation" />;
+
       // Spreadsheets
       case 'xls':
       case 'xlsx':
       case 'ods':
       case 'csv':
       case 'numbers':
-        return <FileSpreadsheet size={iconSize} className="file-icon spreadsheet" style={{ color: '#16a34a' }} />;
-      
+        return <FileSpreadsheet size={iconSize} className="file-icon spreadsheet" />;
+
       // Code files
       case 'js':
       case 'jsx':
       case 'ts':
       case 'tsx':
-        return <FileCode size={iconSize} className="file-icon javascript" style={{ color: '#f59e0b' }} />;
+        return <FileCode size={iconSize} className="file-icon javascript" />;
       case 'html':
       case 'htm':
       case 'xml':
-        return <Globe size={iconSize} className="file-icon web" style={{ color: '#ea580c' }} />;
+        return <Globe size={iconSize} className="file-icon web" />;
       case 'css':
       case 'scss':
       case 'sass':
       case 'less':
-        return <Palette size={iconSize} className="file-icon css" style={{ color: '#3b82f6' }} />;
+        return <Palette size={iconSize} className="file-icon css" />;
       case 'json':
       case 'yaml':
       case 'yml':
-        return <FileJson size={iconSize} className="file-icon json" style={{ color: '#10b981' }} />;
+        return <FileJson size={iconSize} className="file-icon json" />;
       case 'py':
       case 'pyc':
       case 'pyo':
-        return <FileCode size={iconSize} className="file-icon python" style={{ color: '#3776ab' }} />;
+        return <FileCode size={iconSize} className="file-icon python" />;
       case 'java':
       case 'class':
       case 'jar':
-        return <FileCode size={iconSize} className="file-icon java" style={{ color: '#ed8936' }} />;
+        return <FileCode size={iconSize} className="file-icon java" />;
       case 'php':
-        return <FileCode size={iconSize} className="file-icon php" style={{ color: '#777bb4' }} />;
+        return <FileCode size={iconSize} className="file-icon php" />;
       case 'rb':
       case 'gem':
-        return <FileCode size={iconSize} className="file-icon ruby" style={{ color: '#cc342d' }} />;
+        return <FileCode size={iconSize} className="file-icon ruby" />;
       case 'go':
-        return <FileCode size={iconSize} className="file-icon go" style={{ color: '#00add8' }} />;
+        return <FileCode size={iconSize} className="file-icon go" />;
       case 'rs':
-        return <FileCode size={iconSize} className="file-icon rust" style={{ color: '#ce422b' }} />;
+        return <FileCode size={iconSize} className="file-icon rust" />;
       case 'swift':
-        return <FileCode size={iconSize} className="file-icon swift" style={{ color: '#fa7343' }} />;
+        return <FileCode size={iconSize} className="file-icon swift" />;
       case 'kt':
       case 'kts':
-        return <FileCode size={iconSize} className="file-icon kotlin" style={{ color: '#7f52ff' }} />;
+        return <FileCode size={iconSize} className="file-icon kotlin" />;
       case 'c':
       case 'h':
-        return <FileCode size={iconSize} className="file-icon c" style={{ color: '#555555' }} />;
+        return <FileCode size={iconSize} className="file-icon c" />;
       case 'cpp':
       case 'cc':
       case 'cxx':
       case 'hpp':
-        return <FileCode size={iconSize} className="file-icon cpp" style={{ color: '#00599c' }} />;
+        return <FileCode size={iconSize} className="file-icon cpp" />;
       case 'cs':
-        return <FileCode size={iconSize} className="file-icon csharp" style={{ color: '#239120' }} />;
+        return <FileCode size={iconSize} className="file-icon csharp" />;
       case 'sh':
       case 'bash':
       case 'zsh':
       case 'fish':
-        return <Monitor size={iconSize} className="file-icon shell" style={{ color: '#4ade80' }} />;
+        return <Monitor size={iconSize} className="file-icon shell" />;
       case 'bat':
       case 'cmd':
       case 'ps1':
-        return <Monitor size={iconSize} className="file-icon windows" style={{ color: '#0078d4' }} />;
-      
+        return <Monitor size={iconSize} className="file-icon windows" />;
+
       // Configuration files
       case 'config':
       case 'conf':
       case 'ini':
       case 'cfg':
-        return <Settings size={iconSize} className="file-icon config" style={{ color: '#6b7280' }} />;
+        return <Settings size={iconSize} className="file-icon config" />;
       case 'env':
       case 'environment':
-        return <Zap size={iconSize} className="file-icon env" style={{ color: '#eab308' }} />;
-      
+        return <Zap size={iconSize} className="file-icon env" />;
+
       // Database files
       case 'sql':
       case 'db':
       case 'sqlite':
       case 'sqlite3':
-        return <Database size={iconSize} className="file-icon database" style={{ color: '#3b82f6' }} />;
-      
+        return <Database size={iconSize} className="file-icon database" />;
+
       // Archives
       case 'zip':
       case 'rar':
@@ -280,8 +285,8 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
       case 'bz2':
       case 'xz':
       case 'lz':
-        return <Archive size={iconSize} className="file-icon archive" style={{ color: '#8b5cf6' }} />;
-      
+        return <Archive size={iconSize} className="file-icon archive" />;
+
       // Executables and packages
       case 'exe':
       case 'msi':
@@ -290,39 +295,39 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
       case 'pkg':
       case 'dmg':
       case 'app':
-        return <Package size={iconSize} className="file-icon package" style={{ color: '#ef4444' }} />;
-      
+        return <Package size={iconSize} className="file-icon package" />;
+
       // Mobile app files
       case 'apk':
       case 'ipa':
       case 'aab':
-        return <Smartphone size={iconSize} className="file-icon mobile" style={{ color: '#06b6d4' }} />;
-      
+        return <Smartphone size={iconSize} className="file-icon mobile" />;
+
       // Binary and system files
       case 'bin':
       case 'dat':
       case 'tmp':
       case 'cache':
-        return <Binary size={iconSize} className="file-icon binary" style={{ color: '#64748b' }} />;
+        return <Binary size={iconSize} className="file-icon binary" />;
       case 'iso':
       case 'img':
       case 'vhd':
       case 'vmdk':
-        return <HardDrive size={iconSize} className="file-icon disk" style={{ color: '#374151' }} />;
-      
+        return <HardDrive size={iconSize} className="file-icon disk" />;
+
       // Fonts
       case 'ttf':
       case 'otf':
       case 'woff':
       case 'woff2':
       case 'eot':
-        return <FileType2 size={iconSize} className="file-icon font" style={{ color: '#78716c' }} />;
-      
+        return <FileType2 size={iconSize} className="file-icon font" />;
+
       // Bookmarks
       case 'url':
       case 'webloc':
-        return <Bookmark size={iconSize} className="file-icon bookmark" style={{ color: '#f59e0b' }} />;
-      
+        return <Bookmark size={iconSize} className="file-icon bookmark" />;
+
       // Design files (Figma, Sketch, etc.)
       case 'fig':
       case 'sketch':
@@ -330,11 +335,11 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
       case 'ai':
       case 'psd':
       case 'indd':
-        return <Palette size={iconSize} className="file-icon design" style={{ color: '#ec4899' }} />;
-      
+        return <Palette size={iconSize} className="file-icon design" />;
+
       // Default fallback
       default:
-        return <File size={iconSize} className="file-icon default" style={{ color: '#9ca3af' }} />;
+        return <File size={iconSize} className="file-icon default" />;
     }
   };
 
@@ -657,11 +662,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                       {activity.fileName}
                       {/* Show folder location for uploads */}
                       {activity.type === 'upload' && activity.status === 'completed' && (
-                        <div className="activity-location" style={{
-                          fontSize: '12px',
-                          color: 'var(--gray-600)',
-                          marginTop: '2px'
-                        }}>
+                        <div className="activity-location">
                           uploaded to{' '}
                           <button
                             className="folder-link"
@@ -679,22 +680,6 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                                   console.error('Failed to open folder:', error);
                                 }
                               }
-                            }}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              padding: 0,
-                              color: 'var(--ardrive-primary-600)',
-                              textDecoration: 'underline',
-                              cursor: 'pointer',
-                              fontSize: 'inherit',
-                              fontFamily: 'inherit'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.color = 'var(--ardrive-primary-700)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.color = 'var(--ardrive-primary-600)';
                             }}
                           >
                             {(() => {
@@ -882,94 +867,66 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                 <div className="detail-row">
                   <span className="detail-label">Activity Type:</span>
                   <span className="detail-value">
-                    <span style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-1)',
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      fontWeight: '500',
-                      backgroundColor: selectedActivityDetails.type === 'upload' ? 'var(--success-100)' : 'var(--info-100)',
-                      color: selectedActivityDetails.type === 'upload' ? 'var(--success-700)' : 'var(--info-700)'
-                    }}>
+                    <span className={`detail-badge ${selectedActivityDetails.type === 'upload' ? 'detail-badge-success' : 'detail-badge-info'}`}>
                       {getActivityTypeIcon(selectedActivityDetails.type)}
                       {selectedActivityDetails.type === 'upload' ? 'Upload' : 'Download'}
                     </span>
                   </span>
                 </div>
-                
+
                 <div className="detail-row">
                   <span className="detail-label">File Size:</span>
                   <span className="detail-value">
                     {formatFileSize(selectedActivityDetails.fileSize)}
                     {selectedActivityDetails.fileSize && selectedActivityDetails.fileSize > 0 && (
-                      <span style={{ color: 'var(--gray-500)', marginLeft: 'var(--space-2)' }}>
+                      <span style={{ color: 'var(--text-tertiary)', marginLeft: 'var(--space-2)' }}>
                         ({selectedActivityDetails.fileSize.toLocaleString()} bytes)
                       </span>
                     )}
                   </span>
                 </div>
-                
+
                 <div className="detail-row">
                   <span className="detail-label">Timestamp:</span>
                   <span className="detail-value">
                     {selectedActivityDetails.timestamp.toLocaleDateString('en-US', {
                       year: 'numeric',
-                      month: 'long', 
+                      month: 'long',
                       day: 'numeric',
                       hour: '2-digit',
                       minute: '2-digit'
                     })}
                   </span>
                 </div>
-                
+
                 <div className="detail-row">
                   <span className="detail-label">Status:</span>
                   <span className="detail-value">
-                    <span style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-1)',
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      fontWeight: '500',
-                      backgroundColor: selectedActivityDetails.status === 'completed' ? 'var(--success-100)' : 
-                                       selectedActivityDetails.status === 'failed' ? 'var(--danger-100)' : 'var(--gray-100)',
-                      color: selectedActivityDetails.status === 'completed' ? 'var(--success-700)' : 
-                             selectedActivityDetails.status === 'failed' ? 'var(--danger-700)' : 'var(--gray-700)'
-                    }}>
+                    <span className={`detail-badge ${
+                      selectedActivityDetails.status === 'completed' ? 'detail-badge-success' :
+                      selectedActivityDetails.status === 'failed' ? 'detail-badge-danger' : 'detail-badge-neutral'
+                    }`}>
                       {getStatusIcon(selectedActivityDetails.status)}
                       {selectedActivityDetails.status}
                     </span>
                   </span>
                 </div>
-                
+
                 {selectedActivityDetails.progress !== undefined && selectedActivityDetails.status !== 'completed' && (
                   <div className="detail-row">
                     <span className="detail-label">Progress:</span>
                     <span className="detail-value">
                       {selectedActivityDetails.progress}%
-                      <div style={{
-                        width: '100px',
-                        height: '6px',
-                        backgroundColor: 'var(--gray-200)',
-                        borderRadius: '3px',
-                        overflow: 'hidden',
-                        marginLeft: 'var(--space-2)'
-                      }}>
-                        <div style={{
-                          width: `${selectedActivityDetails.progress}%`,
-                          height: '100%',
-                          backgroundColor: selectedActivityDetails.type === 'upload' ? 'var(--success-500)' : 'var(--info-500)',
-                          transition: 'width 0.3s ease'
-                        }} />
+                      <div className="detail-progress-track">
+                        <div
+                          className={`detail-progress-fill ${selectedActivityDetails.type === 'upload' ? 'upload' : 'download'}`}
+                          style={{ width: `${selectedActivityDetails.progress}%` }}
+                        />
                       </div>
                     </span>
                   </div>
                 )}
-                
+
                 {selectedActivityDetails.error && (
                   <div className="detail-row">
                     <span className="detail-label">Error:</span>

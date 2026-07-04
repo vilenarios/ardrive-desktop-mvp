@@ -1,0 +1,162 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <!-- DESIGN-6 static render — real app stylesheet. Markup mirrors the real
+       StorageTab.tsx JSX + classNames post-DESIGN-6 (explorer-controls,
+       file-item rows, hidden-badge, grid-preview-button, action-menu). -->
+  <link rel="stylesheet" href="../../src/renderer/styles.css" />
+  <link rel="stylesheet" href="design6-tabnav-harness.css" />
+  <style>
+    html, body { height: 100%; }
+    body { margin: 0; background: var(--gray-50); }
+    .ic, .ic-sm, .ic-file {
+      stroke: currentColor; stroke-width: 2; fill: none;
+      stroke-linecap: round; stroke-linejoin: round; flex: none;
+    }
+    .ic { width: 16px; height: 16px; }
+    .ic-sm { width: 14px; height: 14px; }
+    .ic-file { width: 16px; height: 16px; }
+  </style>
+</head>
+<body>
+  <div class="tab-navigation-wrapper dashboard-tabs">
+    <div class="tab-navigation">
+      <div class="tab-list" role="tablist">
+        <button class="tab-button"><span class="tab-label">Overview</span></button>
+        <button class="tab-button"><span class="tab-label">Upload Queue</span></button>
+        <button class="tab-button"><span class="tab-label">Download Queue</span></button>
+        <button class="tab-button"><span class="tab-label">Activity</span></button>
+        <button class="tab-button active"><span class="tab-label">Permaweb</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-content">
+    <div class="tab-content-inner">
+      <div class="storage-tab-wrapper">
+        <div class="storage-tab">
+
+          <div class="explorer-controls">
+            <div class="breadcrumb">
+              <button class="breadcrumb-item"><svg class="ic-sm" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Root</button>
+              <svg class="ic-sm" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+              <button class="breadcrumb-item">Reports</button>
+            </div>
+            <div class="controls-row">
+              <div class="search-filter-group">
+                <div class="search-box">
+                  <svg class="ic-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input type="text" placeholder="Search files and folders..." />
+                </div>
+                <select class="filter-select">
+                  <option>All Items</option>
+                </select>
+              </div>
+              <div class="view-actions">
+                <div class="view-toggle">
+                  <button class="view-button active"><svg class="ic-sm" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
+                  <button class="view-button"><svg class="ic-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></button>
+                </div>
+                <button class="button small outline" style="display:flex;align-items:center;gap:var(--space-1);margin-left:var(--space-4);">
+                  <svg class="ic-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                  Refresh
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="file-explorer list">
+            <div class="file-list">
+              <div class="list-header">
+                <div class="col-name">Name</div><div class="col-size">Size</div><div class="col-modified">Modified</div><div class="col-actions"></div>
+              </div>
+
+              <!-- Folder -->
+              <div class="file-item folder">
+                <div class="item-main">
+                  <div class="item-icon" style="display:flex;align-items:center;gap:4px;">
+                    <svg class="ic-file folder-icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                  </div>
+                  <div class="item-info"><div class="item-name file-name">Invoices</div></div>
+                </div>
+                <div class="col-size">—</div>
+                <div class="col-modified">3 days ago</div>
+                <div class="col-actions"></div>
+              </div>
+
+              <!-- Synced image file -->
+              <div class="file-item file selected">
+                <div class="item-main">
+                  <div class="item-icon" style="display:flex;align-items:center;gap:4px;">
+                    <svg class="ic-file file-icon image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    <svg class="ic-sm status-icon synced" style="color:var(--success-600);" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                  </div>
+                  <div class="item-info"><div class="item-name file-name">quarterly-report-cover.png</div></div>
+                </div>
+                <div class="col-size">2.4 MB</div>
+                <div class="col-modified">12 min ago</div>
+                <div class="col-actions">
+                  <div class="item-actions-container" style="justify-content:flex-end;">
+                    <button class="quick-action" style="opacity:1;color:var(--gray-600);"><svg class="ic-sm" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></button>
+                    <button class="quick-action" style="opacity:1;color:var(--gray-600);"><svg class="ic-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/></svg></button>
+                    <button class="action-menu-trigger" style="opacity:1;color:var(--gray-600);"><svg class="ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Cloud-only file -->
+              <div class="file-item file">
+                <div class="item-main">
+                  <div class="item-icon" style="display:flex;align-items:center;gap:4px;">
+                    <svg class="ic-file file-icon pdf" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <svg class="ic-sm status-icon cloud-only" style="color:var(--gray-500);" viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+                  </div>
+                  <div class="item-info"><div class="item-name file-name">contract-final.pdf</div></div>
+                </div>
+                <div class="col-size">860 KB</div>
+                <div class="col-modified">1 hour ago</div>
+                <div class="col-actions"></div>
+              </div>
+
+              <!-- Hidden (SYNC-5) file -->
+              <div class="file-item file">
+                <div class="item-main">
+                  <div class="item-icon" style="display:flex;align-items:center;gap:4px;">
+                    <svg class="ic-file file-icon archive" viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+                  </div>
+                  <div class="item-info">
+                    <div class="item-name file-name" style="display:inline-block;">design-assets-2026.zip</div>
+                    <span class="hidden-badge" title="Hidden on Arweave">
+                      <svg class="ic-sm" viewBox="0 0 24 24"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                      Hidden
+                    </span>
+                  </div>
+                </div>
+                <div class="col-size">44.1 MB</div>
+                <div class="col-modified">2 hours ago</div>
+                <div class="col-actions"></div>
+              </div>
+
+              <!-- Downloading file with progress -->
+              <div class="file-item file">
+                <div class="item-main">
+                  <div class="item-icon" style="display:flex;align-items:center;gap:4px;">
+                    <svg class="ic-file file-icon video" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                    <svg class="ic-sm status-icon downloading" style="color:var(--info-600);" viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/></svg>
+                  </div>
+                  <div class="item-info"><div class="item-name file-name">product-demo-master.mp4</div></div>
+                </div>
+                <div class="col-size">184.2 MB</div>
+                <div class="col-modified">Just now</div>
+                <div class="col-actions"></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

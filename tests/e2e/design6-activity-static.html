@@ -1,0 +1,194 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <!-- DESIGN-6 static render — real app stylesheet + styles/activity-tab.css
+       (rewritten this item). Markup mirrors the real ActivityTab.tsx JSX +
+       classNames post-DESIGN-6 (unified-activity-item rows, file-icon
+       family classes, context-menu, folder-link, detail-badge modal). -->
+  <link rel="stylesheet" href="../../src/renderer/styles.css" />
+  <link rel="stylesheet" href="design6-tabnav-harness.css" />
+  <style>
+    html, body { height: 100%; }
+    body { margin: 0; background: var(--gray-50); }
+    .ic, .ic-badge, .ic-menu {
+      stroke: currentColor; stroke-width: 2; fill: none;
+      stroke-linecap: round; stroke-linejoin: round; flex: none;
+    }
+    .ic { width: 12px; height: 12px; }
+    .ic-badge { width: 10px; height: 10px; }
+    .ic-menu { width: 14px; height: 14px; }
+    .design6-modal-demo { display: none; }
+    .design6-modal-demo.is-visible { display: flex; }
+  </style>
+</head>
+<body>
+  <div class="tab-navigation-wrapper dashboard-tabs">
+    <div class="tab-navigation">
+      <div class="tab-list" role="tablist">
+        <button class="tab-button"><span class="tab-label">Overview</span></button>
+        <button class="tab-button"><span class="tab-label">Upload Queue</span></button>
+        <button class="tab-button"><span class="tab-label">Download Queue</span></button>
+        <button class="tab-button active"><span class="tab-label">Activity</span></button>
+        <button class="tab-button"><span class="tab-label">Permaweb</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-content">
+    <div class="tab-content-inner">
+      <div class="activity-tab-wrapper">
+        <div class="activity-tab">
+          <div class="activity-header">
+            <h2>Activity for &quot;My Private Drive&quot;</h2>
+            <p>Recent upload and download activity for this drive</p>
+          </div>
+
+          <div class="activity-filters">
+            <div class="filter-group">
+              <input type="text" class="search-input" placeholder="Search activity..." />
+              <select class="filter-select">
+                <option>All Activity</option>
+              </select>
+            </div>
+            <div class="activity-summary"><span>Showing 6 of 42 activities from last 30 days</span></div>
+          </div>
+
+          <div class="unified-activity-stream">
+            <div class="activity-list">
+
+              <!-- Upload, completed, with folder-link -->
+              <div class="unified-activity-item">
+                <div class="activity-type-badge upload"><svg class="ic-badge" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></div>
+                <div class="file-icon-container"><svg class="ic file-icon image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
+                <div class="activity-details">
+                  <div class="activity-description activity-filename">
+                    quarterly-report-cover.png
+                    <div class="activity-location">
+                      uploaded to <button class="folder-link">Reports</button>
+                    </div>
+                  </div>
+                  <div class="activity-meta">
+                    <span>2.4 MB</span><span>•</span><span>12 min ago</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Download, completed -->
+              <div class="unified-activity-item">
+                <div class="activity-type-badge download"><svg class="ic-badge" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></div>
+                <div class="file-icon-container"><svg class="ic file-icon pdf" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+                <div class="activity-details">
+                  <div class="activity-description activity-filename">contract-final.pdf</div>
+                  <div class="activity-meta"><span>860 KB</span><span>•</span><span>1 hour ago</span></div>
+                </div>
+              </div>
+
+              <!-- Upload, in progress -->
+              <div class="unified-activity-item">
+                <div class="activity-type-badge upload"><svg class="ic-badge" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></div>
+                <div class="file-icon-container"><svg class="ic file-icon video" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+                <div class="activity-details">
+                  <div class="activity-description activity-filename">product-demo-master.mp4</div>
+                  <div class="activity-meta">
+                    <span>184.2 MB</span><span>•</span><span>Just now</span><span>•</span>
+                    <span style="color: var(--info-600); font-weight:500;">63%</span>
+                  </div>
+                  <div class="activity-progress">
+                    <div class="progress-bar"><div class="progress-fill upload" style="width:63%;"></div></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Download, failed, with error message -->
+              <div class="unified-activity-item">
+                <div class="activity-type-badge download"><svg class="ic-badge" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></div>
+                <div class="file-icon-container"><svg class="ic file-icon archive" viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><line x1="10" y1="12" x2="14" y2="12"/></svg></div>
+                <div class="activity-details">
+                  <div class="activity-description activity-filename">design-assets-2026.zip</div>
+                  <div class="activity-meta"><span>44.1 MB</span><span>•</span><span>2 hours ago</span></div>
+                  <div class="error-message">Network timeout — gateway did not respond</div>
+                </div>
+              </div>
+
+              <!-- Upload, completed, code file -->
+              <div class="unified-activity-item">
+                <div class="activity-type-badge upload"><svg class="ic-badge" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></div>
+                <div class="file-icon-container"><svg class="ic file-icon javascript" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+                <div class="activity-details">
+                  <div class="activity-description activity-filename">sync-manager.ts</div>
+                  <div class="activity-meta"><span>18 KB</span><span>•</span><span>3 hours ago</span></div>
+                </div>
+              </div>
+
+              <!-- Hovered row — context menu open (demonstrates dropdown + polish) -->
+              <div class="unified-activity-item">
+                <div class="activity-type-badge upload"><svg class="ic-badge" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></div>
+                <div class="file-icon-container"><svg class="ic file-icon document" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg></div>
+                <div class="activity-details">
+                  <div class="activity-description activity-filename">meeting-notes.docx</div>
+                  <div class="activity-meta"><span>32 KB</span><span>•</span><span>5 hours ago</span></div>
+                </div>
+                <div class="context-menu-trigger">
+                  <button class="context-menu-button"><svg class="ic-menu" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+                  <div class="context-menu-dropdown">
+                    <button class="context-menu-item"><svg class="ic-menu" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/></svg>Open</button>
+                    <button class="context-menu-item"><svg class="ic-menu" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/></svg>Copy Link</button>
+                    <button class="context-menu-item"><svg class="ic-menu" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>View Details</button>
+                    <button class="context-menu-item"><svg class="ic-menu" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>View Online</button>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <div class="load-more-container">
+              <button class="load-more-button">Load More (36 remaining)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bonus evidence: Activity Details modal — detail-badge pills now use
+       tokens + var(--radius-pill) instead of inline styles with a
+       hardcoded borderRadius: '12px'. Hidden by default. -->
+  <div class="modal-overlay design6-modal-demo">
+    <div class="modal-content" style="max-width:520px;">
+      <div class="modal-header">
+        <h3 style="display:flex;align-items:center;gap:var(--space-2);margin:0;font-size:18px;font-weight:600;">
+          <svg class="ic" style="width:16px;height:16px;" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+          product-demo-master.mp4
+        </h3>
+        <button class="modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="details-grid">
+          <div class="detail-row">
+            <span class="detail-label">Activity Type:</span>
+            <span class="detail-value"><span class="detail-badge detail-badge-success"><svg class="ic-badge" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/></svg>Upload</span></span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Status:</span>
+            <span class="detail-value"><span class="detail-badge detail-badge-info"><svg class="ic-badge" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>uploading</span></span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Progress:</span>
+            <span class="detail-value">63%
+              <div class="detail-progress-track"><div class="detail-progress-fill upload" style="width:63%;"></div></div>
+            </span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">File Size:</span>
+            <span class="detail-value">184.2 MB <span style="color:var(--text-tertiary);margin-left:var(--space-2);">(193,199,850 bytes)</span></span>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="button small outline">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
