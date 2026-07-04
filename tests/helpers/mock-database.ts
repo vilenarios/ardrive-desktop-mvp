@@ -31,7 +31,13 @@ export class MockDatabaseManager {
   public addProcessedFile = vi.fn();
   public removeProcessedFile = vi.fn();
   public getLatestFileVersion = vi.fn();
+  public getFileByPath = vi.fn();
   public getFolderByPath = vi.fn();
+  public markFolderDeleted = vi.fn();
+  public updateFilePath = vi.fn();
+  public updateDriveMetadataName = vi.fn();
+  public updateDriveMetadataParent = vi.fn();
+  public updateDriveMetadataHidden = vi.fn();
   public addFolder = vi.fn();
   public updateFolderArweaveId = vi.fn();
   public addFileVersion = vi.fn();
@@ -61,7 +67,13 @@ export class MockDatabaseManager {
     this.getDownloads.mockResolvedValue([]);
     this.getProcessedFiles.mockResolvedValue([]);
     this.getLatestFileVersion.mockResolvedValue(null);
+    this.getFileByPath.mockResolvedValue(null);
     this.getFolderByPath.mockResolvedValue(null);
+    this.markFolderDeleted.mockResolvedValue(undefined);
+    this.updateFilePath.mockResolvedValue(undefined);
+    this.updateDriveMetadataName.mockResolvedValue(undefined);
+    this.updateDriveMetadataParent.mockResolvedValue(undefined);
+    this.updateDriveMetadataHidden.mockResolvedValue(undefined);
     this.addFolder.mockResolvedValue(undefined);
     this.updateFolderArweaveId.mockResolvedValue(undefined);
   }

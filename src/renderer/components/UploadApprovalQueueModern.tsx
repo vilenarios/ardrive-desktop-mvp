@@ -385,11 +385,12 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
         return `Rename: ${oldName} → ${newName}`;
       }
       case 'hide':
-        return `Hide file from view`;
-      case 'unhide':
-        return `Show hidden file`;
       case 'delete':
-        return `Delete from permaweb`;
+        // D-011: honest permanence. A local delete hides the item on Arweave —
+        // it is NOT erased (permanent storage cannot delete). Unhide reverses it.
+        return `Removed locally — hide on Arweave (can't be erased): ${upload.fileName}`;
+      case 'unhide':
+        return `Unhide on Arweave — restore to view: ${upload.fileName}`;
       default:
         return upload.fileName;
     }

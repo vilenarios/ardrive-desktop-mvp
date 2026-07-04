@@ -832,6 +832,221 @@ describe('SyncManager', () => {
     });
   });
 
+  describe('Deletes propagate as ArFS hide (SYNC-5)', () => {
+    // Valid entity ids (EID() validates UUID shape).
+    const fileEntityId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const folderEntityId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const privateMapping = { ...testMapping, drivePrivacy: 'private' as const };
+
+    beforeEach(() => {
+      syncManager['driveId'] = testDriveId;
+      syncManager['rootFolderId'] = testRootFolderId;
+    });
+
+    afterEach(() => {
+      driveKeyManager.clearAllKeys();
+    });
+
+    const makeHideOp = (over: any = {}) =>
+      ({
+        id: 'hide-op-1',
+        driveId: testDriveId,
+        localPath: `${testSyncPath}/gone.txt`,
+        fileName: 'gone.txt',
+        fileSize: 0,
+        status: 'awaiting_approval',
+        operationType: 'hide',
+        metadata: { isHidden: true },
+        createdAt: new Date(),
+        ...over,
+      }) as any;
+
+    // --- executeMetadataOperation routing (money-critical; mutation target) ---
+
+    it('hides a PUBLIC file via hidePublicFile (no driveKey)', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([testMapping]);
+
+      await syncManager.executeMetadataOperation(makeHideOp({ arfsFileId: fileEntityId }));
+
+      expect(mockArDrive.hidePublicFile).toHaveBeenCalledTimes(1);
+      expect(mockArDrive.hidePublicFile.mock.calls[0][0].fileId.toString()).toBe(fileEntityId);
+      // Never the private path, never a folder path
+      expect(mockArDrive.hidePrivateFile).not.toHaveBeenCalled();
+      expect(mockArDrive.hidePublicFolder).not.toHaveBeenCalled();
+    });
+
+    it('hides a PRIVATE file via hidePrivateFile WITH the cached drive key', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      const key = { keyData: Buffer.from('secret') } as any;
+      driveKeyManager.cacheKey(testDriveId, key);
+
+      await syncManager.executeMetadataOperation(makeHideOp({ arfsFileId: fileEntityId }));
+
+      expect(mockArDrive.hidePrivateFile).toHaveBeenCalledTimes(1);
+      const arg = mockArDrive.hidePrivateFile.mock.calls[0][0];
+      expect(arg.fileId.toString()).toBe(fileEntityId);
+      expect(arg.driveKey).toBe(key);
+      expect(mockArDrive.hidePublicFile).not.toHaveBeenCalled();
+    });
+
+    it('refuses to hide on a LOCKED private drive (no key) — spends nothing', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      // No key cached => locked
+
+      await expect(
+        syncManager.executeMetadataOperation(makeHideOp({ arfsFileId: fileEntityId }))
+      ).rejects.toThrow(/locked/i);
+
+      expect(mockArDrive.hidePrivateFile).not.toHaveBeenCalled();
+      expect(mockArDrive.hidePublicFile).not.toHaveBeenCalled();
+    });
+
+    it('hides a PUBLIC folder via hidePublicFolder (folder id path, not file path)', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([testMapping]);
+
+      await syncManager.executeMetadataOperation(
+        makeHideOp({ arfsFolderId: folderEntityId, mimeType: 'folder', fileName: 'GoneFolder' })
+      );
+
+      expect(mockArDrive.hidePublicFolder).toHaveBeenCalledTimes(1);
+      expect(mockArDrive.hidePublicFolder.mock.calls[0][0].folderId.toString()).toBe(folderEntityId);
+      expect(mockArDrive.hidePublicFile).not.toHaveBeenCalled();
+    });
+
+    it('hides a PRIVATE folder via hidePrivateFolder WITH the drive key', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      const key = { keyData: Buffer.from('secret') } as any;
+      driveKeyManager.cacheKey(testDriveId, key);
+
+      await syncManager.executeMetadataOperation(
+        makeHideOp({ arfsFolderId: folderEntityId, mimeType: 'folder' })
+      );
+
+      expect(mockArDrive.hidePrivateFolder).toHaveBeenCalledTimes(1);
+      const arg = mockArDrive.hidePrivateFolder.mock.calls[0][0];
+      expect(arg.folderId.toString()).toBe(folderEntityId);
+      expect(arg.driveKey).toBe(key);
+    });
+
+    it('UNHIDE reverses: a public-file unhide calls unhidePublicFile, never hide', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([testMapping]);
+
+      await syncManager.executeMetadataOperation(
+        makeHideOp({ operationType: 'unhide', arfsFileId: fileEntityId, metadata: { isHidden: false } })
+      );
+
+      expect(mockArDrive.unhidePublicFile).toHaveBeenCalledTimes(1);
+      expect(mockArDrive.unhidePublicFile.mock.calls[0][0].fileId.toString()).toBe(fileEntityId);
+      expect(mockArDrive.hidePublicFile).not.toHaveBeenCalled();
+    });
+
+    it('UNHIDE on a private folder calls unhidePrivateFolder with the drive key', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      const key = { keyData: Buffer.from('secret') } as any;
+      driveKeyManager.cacheKey(testDriveId, key);
+
+      await syncManager.executeMetadataOperation(
+        makeHideOp({ operationType: 'unhide', arfsFolderId: folderEntityId, mimeType: 'folder', metadata: { isHidden: false } })
+      );
+
+      expect(mockArDrive.unhidePrivateFolder).toHaveBeenCalledTimes(1);
+      expect(mockArDrive.unhidePrivateFolder.mock.calls[0][0].driveKey).toBe(key);
+      expect(mockArDrive.hidePrivateFolder).not.toHaveBeenCalled();
+    });
+
+    it('records the new hidden state in the metadata cache (true on hide, false on unhide)', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([testMapping]);
+
+      await syncManager.executeMetadataOperation(makeHideOp({ arfsFileId: fileEntityId }));
+      expect(mockDatabaseManager.updateDriveMetadataHidden).toHaveBeenCalledWith(fileEntityId, true);
+
+      mockDatabaseManager.updateDriveMetadataHidden.mockClear();
+      await syncManager.executeMetadataOperation(
+        makeHideOp({ operationType: 'unhide', arfsFileId: fileEntityId, metadata: { isHidden: false } })
+      );
+      expect(mockDatabaseManager.updateDriveMetadataHidden).toHaveBeenCalledWith(fileEntityId, false);
+    });
+
+    it('throws (and spends nothing) when the entity id is missing', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([testMapping]);
+
+      await expect(
+        syncManager.executeMetadataOperation(makeHideOp({ arfsFileId: undefined, arfsFolderId: undefined }))
+      ).rejects.toThrow(/Missing entity ID/);
+      expect(mockArDrive.hidePublicFile).not.toHaveBeenCalled();
+    });
+
+    // --- confirmed local delete -> hide op in the approval queue ---
+
+    it('a confirmed file delete queues a hide op (awaiting_approval) for an uploaded file', async () => {
+      await syncManager['confirmFileDelete']({
+        type: 'delete',
+        oldPath: `${testSyncPath}/gone.txt`,
+        oldArfsFileId: fileEntityId,
+        reason: 'confirmed',
+      } as any);
+
+      expect(mockDatabaseManager.addPendingUpload).toHaveBeenCalledTimes(1);
+      const op = mockDatabaseManager.addPendingUpload.mock.calls[0][0];
+      expect(op).toMatchObject({
+        operationType: 'hide',
+        status: 'awaiting_approval',
+        arfsFileId: fileEntityId,
+        metadata: { isHidden: true },
+      });
+      // Honest, free metadata-op cost
+      expect(op.estimatedTurboCost).toBe(0);
+      expect(
+        mockWebContentsSend.mock.calls.some((c: any[]) => c[0] === 'sync:pending-uploads-updated')
+      ).toBe(true);
+    });
+
+    it('a confirmed delete of a NEVER-uploaded file queues nothing (nothing to hide)', async () => {
+      await syncManager['confirmFileDelete']({
+        type: 'delete',
+        oldPath: `${testSyncPath}/local-only.txt`,
+        oldArfsFileId: undefined,
+        reason: 'confirmed',
+      } as any);
+
+      expect(mockDatabaseManager.addPendingUpload).not.toHaveBeenCalled();
+    });
+
+    it('does not double-queue a hide when one is already pending for the file', async () => {
+      mockDatabaseManager.getPendingUploads.mockResolvedValue([
+        { id: 'existing', operationType: 'hide', arfsFileId: fileEntityId, status: 'awaiting_approval' },
+      ]);
+
+      await syncManager['confirmFileDelete']({
+        type: 'delete', oldPath: `${testSyncPath}/gone.txt`, oldArfsFileId: fileEntityId, reason: 'x',
+      } as any);
+
+      expect(mockDatabaseManager.addPendingUpload).not.toHaveBeenCalled();
+    });
+
+    it('a confirmed folder delete queues a folder hide op AND marks the folder deleted', async () => {
+      await syncManager['confirmFolderDelete'](`${testSyncPath}/GoneFolder`, folderEntityId);
+
+      expect(mockDatabaseManager.addPendingUpload).toHaveBeenCalledTimes(1);
+      const op = mockDatabaseManager.addPendingUpload.mock.calls[0][0];
+      expect(op).toMatchObject({
+        operationType: 'hide',
+        status: 'awaiting_approval',
+        arfsFolderId: folderEntityId,
+        mimeType: 'folder',
+        metadata: { isHidden: true },
+      });
+      expect(mockDatabaseManager.markFolderDeleted).toHaveBeenCalledWith(`${testSyncPath}/GoneFolder`);
+    });
+
+    it('a confirmed delete of an un-uploaded folder queues nothing but still marks it deleted', async () => {
+      await syncManager['confirmFolderDelete'](`${testSyncPath}/LocalFolder`, undefined);
+
+      expect(mockDatabaseManager.addPendingUpload).not.toHaveBeenCalled();
+      expect(mockDatabaseManager.markFolderDeleted).toHaveBeenCalledWith(`${testSyncPath}/LocalFolder`);
+    });
+  });
+
   describe('Error Scenarios', () => {
     it('should surface database failures and return to idle', async () => {
       mockDatabaseManager.getDriveMappings.mockRejectedValue(new Error('Database error'));

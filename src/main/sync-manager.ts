@@ -13,7 +13,7 @@ import { CostCalculator } from './sync/CostCalculator';
 import { UploadQueueManager } from './sync/UploadQueueManager';
 import { DownloadManager } from './sync/DownloadManager';
 import { FolderOperationDetector, OperationDetection } from './sync/FolderOperationDetector';
-import { FileOperationDetector } from './sync/FileOperationDetector';
+import { FileOperationDetector, FileOperationDetection } from './sync/FileOperationDetector';
 import { driveKeyManager } from './drive-key-manager';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
 
@@ -1483,8 +1483,77 @@ export class SyncManager {
       console.error(`Error getting file info for deleted file ${filePath}:`, error);
     }
     
-    // Use the file operation detector
-    await this.fileOperationDetector.onFileDelete(filePath, existingHash, fileInfo?.arfsFileId);
+    // Use the file operation detector. SYNC-5: on a CONFIRMED delete (not a
+    // move/rename resolved within the detection window), propagate it as an
+    // ArFS hide operation into the approval queue.
+    await this.fileOperationDetector.onFileDelete(
+      filePath,
+      existingHash,
+      fileInfo?.arfsFileId,
+      (detection) => this.confirmFileDelete(detection)
+    );
+  }
+
+  // SYNC-5: a confirmed local file delete becomes an ArFS "hide" operation in
+  // the approval queue (permanent storage cannot truly delete — D-011).
+  private async confirmFileDelete(detection: FileOperationDetection): Promise<void> {
+    const filePath = detection.oldPath;
+    if (!filePath) return;
+
+    try {
+      const arfsFileId = detection.oldArfsFileId;
+
+      // A file that was never uploaded to ArDrive has nothing to hide — it only
+      // existed locally. Nothing to propagate.
+      if (!arfsFileId) {
+        console.log(`Confirmed delete of un-uploaded file, nothing to hide on ArFS: ${filePath}`);
+        return;
+      }
+
+      // Don't queue a duplicate hide for the same file if one is already pending.
+      const existingPending = await this.databaseManager.getPendingUploads();
+      const alreadyQueued = existingPending.some(
+        (p) => p.operationType === 'hide' && p.arfsFileId === arfsFileId
+      );
+      if (alreadyQueued) {
+        console.log(`Hide operation already pending for file ${arfsFileId}, skipping duplicate`);
+        return;
+      }
+
+      const mappings = await this.databaseManager.getDriveMappings();
+      const activeMapping = mappings.find((m: any) => m.isActive);
+      const driveId = activeMapping?.driveId || this.driveId || undefined;
+
+      const hideOperation: Omit<PendingUpload, 'createdAt'> = {
+        id: crypto.randomUUID(),
+        driveId,
+        localPath: filePath,
+        fileName: path.basename(filePath),
+        fileSize: 0, // metadata-only op; size is irrelevant
+        mimeType: 'application/octet-stream',
+        // A hide is a metadata-only revision — tiny, well under the Turbo free
+        // tier. Honest zero cost (MONEY-6 pattern), no synthetic value.
+        estimatedCost: 0,
+        estimatedTurboCost: 0,
+        recommendedMethod: 'turbo',
+        hasSufficientTurboBalance: true,
+        conflictType: 'none',
+        status: 'awaiting_approval',
+        operationType: 'hide',
+        previousPath: filePath,
+        arfsFileId,
+        metadata: {
+          isHidden: true
+        }
+      };
+
+      await this.databaseManager.addPendingUpload(hideOperation);
+      this.notifyRenderer('sync:pending-uploads-updated');
+
+      console.log(`Hide operation queued for deleted file: ${path.basename(filePath)} (${arfsFileId})`);
+    } catch (error) {
+      console.error(`Error creating hide operation for deleted file ${filePath}:`, error);
+    }
   }
 
   private async handleFolderAdd(dirPath: string) {
@@ -1841,20 +1910,67 @@ export class SyncManager {
       
       // Notify the detector about the deletion with a callback to confirm the delete
       await this.folderOperationDetector.onFolderDelete(
-        dirPath, 
+        dirPath,
         arfsFolderId,
         async () => {
-          await this.confirmFolderDelete(dirPath);
+          await this.confirmFolderDelete(dirPath, arfsFolderId);
         }
       );
-      
+
     } catch (error) {
       console.error(`Error handling folder delete for ${dirPath}:`, error);
     }
   }
-  
-  private async confirmFolderDelete(dirPath: string) {
+
+  private async confirmFolderDelete(dirPath: string, arfsFolderId?: string) {
     try {
+      // SYNC-5: a confirmed local folder delete propagates as an ArFS "hide"
+      // operation on the folder entity (permanent storage cannot delete —
+      // D-011). No cascade: only the folder entity is hidden; the caller/UI
+      // treats descendants as effectively hidden. Only queue if the folder was
+      // actually uploaded to ArDrive (has an ArFS folder id).
+      if (arfsFolderId) {
+        const existingPending = await this.databaseManager.getPendingUploads();
+        const alreadyQueued = existingPending.some(
+          (p) => p.operationType === 'hide' && p.arfsFolderId === arfsFolderId
+        );
+
+        if (!alreadyQueued) {
+          const mappings = await this.databaseManager.getDriveMappings();
+          const activeMapping = mappings.find((m: any) => m.isActive);
+          const driveId = activeMapping?.driveId || this.driveId || undefined;
+
+          const hideOperation: Omit<PendingUpload, 'createdAt'> = {
+            id: crypto.randomUUID(),
+            driveId,
+            localPath: dirPath,
+            fileName: path.basename(dirPath),
+            fileSize: 0,
+            mimeType: 'folder',
+            estimatedCost: 0,
+            estimatedTurboCost: 0,
+            recommendedMethod: 'turbo',
+            hasSufficientTurboBalance: true,
+            conflictType: 'none',
+            status: 'awaiting_approval',
+            operationType: 'hide',
+            previousPath: dirPath,
+            arfsFolderId,
+            metadata: {
+              isHidden: true
+            }
+          };
+
+          await this.databaseManager.addPendingUpload(hideOperation);
+          this.notifyRenderer('sync:pending-uploads-updated');
+          console.log(`Hide operation queued for deleted folder: ${path.basename(dirPath)} (${arfsFolderId})`);
+        } else {
+          console.log(`Hide operation already pending for folder ${arfsFolderId}, skipping duplicate`);
+        }
+      } else {
+        console.log(`Confirmed delete of un-uploaded folder, nothing to hide on ArFS: ${dirPath}`);
+      }
+
       await this.databaseManager.markFolderDeleted(dirPath);
       console.log(`Marked folder as deleted: ${dirPath}`);
     } catch (error) {
@@ -3517,10 +3633,77 @@ export class SyncManager {
           
         case 'hide':
         case 'unhide':
-        case 'delete':
-          // These operations will be implemented in the future
-          throw new Error(`Operation ${pendingUpload.operationType} not yet implemented`);
-          
+        case 'delete': {
+          // SYNC-5 / D-011: a local delete propagates as an ArFS "hide"
+          // (permanent storage cannot truly delete — the entity gets a metadata
+          // revision with isHidden=true). 'hide' and 'delete' both HIDE; 'unhide'
+          // reverses it. Works for files and folders, public and private drives.
+          const shouldHide = pendingUpload.operationType !== 'unhide';
+          const isFolder = !!pendingUpload.arfsFolderId;
+          const entityId = isFolder ? pendingUpload.arfsFolderId : pendingUpload.arfsFileId;
+
+          if (!entityId) {
+            throw new Error(`Missing entity ID for ${pendingUpload.operationType} operation`);
+          }
+
+          // Resolve drive privacy to pick the public vs private ArFS path.
+          const mappings = await this.databaseManager.getDriveMappings();
+          const opDriveId = pendingUpload.driveId || this.driveId || undefined;
+          const mapping = mappings.find((m: any) => m.driveId === opDriveId);
+          const isPrivateDrive = mapping?.drivePrivacy === 'private';
+
+          // Private hide/unhide requires the drive key (encrypts the whole
+          // metadata JSON, exactly like a private rename).
+          let driveKey;
+          if (isPrivateDrive) {
+            if (!opDriveId) {
+              throw new Error('Cannot resolve drive for private hide/unhide operation');
+            }
+            driveKey = driveKeyManager.getDriveKey(opDriveId);
+            if (!driveKey) {
+              throw new Error('Private drive is locked - unlock it to hide/unhide files');
+            }
+          }
+
+          if (isFolder) {
+            if (shouldHide) {
+              result = isPrivateDrive
+                ? await this.arDrive.hidePrivateFolder({ folderId: EID(entityId), driveKey: driveKey! })
+                : await this.arDrive.hidePublicFolder({ folderId: EID(entityId) });
+            } else {
+              result = isPrivateDrive
+                ? await this.arDrive.unhidePrivateFolder({ folderId: EID(entityId), driveKey: driveKey! })
+                : await this.arDrive.unhidePublicFolder({ folderId: EID(entityId) });
+            }
+          } else {
+            if (shouldHide) {
+              result = isPrivateDrive
+                ? await this.arDrive.hidePrivateFile({ fileId: EID(entityId), driveKey: driveKey! })
+                : await this.arDrive.hidePublicFile({ fileId: EID(entityId) });
+            } else {
+              result = isPrivateDrive
+                ? await this.arDrive.unhidePrivateFile({ fileId: EID(entityId), driveKey: driveKey! })
+                : await this.arDrive.unhidePublicFile({ fileId: EID(entityId) });
+            }
+          }
+
+          // Reflect the new hidden state locally so the Permaweb view updates
+          // immediately (the cache upsert preserves this across metadata
+          // re-syncs; a forced refresh reconciles against core truth).
+          try {
+            await this.databaseManager.updateDriveMetadataHidden(entityId, shouldHide);
+          } catch (cacheError) {
+            console.error('Failed to update hidden state in metadata cache:', cacheError);
+          }
+
+          console.log(
+            `Successfully ${shouldHide ? 'hid' : 'unhid'} ${isFolder ? 'folder' : 'file'} ` +
+            `${pendingUpload.fileName} on ${isPrivateDrive ? 'private' : 'public'} drive`
+          );
+          break;
+        }
+
+
         default:
           throw new Error(`Unknown operation type: ${pendingUpload.operationType}`);
       }

@@ -7,7 +7,7 @@ import { configManager } from './config-manager';
 import { SyncManager } from './sync-manager';
 import { databaseManager } from './database-manager';
 import { turboManager } from './turbo-manager';
-import { FileUpload } from '../types';
+import { FileUpload, PendingUpload } from '../types';
 import { arnsService } from './arns-service';
 import { profileManager } from './profile-manager';
 import InputValidator, { ValidationError } from './input-validator';
@@ -1110,7 +1110,9 @@ class ArDriveApp {
             ardriveUrl: item.type === 'file' ? `https://app.ardrive.io/#/file/${item.fileId}/view` : undefined,
             dataTxId: item.dataTxId,
             metadataTxId: item.metadataTxId,
-            contentType: item.contentType
+            contentType: item.contentType,
+            // SYNC-5: hidden state persisted locally (integer boolean from sqlite)
+            isHidden: item.isHidden === 1
           }));
           
           // Log a sample of the transformed data
@@ -1290,6 +1292,10 @@ class ArDriveApp {
             isDownloaded: false, // Not relevant for permaweb view
             isUploaded: true, // Everything in permaweb is uploaded
             status: 'synced' as const,
+            // SYNC-5: ArFS hidden state (core surfaces isHidden on the entity).
+            // The item is HIDDEN on Arweave, not erased — permanent storage
+            // cannot delete. Consumers filter/label; core just reports it.
+            isHidden: entity.isHidden === true,
             path: entity.path || '/',
             parentId: entity.parentFolderId?.toString() || '',
             // ArDrive sharing links with file keys for private files
@@ -2226,6 +2232,63 @@ class ArDriveApp {
     ipcMain.handle('uploads:reject', async (_, uploadId: string) => {
       await databaseManager.updatePendingUploadStatus(uploadId, 'rejected');
       return true;
+    });
+
+    // SYNC-5: queue an ArFS "unhide" operation for a previously-hidden entity.
+    // Routed through the approval queue like hide (it also writes a paid
+    // metadata revision), then executed by syncManager.executeMetadataOperation.
+    // Returns the D-005 envelope explicitly (safeIpcHandler doesn't wrap yet).
+    ipcMain.handle('sync:unhide-entity', async (_, params: {
+      driveId: string;
+      entityId: string;
+      entityType: 'file' | 'folder';
+      name?: string;
+    }) => {
+      try {
+        const validatedDriveId = InputValidator.validateDriveId(params?.driveId, 'driveId');
+        const validatedEntityId = InputValidator.validateEntityId(params?.entityId, 'entityId');
+        const entityType = params?.entityType === 'folder' ? 'folder' : 'file';
+
+        // Guard against queuing a duplicate unhide for the same entity.
+        const existingPending = await databaseManager.getPendingUploads();
+        const alreadyQueued = existingPending.some((p) =>
+          p.operationType === 'unhide' &&
+          (p.arfsFileId === validatedEntityId || p.arfsFolderId === validatedEntityId)
+        );
+        if (alreadyQueued) {
+          return { success: false, error: 'An unhide operation is already pending for this item.' };
+        }
+
+        const unhideOperation: Omit<PendingUpload, 'createdAt'> = {
+          id: uuidv4(),
+          driveId: validatedDriveId,
+          localPath: params?.name || validatedEntityId,
+          fileName: params?.name || validatedEntityId,
+          fileSize: 0,
+          mimeType: entityType === 'folder' ? 'folder' : 'application/octet-stream',
+          estimatedCost: 0,
+          estimatedTurboCost: 0,
+          recommendedMethod: 'turbo',
+          hasSufficientTurboBalance: true,
+          conflictType: 'none',
+          status: 'awaiting_approval',
+          operationType: 'unhide',
+          arfsFileId: entityType === 'file' ? validatedEntityId : undefined,
+          arfsFolderId: entityType === 'folder' ? validatedEntityId : undefined,
+          metadata: { isHidden: false }
+        };
+
+        await databaseManager.addPendingUpload(unhideOperation);
+        this.mainWindow?.webContents.send('sync:pending-uploads-updated');
+
+        return { success: true, data: { id: unhideOperation.id } };
+      } catch (error) {
+        console.error('Failed to queue unhide operation:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to queue unhide operation'
+        };
+      }
     });
 
     ipcMain.handle('uploads:approve-all', async () => {
