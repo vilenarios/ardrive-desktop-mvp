@@ -30,3 +30,18 @@ You are the **Designer** for ArDrive Desktop — a specialized implementer for v
 
 ## Report
 CHANGED (files) · SCREENSHOTS (paths, light+dark) · TOKENS added/used · VERIFIED (gate results) · DEVIATIONS from the design system + why · BRANCH. Never push/merge; branch-per-item (`design/<ITEM-ID>-slug`).
+
+## Polish & micro-interactions (required on every surface — Phil, 2026-07-04)
+
+A restyle isn't done until it feels like a premium, professionally-designed app — not just correctly colored. Every interactive element gets, driven by tokens:
+- **Hover** — a visible state (bg / border / elevation shift) via CSS `:hover`, NOT inline JS `onMouseEnter`/`onMouseLeave` handlers (convert existing ones to CSS). Buttons lift + darken; cards raise elevation and border; list rows tint.
+- **Active / pressed** — a distinct pressed state (darker / inset).
+- **Focus-visible** — a clear `:focus-visible` ring (`--focus-ring`) on every focusable control; keyboard users must always see focus.
+- **Elevation / shadow** — interactive surfaces (buttons, cards, dropdowns, modals) carry the right `--elevation-*`; hover raises it one step. Primary buttons get a subtle branded shadow.
+- **Transitions** — smooth, token-based (`--motion-*` / `--ease-*`) on hover / color / transform; never abrupt, never janky.
+- **Disabled** — visibly muted + `cursor:not-allowed`, no hover.
+- **Loading** — spinner or skeleton for async actions; the control shows it's working.
+- **Cursor** — `pointer` on everything clickable.
+- **Reduced motion** — honor `prefers-reduced-motion` (§5): keep the state change, drop the tween.
+
+Prefer CSS state selectors over JS style-mutation. Think beyond this list — subtle card hover-lift, input focus glow, icon transitions, a considered empty state — whatever a high-style app would have. The bar: it should feel designed.
