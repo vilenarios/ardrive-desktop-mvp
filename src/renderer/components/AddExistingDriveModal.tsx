@@ -34,11 +34,14 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
       setIsLoading(true);
       setError(null);
       
-      // Get all drives from the wallet
-      const allDrives = await window.electronAPI.drive.getAll();
-      
+      // Get all drives from the wallet (UX-3: IpcResult envelope)
+      const allDrivesResult = await window.electronAPI.drive.getAll();
+      if (!allDrivesResult.success) {
+        throw new Error(allDrivesResult.error || 'Failed to load your drives.');
+      }
+
       // Filter out drives that are already mapped
-      const unmappedDrives = allDrives.filter(
+      const unmappedDrives = allDrivesResult.data.filter(
         (drive: DriveInfo) => !existingDriveIds.includes(drive.id)
       );
       

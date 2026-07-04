@@ -98,22 +98,24 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
       setError(null);
 
       // Create the drive.
-      // PRIV-3: drive:create-private returns a {success, data, error} envelope
-      // while drive:create still returns the raw drive (UX-3 unifies the
-      // shapes). The old code read `.id` off the wrapper, so every private
-      // creation reported failure AFTER the user had already paid on-chain.
-      const rawResult = drivePrivacy === 'private' 
+      // UX-3: both drive:create and drive:create-private now return the same
+      // IpcResult envelope. PRIV-3 root cause was that the private path used
+      // {success,data} while the public path returned the raw drive, so the old
+      // code read `.id` off the wrapper and every private creation reported
+      // failure AFTER the user had already paid on-chain. Now the shapes agree
+      // and the compiler enforces the `.success`/`.data` unwrap.
+      const result = drivePrivacy === 'private'
         ? await window.electronAPI.drive.createPrivate(driveName.trim(), password)
         : await window.electronAPI.drive.create(driveName.trim(), drivePrivacy);
-      
-      let drive: any = rawResult;
-      if (rawResult && typeof rawResult === 'object' && 'success' in rawResult) {
-        if (!(rawResult as any).success) {
-          throw new Error((rawResult as any).error || 'Failed to create drive. Please try again.');
-        }
-        drive = (rawResult as any).data;
+
+      // Defensive against a nullish result (IPC bridge failure): never assume
+      // a charge succeeded — treat anything but an explicit success as failure.
+      if (!result || !result.success) {
+        const errorMessage = result && !result.success ? result.error : undefined;
+        throw new Error(errorMessage || 'Failed to create drive. Please try again.');
       }
-      
+
+      const drive = result.data;
       if (!drive || !drive.id) {
         throw new Error('Failed to create drive. Please try again.');
       }
@@ -147,7 +149,10 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
       await window.electronAPI.driveMappings.add(driveMapping);
 
       // Set as active drive
-      await window.electronAPI.drive.setActive(drive.id);
+      const setActiveResult = await window.electronAPI.drive.setActive(drive.id);
+      if (!setActiveResult.success) {
+        throw new Error(setActiveResult.error || 'Failed to set the new drive as active.');
+      }
 
       // TODO: In the future, support different sync folders per drive
       // For now, all drives use subfolders in the main sync folder

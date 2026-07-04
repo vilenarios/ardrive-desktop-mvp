@@ -154,10 +154,15 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
         throw new Error('Wallet not loaded. Please ensure your wallet is properly imported.');
       }
 
-      // Create drive
+      // Create drive (UX-3: IpcResult envelope)
       setSetupProgress('Creating your drive on Arweave...');
-      const drive = await window.electronAPI.drive.create(driveName.trim(), 'public');
-      
+      const createResult = await window.electronAPI.drive.create(driveName.trim(), 'public');
+
+      if (!createResult.success) {
+        throw new Error(createResult.error || 'Failed to create drive. Please try again.');
+      }
+
+      const drive = createResult.data;
       if (!drive || !drive.id) {
         throw new Error('Failed to create drive. Please try again.');
       }

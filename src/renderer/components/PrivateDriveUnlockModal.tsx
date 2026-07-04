@@ -5,7 +5,10 @@ import { DriveInfoWithStatus } from '../../types';
 interface PrivateDriveUnlockModalProps {
   drive: DriveInfoWithStatus;
   isOpen: boolean;
-  onUnlock: (password: string) => Promise<boolean>;
+  // UX-3: onUnlock returns the SPECIFIC failure reason (wrong password vs.
+  // network/gateway verification error) so the modal shows the real error
+  // instead of always saying 'Invalid password'.
+  onUnlock: (password: string) => Promise<{ success: boolean; error?: string }>;
   onCancel: () => void;
 }
 
@@ -27,12 +30,14 @@ export const PrivateDriveUnlockModal: React.FC<PrivateDriveUnlockModalProps> = (
     setError(null);
     
     try {
-      const success = await onUnlock(password);
-      if (success) {
+      const result = await onUnlock(password);
+      if (result.success) {
         setPassword('');
         // Modal will be closed by parent component
       } else {
-        setError('Invalid password. Please check your password and try again.');
+        // UX-3: show the specific reason from the unlock envelope; fall back to
+        // the generic wrong-password message only when none was provided.
+        setError(result.error || 'Invalid password. Please check your password and try again.');
         // Focus back on password input for retry
         setTimeout(() => {
           const input = document.getElementById('password') as HTMLInputElement;

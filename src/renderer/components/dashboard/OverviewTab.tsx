@@ -59,8 +59,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       setLoading(true);
       
       // Get real data from permaweb (use cache for instant loading)
-      const permawebFiles = await window.electronAPI.drive.getPermawebFiles(selectedDrive.id, false);
-      
+      // UX-3: IpcResult envelope
+      const permawebResult = await window.electronAPI.drive.getPermawebFiles(selectedDrive.id, false);
+      const permawebFiles = permawebResult.success ? permawebResult.data : [];
+
       const files = permawebFiles.filter((item: any) => item.type === 'file');
       const folders = permawebFiles.filter((item: any) => item.type === 'folder');
       
@@ -141,10 +143,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     try {
       console.log('Starting drive metadata export for drive:', selectedDrive.id);
       
-      // Get the permaweb files data
-      const permawebFiles = await window.electronAPI.drive.getPermawebFiles(selectedDrive.id, true);
+      // Get the permaweb files data (UX-3: IpcResult envelope)
+      const permawebResult = await window.electronAPI.drive.getPermawebFiles(selectedDrive.id, true);
+      const permawebFiles = permawebResult.success ? permawebResult.data : [];
       console.log('Retrieved permaweb files:', permawebFiles);
-      
+
       if (!permawebFiles || permawebFiles.length === 0) {
         alert('No files found to export');
         return;
@@ -275,11 +278,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     setRenameError(null);
 
     try {
-      // Call the real ArDrive API to rename the drive
+      // Call the real ArDrive API to rename the drive (UX-3: IpcResult envelope)
       const result = await window.electronAPI.drive.rename(selectedDrive.id, newDriveName.trim());
-      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to rename drive');
+      }
+
       // Show success with payment method info
-      const paymentMethod = result.usedTurbo ? ' (Free with Turbo!)' : ' (Paid with AR)';
+      const paymentMethod = result.data.usedTurbo ? ' (Free with Turbo!)' : ' (Paid with AR)';
       toast?.success(`Drive renamed to "${newDriveName}"${paymentMethod}`);
       setShowRenameModal(false);
       setShowRenameCostConfirm(false);

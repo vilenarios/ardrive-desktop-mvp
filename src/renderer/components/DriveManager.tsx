@@ -30,11 +30,15 @@ const DriveManager: React.FC<DriveManagerProps> = ({
       setError(null);
       
       // The backend now returns drive info instead of just setting it
-      const selectedDrive = await window.electronAPI.drive.select(drive.id);
-      
+      // (UX-3: IpcResult envelope)
+      const selectResult = await window.electronAPI.drive.select(drive.id);
+      if (!selectResult.success) {
+        throw new Error(selectResult.error || 'Failed to select drive');
+      }
+
       setSuccess('Drive selected successfully!');
       setTimeout(() => {
-        onDriveSelected(selectedDrive || drive);
+        onDriveSelected(selectResult.data || drive);
       }, 1000);
 
     } catch (err) {
@@ -54,8 +58,11 @@ const DriveManager: React.FC<DriveManagerProps> = ({
       setLoading(true);
       setError(null);
       
-      await window.electronAPI.drive.create(newDriveName.trim(), driveType);
-      
+      const createResult = await window.electronAPI.drive.create(newDriveName.trim(), driveType);
+      if (!createResult.success) {
+        throw new Error(createResult.error || 'Failed to create drive');
+      }
+
       setNewDriveName('');
       setSuccess('Drive created successfully!');
       setTimeout(() => {

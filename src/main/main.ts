@@ -20,6 +20,7 @@ import { SyncManager } from './sync-manager';
 import { databaseManager } from './database-manager';
 import { turboManager } from './turbo-manager';
 import { FileUpload, PendingUpload } from '../types';
+import { IpcResult } from '../types/ipc';
 import { arnsService } from './arns-service';
 import { profileManager } from './profile-manager';
 import InputValidator, { ValidationError } from './input-validator';
@@ -44,7 +45,12 @@ if (process.env.NODE_ENV !== 'production') {
 // this constant in lockstep.
 const PAYMENT_SUCCESS_URL = 'https://app.ardrive.io';
 
-// Utility function to safely wrap IPC handlers with error handling
+// Utility function to safely wrap IPC handlers with error handling.
+//
+// NOTE (UX-3): safeIpcHandler only try/catches and RE-THROWS — it does NOT
+// produce the D-005 envelope. It is retained for the handlers not yet migrated
+// off it. New/migrated handlers use `envelopeHandler` below, which resolves to
+// `{ success, data?, error? }` instead of rejecting.
 function safeIpcHandler<T extends any[], R>(
   handler: (...args: T) => Promise<R>
 ): (...args: T) => Promise<R> {
@@ -53,13 +59,38 @@ function safeIpcHandler<T extends any[], R>(
       return await handler(...args);
     } catch (error) {
       console.error('IPC handler error:', error);
-      
+
       // Ensure we always throw a proper Error object for consistent handling
       if (error instanceof Error) {
         throw error;
       } else {
         throw new Error(`IPC handler failed: ${String(error)}`);
       }
+    }
+  };
+}
+
+// UX-3 / D-005: wrap an IPC handler so it ALWAYS resolves to the single
+// response envelope — `{ success: true, data }` on success, `{ success: false,
+// error }` on any thrown error (including InputValidator ValidationErrors and
+// business-rule throws). The inner handler returns its raw payload (or throws);
+// this wrapper is the sole place the envelope is constructed for migrated
+// handlers, so preload can type the corresponding method as
+// `Promise<IpcResult<R>>` and the compiler enforces `.success`/`.data` at every
+// renderer call site.
+function envelopeHandler<T extends any[], R>(
+  handler: (...args: T) => Promise<R>
+): (...args: T) => Promise<IpcResult<R>> {
+  return async (...args: T): Promise<IpcResult<R>> => {
+    try {
+      const data = await handler(...args);
+      return { success: true, data };
+    } catch (error) {
+      console.error('IPC handler error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : `IPC handler failed: ${String(error)}`,
+      };
     }
   };
 }
@@ -836,11 +867,11 @@ class ArDriveApp {
     });
 
     // Drive operations
-    ipcMain.handle('drive:list', safeIpcHandler(async () => {
+    ipcMain.handle('drive:list', envelopeHandler(async () => {
       return await this.walletManager.listDrives();
     }));
 
-    ipcMain.handle('drive:create', safeIpcHandler(async (_, name: string, privacy: 'private' | 'public' = 'private') => {
+    ipcMain.handle('drive:create', envelopeHandler(async (_, name: string, privacy: 'private' | 'public' = 'private') => {
       // Validate inputs
       const validatedName = InputValidator.validateDriveName(name, 'name');
       const validatedPrivacy = InputValidator.validateDrivePrivacy(privacy, 'privacy');
@@ -854,109 +885,80 @@ class ArDriveApp {
     }));
 
     // Private drive operations
-    ipcMain.handle('drive:create-private', safeIpcHandler(async (_, name: string, password: string) => {
-      try {
-        const validatedName = InputValidator.validateDriveName(name, 'name');
-        const validatedPassword = InputValidator.validatePassword(password, 'password');
-        
-        // Ensure active profile is set
-        const activeProfile = await profileManager.getActiveProfile();
-        if (activeProfile) {
-          await configManager.setActiveProfile(activeProfile.id);
-        }
-        
-        const drive = await this.walletManager.createPrivateDrive(validatedName, validatedPassword);
-        return { success: true, data: drive };
-      } catch (error) {
-        console.error('Failed to create private drive:', error);
-        return { success: false, error: error instanceof Error ? error.message : 'Failed to create private drive' };
+    ipcMain.handle('drive:create-private', envelopeHandler(async (_, name: string, password: string) => {
+      const validatedName = InputValidator.validateDriveName(name, 'name');
+      const validatedPassword = InputValidator.validatePassword(password, 'password');
+
+      // Ensure active profile is set
+      const activeProfile = await profileManager.getActiveProfile();
+      if (activeProfile) {
+        await configManager.setActiveProfile(activeProfile.id);
       }
+
+      return await this.walletManager.createPrivateDrive(validatedName, validatedPassword);
     }));
 
-    ipcMain.handle('drive:unlock', safeIpcHandler(async (_, driveId: string, password: string) => {
-      try {
-        const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
-        // PRIV-7: unlocking an EXISTING private drive must accept whatever
-        // password the user provides (drives from other ArDrive clients may use
-        // a password shorter than our 8-char NEW-password minimum). Do NOT run
-        // the new-password strength validator here; wrong passwords are still
-        // rejected by trial decryption in unlockPrivateDrive (PRIV-2).
-        const validatedPassword = InputValidator.validateExistingPassword(password, 'password');
+    ipcMain.handle('drive:unlock', envelopeHandler(async (_, driveId: string, password: string) => {
+      const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+      // PRIV-7: unlocking an EXISTING private drive must accept whatever
+      // password the user provides (drives from other ArDrive clients may use
+      // a password shorter than our 8-char NEW-password minimum). Do NOT run
+      // the new-password strength validator here; wrong passwords are still
+      // rejected by trial decryption in unlockPrivateDrive (PRIV-2).
+      const validatedPassword = InputValidator.validateExistingPassword(password, 'password');
 
-        const unlockResult = await this.walletManager.unlockPrivateDrive(validatedDriveId, validatedPassword);
-        
-        if (unlockResult.success) {
-          // Update the ArDrive instance in sync manager with the new private key data
-          const arDrive = this.walletManager.getArDrive();
-          if (arDrive) {
-            const privateKeyData = await driveKeyManager.getPrivateKeyData();
-            this.syncManager.setArDrive(arDrive, privateKeyData);
-            console.log('Updated sync manager with refreshed ArDrive instance after unlock');
-          }
-          
-          // Small delay to ensure drive key is fully propagated
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          // After successful unlock, get the updated drive info with decrypted name
-          const drives = await this.walletManager.listDrivesWithStatus();
-          const unlockedDrive = drives.find(d => d.id === validatedDriveId);
-          
-          return { 
-            success: true, 
-            drive: unlockedDrive // Return the decrypted drive info
-          };
-        } else {
-          // Wrong password or verification failure — pass the specific reason
-          return { 
-            success: false, 
-            error: unlockResult.error || 'Invalid password. Please check your password and try again.' 
-          };
-        }
-      } catch (error) {
-        console.error('Failed to unlock drive:', error);
-        return { 
-          success: false, 
-          error: error instanceof Error ? error.message : 'Failed to unlock drive' 
-        };
+      const unlockResult = await this.walletManager.unlockPrivateDrive(validatedDriveId, validatedPassword);
+
+      if (!unlockResult.success) {
+        // Wrong password OR verification (network/gateway) failure — unlockPrivateDrive
+        // already distinguishes them (PRIV-2). Throw so the envelope carries the
+        // SPECIFIC reason to the modal (UX-3: no more hardcoded 'Invalid password').
+        throw new Error(unlockResult.error || 'Invalid password. Please check your password and try again.');
       }
+
+      // Update the ArDrive instance in sync manager with the new private key data
+      const arDrive = this.walletManager.getArDrive();
+      if (arDrive) {
+        const privateKeyData = await driveKeyManager.getPrivateKeyData();
+        this.syncManager.setArDrive(arDrive, privateKeyData);
+        console.log('Updated sync manager with refreshed ArDrive instance after unlock');
+      }
+
+      // Small delay to ensure drive key is fully propagated
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // After successful unlock, get the updated drive info with decrypted name
+      const drives = await this.walletManager.listDrivesWithStatus();
+      const unlockedDrive = drives.find(d => d.id === validatedDriveId);
+
+      // Return the decrypted drive info as the envelope payload (D-005 `data`).
+      return unlockedDrive;
     }));
 
-    ipcMain.handle('drive:lock', safeIpcHandler(async (_, driveId: string) => {
-      try {
-        const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
-        
-        await this.walletManager.lockPrivateDrive(validatedDriveId);
-        return { success: true };
-      } catch (error) {
-        console.error('Failed to lock drive:', error);
-        return { success: false, error: error instanceof Error ? error.message : 'Failed to lock drive' };
-      }
+    ipcMain.handle('drive:lock', envelopeHandler(async (_, driveId: string) => {
+      const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
+      await this.walletManager.lockPrivateDrive(validatedDriveId);
     }));
 
-    ipcMain.handle('drive:isUnlocked', safeIpcHandler(async (_, driveId: string) => {
+    ipcMain.handle('drive:isUnlocked', envelopeHandler(async (_, driveId: string) => {
       try {
         const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
-        
+
         // Check if the drive key manager has the key for this drive
-        const isUnlocked = await this.walletManager.isDriveUnlocked(validatedDriveId);
-        return isUnlocked;
+        return await this.walletManager.isDriveUnlocked(validatedDriveId);
       } catch (error) {
+        // Preserve prior semantics: a lookup failure reads as "not unlocked"
+        // rather than a hard error the caller must handle.
         console.error('Failed to check drive unlock status:', error);
         return false;
       }
     }));
 
-    ipcMain.handle('drive:listWithStatus', safeIpcHandler(async () => {
-      try {
-        const drives = await this.walletManager.listDrivesWithStatus();
-        return { success: true, data: drives };
-      } catch (error) {
-        console.error('Failed to list drives with status:', error);
-        return { success: false, error: error instanceof Error ? error.message : 'Failed to list drives' };
-      }
+    ipcMain.handle('drive:listWithStatus', envelopeHandler(async () => {
+      return await this.walletManager.listDrivesWithStatus();
     }));
 
-    ipcMain.handle('drive:rename', safeIpcHandler(async (_, driveId: string, newName: string) => {
+    ipcMain.handle('drive:rename', envelopeHandler(async (_, driveId: string, newName: string) => {
       // Validate inputs
       const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
       const validatedName = InputValidator.validateDriveName(newName, 'newName');
@@ -1027,10 +1029,10 @@ class ArDriveApp {
         });
       }
       
-      return { success: true, newName: validatedName, usedTurbo };
+      return { newName: validatedName, usedTurbo };
     }));
 
-    ipcMain.handle('drive:select', safeIpcHandler(async (_, driveId: string) => {
+    ipcMain.handle('drive:select', envelopeHandler(async (_, driveId: string) => {
       // Validate drive ID
       const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
       
@@ -1052,7 +1054,7 @@ class ArDriveApp {
     }));
 
     // Get permaweb files for a drive
-    ipcMain.handle('drive:get-permaweb-files', safeIpcHandler(async (_, driveId: string, forceRefresh: boolean = false) => {
+    ipcMain.handle('drive:get-permaweb-files', envelopeHandler(async (_, driveId: string, forceRefresh: boolean = false) => {
       console.log('Getting permaweb files for drive:', driveId, 'Force refresh:', forceRefresh);
       
       // Validate drive ID
@@ -1194,7 +1196,9 @@ class ArDriveApp {
           const isUnlocked = await driveKeyManager.isUnlocked(drive.id);
           if (!isUnlocked) {
             console.log('Private drive is locked, cannot fetch permaweb files');
-            return { files: [], folders: [] };
+            // UX-3: renderer consumers expect a flat array; normalize the
+            // legacy `{ files, folders }` empty shape to `[]`.
+            return [];
           }
         }
         
@@ -1212,7 +1216,8 @@ class ArDriveApp {
               const driveKey = driveKeyManager.getDriveKey(drive.id);
               if (!driveKey) {
                 console.log('Drive key not found for private drive');
-                return { files: [], folders: [] };
+                // UX-3: normalize legacy empty `{ files, folders }` to `[]`.
+                return [];
               }
               
               console.log('Attempting to list private folder with drive key');
@@ -1379,7 +1384,7 @@ class ArDriveApp {
     }));
 
     // Create Arweave manifest for a folder
-    ipcMain.handle('drive:create-manifest', safeIpcHandler(async (_, params: {
+    ipcMain.handle('drive:create-manifest', envelopeHandler(async (_, params: {
       driveId: string;
       folderId: string;
       manifestName?: string;
@@ -1477,7 +1482,6 @@ class ArDriveApp {
       }
       
       return {
-        success: true,
         manifestUrl: result.links[0],
         fileUrls: result.links.slice(1),
         fees: result.fees,
@@ -1488,7 +1492,7 @@ class ArDriveApp {
     }));
 
     // Count files in folder for manifest estimation
-    ipcMain.handle('drive:count-folder-files', safeIpcHandler(async (_, driveId: string, folderId: string) => {
+    ipcMain.handle('drive:count-folder-files', envelopeHandler(async (_, driveId: string, folderId: string) => {
       console.log('Counting files in folder:', folderId);
       
       const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
@@ -1539,7 +1543,7 @@ class ArDriveApp {
 
     // Get folder tree for manifest creation
     const walletManager = this.walletManager;
-    ipcMain.handle('drive:get-folder-tree', safeIpcHandler(async (_, driveId: string) => {
+    ipcMain.handle('drive:get-folder-tree', envelopeHandler(async (_, driveId: string) => {
       console.log('Getting folder tree for drive:', driveId);
       const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
       
@@ -1663,11 +1667,11 @@ class ArDriveApp {
     }));
 
     // New drive management handlers
-    ipcMain.handle('drive:getAll', safeIpcHandler(async () => {
+    ipcMain.handle('drive:getAll', envelopeHandler(async () => {
       return await this.walletManager.listDrives();
     }));
 
-    ipcMain.handle('drive:getMapped', safeIpcHandler(async () => {
+    ipcMain.handle('drive:getMapped', envelopeHandler(async () => {
       // Get all drives from wallet
       const allDrives = await this.walletManager.listDrives();
       
@@ -1679,7 +1683,7 @@ class ArDriveApp {
       return allDrives.filter(drive => mappedDriveIds.includes(drive.id));
     }));
 
-    ipcMain.handle('drive:setActive', safeIpcHandler(async (_, driveId: string, mappingId?: string) => {
+    ipcMain.handle('drive:setActive', envelopeHandler(async (_, driveId: string, mappingId?: string) => {
       // Validate inputs
       const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
       
@@ -1706,15 +1710,13 @@ class ArDriveApp {
       
       // Set active drive in config
       await configManager.setActiveDrive(validatedDriveId, mappingId || driveMapping.id);
-      
-      return { success: true };
     }));
 
-    ipcMain.handle('drive:getActive', safeIpcHandler(async () => {
+    ipcMain.handle('drive:getActive', envelopeHandler(async () => {
       return await configManager.getActiveDrive();
     }));
 
-    ipcMain.handle('drive:switchTo', safeIpcHandler(async (_, driveId: string) => {
+    ipcMain.handle('drive:switchTo', envelopeHandler(async (_, driveId: string) => {
       // Validate inputs
       const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
       
@@ -1749,16 +1751,21 @@ class ArDriveApp {
       
       // Switch the drive in sync manager (switchDrive re-points the watcher
       // at the new mapping's folder — SYNC-7)
-      const success = await this.syncManager.switchDrive(validatedDriveId, targetDrive.rootFolderId);
-      
-      if (success) {
-        // Update active drive in config
-        await configManager.setActiveDrive(validatedDriveId, driveMapping.id);
-        // SYNC-7: heal the legacy config mirror so UI folder displays agree
-        await configManager.setSyncFolder(driveMapping.localFolderPath);
+      const switched = await this.syncManager.switchDrive(validatedDriveId, targetDrive.rootFolderId);
+
+      if (!switched) {
+        // UX-3: a failed switch is an error, not a `success: true` envelope
+        // carrying an inner `success: false`. Throw so the envelope reports it.
+        throw new Error(`Failed to switch to drive "${targetDrive.name}".`);
       }
-      
-      return { success, driveInfo: targetDrive };
+
+      // Update active drive in config
+      await configManager.setActiveDrive(validatedDriveId, driveMapping.id);
+      // SYNC-7: heal the legacy config mirror so UI folder displays agree
+      await configManager.setSyncFolder(driveMapping.localFolderPath);
+
+      // The switched-to drive info is the envelope payload (D-005 `data`).
+      return targetDrive;
     }));
 
     // Sync operations

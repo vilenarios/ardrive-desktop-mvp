@@ -1,4 +1,19 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { IpcResult } from '../types/ipc';
+import type {
+  DriveInfo,
+  DriveInfoWithStatus,
+  PermawebFile,
+  FolderNode,
+  ManifestCreationResult,
+} from '../types';
+
+// UX-3 / D-005: methods whose main-process handler is wrapped in
+// `envelopeHandler` are annotated `Promise<IpcResult<T>>`. Because the
+// renderer's `window.electronAPI` type is `typeof api`, these annotations flow
+// to every call site, so the compiler flags any raw-property access on the
+// wrapper (`.id`, `.find()`, `.length`) that skips the `.success`/`.data`
+// guard. Un-annotated methods below are handlers not yet migrated (raw shape).
 
 const api = {
   // Wallet operations
@@ -39,51 +54,53 @@ const api = {
     }) => ipcRenderer.invoke('wallet:export', options),
   },
 
-  // Drive operations
+  // Drive operations (UX-3: all migrated to the IpcResult envelope)
   drive: {
-    list: () => 
+    list: (): Promise<IpcResult<DriveInfo[]>> =>
       ipcRenderer.invoke('drive:list'),
-    create: (name: string, privacy?: 'private' | 'public') => 
+    create: (name: string, privacy?: 'private' | 'public'): Promise<IpcResult<DriveInfo>> =>
       ipcRenderer.invoke('drive:create', name, privacy),
-    select: (driveId: string) => 
+    select: (driveId: string): Promise<IpcResult<DriveInfo>> =>
       ipcRenderer.invoke('drive:select', driveId),
-    rename: (driveId: string, newName: string) =>
+    rename: (driveId: string, newName: string): Promise<IpcResult<{ newName: string; usedTurbo: boolean }>> =>
       ipcRenderer.invoke('drive:rename', driveId, newName),
+    // Dead preload surface (no matching handler) — left un-migrated; no callers.
     getMetadata: (driveId: string) =>
       ipcRenderer.invoke('drive:get-metadata', driveId),
     refreshMetadata: (driveId: string) =>
       ipcRenderer.invoke('drive:refresh-metadata', driveId),
-    getPermawebFiles: (driveId: string, forceRefresh?: boolean) =>
+    getPermawebFiles: (driveId: string, forceRefresh?: boolean): Promise<IpcResult<PermawebFile[]>> =>
       ipcRenderer.invoke('drive:get-permaweb-files', driveId, forceRefresh),
     createManifest: (params: {
       driveId: string;
       folderId: string;
       manifestName?: string;
-    }) => ipcRenderer.invoke('drive:create-manifest', params),
-    getFolderTree: (driveId: string) => 
+    }): Promise<IpcResult<Omit<ManifestCreationResult, 'success'>>> =>
+      ipcRenderer.invoke('drive:create-manifest', params),
+    getFolderTree: (driveId: string): Promise<IpcResult<FolderNode[]>> =>
       ipcRenderer.invoke('drive:get-folder-tree', driveId),
-    countFolderFiles: (driveId: string, folderId: string) =>
+    countFolderFiles: (driveId: string, folderId: string): Promise<IpcResult<{ fileCount: number; estimatedCost: number }>> =>
       ipcRenderer.invoke('drive:count-folder-files', driveId, folderId),
-    getAll: () =>
+    getAll: (): Promise<IpcResult<DriveInfo[]>> =>
       ipcRenderer.invoke('drive:getAll'),
-    getMapped: () =>
+    getMapped: (): Promise<IpcResult<DriveInfo[]>> =>
       ipcRenderer.invoke('drive:getMapped'),
-    setActive: (driveId: string, mappingId?: string) =>
+    setActive: (driveId: string, mappingId?: string): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('drive:setActive', driveId, mappingId),
-    getActive: () =>
+    getActive: (): Promise<IpcResult<{ driveId: string; mappingId?: string } | null>> =>
       ipcRenderer.invoke('drive:getActive'),
-    switchTo: (driveId: string) =>
+    switchTo: (driveId: string): Promise<IpcResult<DriveInfo>> =>
       ipcRenderer.invoke('drive:switchTo', driveId),
     // Private drive operations
-    createPrivate: (name: string, password: string) =>
+    createPrivate: (name: string, password: string): Promise<IpcResult<DriveInfo>> =>
       ipcRenderer.invoke('drive:create-private', name, password),
-    unlock: (driveId: string, password: string) =>
+    unlock: (driveId: string, password: string): Promise<IpcResult<DriveInfoWithStatus | undefined>> =>
       ipcRenderer.invoke('drive:unlock', driveId, password),
-    lock: (driveId: string) =>
+    lock: (driveId: string): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('drive:lock', driveId),
-    isUnlocked: (driveId: string) =>
+    isUnlocked: (driveId: string): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('drive:isUnlocked', driveId),
-    listWithStatus: () =>
+    listWithStatus: (): Promise<IpcResult<DriveInfoWithStatus[]>> =>
       ipcRenderer.invoke('drive:listWithStatus'),
   },
 
