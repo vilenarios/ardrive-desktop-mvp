@@ -170,14 +170,15 @@ describe('MONEY-6: top-up refresh reaches blocked queue rows in the production c
     mockElectronAPI.arns.getProfile.mockResolvedValue(null);
     // Real handler shape: {success, data} envelope (main.ts drive:listWithStatus)
     mockElectronAPI.drive.listWithStatus.mockResolvedValue({ success: true, data: [driveA] });
-    mockElectronAPI.drive.isUnlocked.mockResolvedValue(true);
+    mockElectronAPI.drive.isUnlocked.mockResolvedValue({ success: true, data: true });
     mockElectronAPI.drive.getMapped.mockResolvedValue([driveA]);
-    mockElectronAPI.driveMappings.getPrimary.mockResolvedValue({ driveId: driveA.id });
-    mockElectronAPI.driveMappings.list.mockResolvedValue([]);
-    mockElectronAPI.sync.getFolder.mockResolvedValue('/sync');
-    mockElectronAPI.sync.start.mockResolvedValue(true);
-    mockElectronAPI.files.getUploads.mockResolvedValue([]);
-    mockElectronAPI.files.getDownloads.mockResolvedValue([]);
+    // UX-3: driveMappings/sync/files handlers now resolve the IpcResult envelope
+    mockElectronAPI.driveMappings.getPrimary.mockResolvedValue({ success: true, data: { driveId: driveA.id } });
+    mockElectronAPI.driveMappings.list.mockResolvedValue({ success: true, data: [] });
+    mockElectronAPI.sync.getFolder.mockResolvedValue({ success: true, data: '/sync' });
+    mockElectronAPI.sync.start.mockResolvedValue({ success: true, data: true });
+    mockElectronAPI.files.getUploads.mockResolvedValue({ success: true, data: [] });
+    mockElectronAPI.files.getDownloads.mockResolvedValue({ success: true, data: [] });
     mockElectronAPI.files.getQueueStatus.mockResolvedValue({
       success: true,
       data: { queued: 0, active: 0, total: 0 },

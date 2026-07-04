@@ -76,12 +76,13 @@ describe('App -> Dashboard toast wiring (UX-1)', () => {
     });
     mockElectronAPI.arns.getProfile.mockResolvedValue(null);
     mockElectronAPI.drive.listWithStatus.mockResolvedValue([driveA]);
-    mockElectronAPI.drive.isUnlocked.mockResolvedValue(true);
-    mockElectronAPI.driveMappings.getPrimary.mockResolvedValue({ driveId: driveA.id });
-    mockElectronAPI.driveMappings.list.mockResolvedValue([]);
-    mockElectronAPI.sync.getFolder.mockResolvedValue('/sync');
-    mockElectronAPI.sync.start.mockResolvedValue(true);
-    mockElectronAPI.files.getUploads.mockResolvedValue([]);
+    mockElectronAPI.drive.isUnlocked.mockResolvedValue({ success: true, data: true });
+    // UX-3: driveMappings/sync/files handlers now resolve the IpcResult envelope
+    mockElectronAPI.driveMappings.getPrimary.mockResolvedValue({ success: true, data: { driveId: driveA.id } });
+    mockElectronAPI.driveMappings.list.mockResolvedValue({ success: true, data: [] });
+    mockElectronAPI.sync.getFolder.mockResolvedValue({ success: true, data: '/sync' });
+    mockElectronAPI.sync.start.mockResolvedValue({ success: true, data: true });
+    mockElectronAPI.files.getUploads.mockResolvedValue({ success: true, data: [] });
   });
 
   it('passes the toast prop to Dashboard and renders emitted toasts', async () => {

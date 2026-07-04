@@ -35,8 +35,9 @@ describe('Settings — Change Folder (UX-2)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockElectronAPI.sync.setFolder.mockResolvedValue(true);
-    mockElectronAPI.sync.start.mockResolvedValue(true);
+    // UX-3: sync handlers now resolve the IpcResult envelope.
+    mockElectronAPI.sync.setFolder.mockResolvedValue({ success: true, data: true });
+    mockElectronAPI.sync.start.mockResolvedValue({ success: true, data: true });
   });
 
   it('persists the selected folder and re-targets sync', async () => {
@@ -78,7 +79,8 @@ describe('Settings — Change Folder (UX-2)', () => {
 
   it('shows an error and keeps the old folder when persisting fails', async () => {
     mockElectronAPI.dialog.selectFolder.mockResolvedValue('/new/sync/folder');
-    mockElectronAPI.sync.setFolder.mockRejectedValue(new Error('mkdir failed'));
+    // UX-3: business errors surface as a resolved { success:false } envelope.
+    mockElectronAPI.sync.setFolder.mockResolvedValue({ success: false, error: 'mkdir failed' });
 
     render(<Settings {...defaultProps} />);
     fireEvent.click(screen.getByText('Change Folder'));
@@ -92,7 +94,8 @@ describe('Settings — Change Folder (UX-2)', () => {
 
   it('reports when the folder changed but sync could not restart', async () => {
     mockElectronAPI.dialog.selectFolder.mockResolvedValue('/new/sync/folder');
-    mockElectronAPI.sync.start.mockRejectedValue(new Error('drive not accessible'));
+    // UX-3: a failed restart resolves { success:false } rather than throwing.
+    mockElectronAPI.sync.start.mockResolvedValue({ success: false, error: 'drive not accessible' });
 
     render(<Settings {...defaultProps} />);
     fireEvent.click(screen.getByText('Change Folder'));

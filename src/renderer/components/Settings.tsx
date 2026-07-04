@@ -32,15 +32,19 @@ const Settings: React.FC<SettingsProps> = ({
 
       // updateActiveMapping: Settings is changing the folder of the drive
       // being synced, so the active mapping must follow (onboarding doesn't).
-      await window.electronAPI.sync.setFolder(selectedPath, { updateActiveMapping: true });
+      // UX-3: the handler now RESOLVES { success:false } on error instead of
+      // throwing, so branch on the envelope explicitly.
+      const setFolderResult = await window.electronAPI.sync.setFolder(selectedPath, { updateActiveMapping: true });
+      if (!setFolderResult.success) {
+        throw new Error(setFolderResult.error || 'Failed to change sync folder');
+      }
       setCurrentFolder(selectedPath);
 
       // Re-target the running sync at the new folder (startSync re-targets
       // when the configured folder differs from the watched one).
-      try {
-        await window.electronAPI.sync.start();
-      } catch (restartError) {
-        console.error('Folder changed but sync restart failed:', restartError);
+      const restartResult = await window.electronAPI.sync.start();
+      if (!restartResult.success) {
+        console.error('Folder changed but sync restart failed:', restartResult.error);
         setFolderError('Folder changed, but sync could not restart automatically. Use Sync to retry.');
       }
     } catch (error) {

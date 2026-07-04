@@ -318,7 +318,8 @@ export const StorageTab: React.FC<StorageTabProps> = ({
         
         // Fetch the complete upload data to display in permaweb
         try {
-          const uploads = await window.electronAPI.files.getUploads();
+          const uploadsResult = await window.electronAPI.files.getUploads();
+          const uploads = uploadsResult.success ? uploadsResult.data : [];
           const completedUpload = uploads.find((u: FileUpload) => u.id === progressData.uploadId);
           
           if (completedUpload && completedUpload.fileId) {

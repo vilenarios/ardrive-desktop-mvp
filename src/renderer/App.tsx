@@ -195,12 +195,17 @@ const App: React.FC = () => {
       // Get the active drive based on drive mappings
       let activeDrive: DriveInfo | null = null;
       
-      // Try to get the primary drive mapping
-      const primaryMapping = await window.electronAPI.driveMappings.getPrimary();
+      // Try to get the primary drive mapping (UX-3: unwrap the IpcResult envelope)
+      const primaryMappingResult = await window.electronAPI.driveMappings.getPrimary();
+      if (!primaryMappingResult.success) {
+        throw new Error(primaryMappingResult.error || 'Failed to load primary drive mapping');
+      }
+      const primaryMapping = primaryMappingResult.data;
       console.log('Primary drive mapping:', primaryMapping);
-      
+
       // Also log all drive mappings to debug
-      const allMappings = await window.electronAPI.driveMappings.list();
+      const allMappingsResult = await window.electronAPI.driveMappings.list();
+      const allMappings = allMappingsResult.success ? allMappingsResult.data : [];
       console.log('All drive mappings:', allMappings);
       
       if (primaryMapping) {
@@ -241,8 +246,13 @@ const App: React.FC = () => {
       console.log('Setting active drive:', activeDrive);
       setDrive(activeDrive);
 
-      // Check if sync folder is configured
-      const syncFolder = await window.electronAPI.sync.getFolder();
+      // Check if sync folder is configured (UX-3: unwrap the IpcResult envelope;
+      // the wrapper object is always truthy, so read `.data` before the guard)
+      const syncFolderResult = await window.electronAPI.sync.getFolder();
+      if (!syncFolderResult.success) {
+        throw new Error(syncFolderResult.error || 'Failed to read sync folder');
+      }
+      const syncFolder = syncFolderResult.data;
       if (!syncFolder) {
         setAppState('drive-setup');
         return;
@@ -250,7 +260,8 @@ const App: React.FC = () => {
 
       // Load uploads data
       try {
-        const uploadData = await window.electronAPI.files.getUploads();
+        const uploadResult = await window.electronAPI.files.getUploads();
+        const uploadData = uploadResult.success ? uploadResult.data : [];
         console.log('Loaded uploads data:', uploadData);
         setUploads(uploadData || []);
       } catch (error) {
@@ -335,7 +346,8 @@ const App: React.FC = () => {
       if (progressData.status === 'completed') {
         console.log('Upload completed, refreshing upload list');
         try {
-          const uploadData = await window.electronAPI.files.getUploads();
+          const uploadResult = await window.electronAPI.files.getUploads();
+          const uploadData = uploadResult.success ? uploadResult.data : [];
           console.log('Refreshed uploads after completion:', uploadData?.length || 0);
           setUploads(uploadData || []);
         } catch (error) {
@@ -361,7 +373,8 @@ const App: React.FC = () => {
       
       // Also refresh uploads when drive updates (includes after file uploads)
       try {
-        const uploadData = await window.electronAPI.files.getUploads();
+        const uploadResult = await window.electronAPI.files.getUploads();
+        const uploadData = uploadResult.success ? uploadResult.data : [];
         console.log('Refreshed uploads after drive update:', uploadData?.length || 0);
         setUploads(uploadData || []);
       } catch (error) {
@@ -491,8 +504,12 @@ const App: React.FC = () => {
       }
       setDrive(selectedDrive);
       
-      // Check if a drive mapping exists for this drive
-      const driveMappings = await window.electronAPI.driveMappings.list();
+      // Check if a drive mapping exists for this drive (UX-3: unwrap envelope)
+      const driveMappingsResult = await window.electronAPI.driveMappings.list();
+      if (!driveMappingsResult.success) {
+        throw new Error(driveMappingsResult.error || 'Failed to load drive mappings');
+      }
+      const driveMappings = driveMappingsResult.data;
       console.log('Current drive mappings before selection:', driveMappings);
       const existingMapping = driveMappings.find((m: any) => m.driveId === selectedDrive.id);
       console.log('Found existing mapping for selected drive:', existingMapping);
@@ -637,8 +654,12 @@ const App: React.FC = () => {
         }
         setDrive(updatedDrive);
         
-        // Check if a drive mapping exists for this drive
-        const driveMappings = await window.electronAPI.driveMappings.list();
+        // Check if a drive mapping exists for this drive (UX-3: unwrap envelope)
+        const driveMappingsResult = await window.electronAPI.driveMappings.list();
+        if (!driveMappingsResult.success) {
+          throw new Error(driveMappingsResult.error || 'Failed to load drive mappings');
+        }
+        const driveMappings = driveMappingsResult.data;
         const existingMapping = driveMappings.find((m: any) => m.driveId === updatedDrive.id);
         
         if (!existingMapping) {
@@ -838,7 +859,8 @@ const App: React.FC = () => {
             onRefreshWalletInfo={refreshWalletInfo}
             onRefreshUploads={async () => {
               try {
-                const uploadData = await window.electronAPI.files.getUploads();
+                const uploadResult = await window.electronAPI.files.getUploads();
+                const uploadData = uploadResult.success ? uploadResult.data : [];
                 console.log('Refreshed uploads data:', uploadData);
                 setUploads(uploadData || []);
               } catch (error) {

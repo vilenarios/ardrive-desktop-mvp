@@ -9,6 +9,10 @@ import type {
   WalletInfo,
   Profile,
   AppConfig,
+  DriveSyncMapping,
+  FileUpload,
+  FileDownload,
+  SyncStatus,
 } from '../types';
 import type { ExportResult } from './wallet-export-manager';
 
@@ -111,47 +115,48 @@ const api = {
   },
 
   // Sync operations
+  // Sync operations (UX-3: migrated to the IpcResult envelope)
   sync: {
-    getFolder: () => 
+    getFolder: (): Promise<IpcResult<string | undefined>> =>
       ipcRenderer.invoke('sync:getFolder'),
-    setFolder: (folderPath: string, options?: { updateActiveMapping?: boolean }) =>
+    setFolder: (folderPath: string, options?: { updateActiveMapping?: boolean }): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('sync:setFolder', folderPath, options),
-    start: () => 
+    start: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('sync:start'),
-    stop: () => 
+    stop: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('sync:stop'),
-    getStatus: () => 
+    getStatus: (): Promise<IpcResult<SyncStatus>> =>
       ipcRenderer.invoke('sync:status'),
-    manual: () =>
+    manual: (): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('sync:manual'),
     // SYNC-5: queue an ArFS unhide for a previously-hidden (locally-deleted) entity
-    unhideEntity: (params: { driveId: string; entityId: string; entityType: 'file' | 'folder'; name?: string }) =>
+    unhideEntity: (params: { driveId: string; entityId: string; entityType: 'file' | 'folder'; name?: string }): Promise<IpcResult<{ id: string }>> =>
       ipcRenderer.invoke('sync:unhide-entity', params),
     // DEBUG methods
-    getState: () => 
+    getState: (): Promise<IpcResult<string>> =>
       ipcRenderer.invoke('sync:get-state'),
-    forceMonitoring: () => 
+    forceMonitoring: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('sync:force-monitoring'),
   },
 
-  // File operations
+  // File operations (UX-3: migrated to the IpcResult envelope)
   files: {
-    getUploads: () => 
+    getUploads: (): Promise<IpcResult<FileUpload[]>> =>
       ipcRenderer.invoke('files:get-uploads'),
-    getDownloads: () =>
+    getDownloads: (): Promise<IpcResult<FileDownload[]>> =>
       ipcRenderer.invoke('files:get-downloads'),
-    redownloadAll: () =>
+    redownloadAll: (): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('files:redownload-all'),
     // Sync preference operations
-    setFileSyncPreference: (fileId: string, preference: 'auto' | 'cloud_only') =>
+    setFileSyncPreference: (fileId: string, preference: 'auto' | 'cloud_only'): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('sync:set-file-preference', fileId, preference),
-    queueDownload: (fileId: string, priority?: number) =>
+    queueDownload: (fileId: string, priority?: number): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('sync:queue-download', fileId, priority),
-    cancelDownload: (fileId: string) =>
+    cancelDownload: (fileId: string): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('sync:cancel-download', fileId),
-    getQueueStatus: () =>
+    getQueueStatus: (): Promise<IpcResult<{ queued: number; active: number; total: number }>> =>
       ipcRenderer.invoke('sync:get-queue-status'),
-    getQueuedDownloads: (limit?: number) =>
+    getQueuedDownloads: (limit?: number): Promise<IpcResult<any[]>> =>
       ipcRenderer.invoke('sync:get-queued-downloads', limit),
   },
 
@@ -321,18 +326,19 @@ const api = {
   },
 
   // Multi-drive mapping operations
+  // Drive mapping operations (UX-3: migrated to the IpcResult envelope)
   driveMappings: {
-    list: () =>
+    list: (): Promise<IpcResult<DriveSyncMapping[]>> =>
       ipcRenderer.invoke('drive-mappings:list'),
-    add: (driveMapping: any) =>
+    add: (driveMapping: any): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('drive-mappings:add', driveMapping),
-    update: (mappingId: string, updates: any) =>
+    update: (mappingId: string, updates: any): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('drive-mappings:update', mappingId, updates),
-    remove: (mappingId: string) =>
+    remove: (mappingId: string): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('drive-mappings:remove', mappingId),
-    getById: (mappingId: string) =>
+    getById: (mappingId: string): Promise<IpcResult<DriveSyncMapping | null>> =>
       ipcRenderer.invoke('drive-mappings:get-by-id', mappingId),
-    getPrimary: () =>
+    getPrimary: (): Promise<IpcResult<DriveSyncMapping | null>> =>
       ipcRenderer.invoke('drive-mappings:get-primary'),
   },
 

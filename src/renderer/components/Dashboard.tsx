@@ -212,9 +212,10 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const loadDownloads = async () => {
     try {
-      const downloadList = await window.electronAPI.files.getDownloads();
+      const downloadResult = await window.electronAPI.files.getDownloads();
+      const downloadList = downloadResult.success ? downloadResult.data : [];
       setDownloads(downloadList);
-      
+
       // Also fetch queue status
       const statusResult = await window.electronAPI.files.getQueueStatus();
       if (statusResult.success) {
