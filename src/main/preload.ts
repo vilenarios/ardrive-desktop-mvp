@@ -23,6 +23,11 @@ const api = {
       ipcRenderer.invoke('wallet:is-loaded'),
     hasStoredWallet: () =>
       ipcRenderer.invoke('wallet:has-stored'),
+    // UX-7: the specific reason the last profiles.switch(id, password)
+    // attempt failed (wrong password vs. a corrupted/IO wallet-file
+    // failure), so the login UI can distinguish them.
+    getLastAuthError: () =>
+      ipcRenderer.invoke('wallet:get-last-auth-error'),
     clearStored: () =>
       ipcRenderer.invoke('wallet:clear-stored'),
     logout: () =>

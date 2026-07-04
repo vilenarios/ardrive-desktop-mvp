@@ -242,6 +242,48 @@ describe('Profile Authentication Flow', () => {
       expect((walletManager as any).wallet).toEqual({ original: 'wallet' });
       expect((walletManager as any).walletJson).toEqual({ original: 'walletJson' });
     });
+
+    // UX-7: switchProfile() keeps resolving a plain boolean (asserted above)
+    // so existing callers/tests are unaffected, but the specific failure
+    // cause must now be recoverable via getLastAuthError() so the login UI
+    // can distinguish a wrong password from a corruption/IO failure.
+    it('records "Invalid password" via getLastAuthError() on a wrong password', async () => {
+      (walletManager as any).currentProfileId = 'original-profile';
+      vi.spyOn(walletManager, 'loadWallet').mockRejectedValue(new Error('Invalid password'));
+
+      const result = await walletManager.switchProfile('test-profile-id', 'wrong-password');
+
+      expect(result).toBe(false);
+      expect(walletManager.getLastAuthError()).toBe('Invalid password');
+    });
+
+    it('records a distinct cause via getLastAuthError() on a corrupted wallet file', async () => {
+      (walletManager as any).currentProfileId = 'original-profile';
+      vi.spyOn(walletManager, 'loadWallet').mockRejectedValue(
+        new Error('Invalid wallet data format')
+      );
+
+      const result = await walletManager.switchProfile('test-profile-id', 'correct-password');
+
+      expect(result).toBe(false);
+      const reason = walletManager.getLastAuthError();
+      expect(reason).toBe('Invalid wallet data format');
+      expect(reason).not.toMatch(/invalid password/i);
+    });
+
+    it('clears the previous getLastAuthError() on a subsequent successful switch', async () => {
+      (walletManager as any).currentProfileId = 'original-profile';
+      vi.spyOn(walletManager, 'loadWallet').mockRejectedValueOnce(new Error('Invalid password'));
+
+      await walletManager.switchProfile('test-profile-id', 'wrong-password');
+      expect(walletManager.getLastAuthError()).toBe('Invalid password');
+
+      vi.spyOn(walletManager, 'loadWallet').mockResolvedValueOnce(true);
+      const result = await walletManager.switchProfile('test-profile-id', 'correct-password');
+
+      expect(result).toBe(true);
+      expect(walletManager.getLastAuthError()).toBeNull();
+    });
   });
 
   describe('Memory Security', () => {
@@ -290,7 +332,7 @@ describe('Profile Authentication Flow', () => {
       expect(turboManager.initialize).toHaveBeenCalledWith({ kty: 'RSA', n: 'test' });
     });
 
-    it('should fail to load wallet with incorrect password', async () => {
+    it('should surface "Invalid password" distinctly on a wrong password (UX-7)', async () => {
       (walletManager as any).currentProfileId = 'test-profile';
 
       vi.mocked(fs.access).mockResolvedValue(undefined);
@@ -299,10 +341,36 @@ describe('Profile Authentication Flow', () => {
         new Error('invalid password')
       );
 
-      // loadWallet wraps every internal failure into a single user-facing error
+      // UX-7: the outer catch used to collapse every internal failure into
+      // one generic "Failed to decrypt wallet" message, hiding the specific
+      // wrong-password cause from the login UI. It must now surface the
+      // real cause instead.
       await expect(walletManager.loadWallet('wrong-password')).rejects.toThrow(
-        'Failed to decrypt wallet'
+        'Invalid password'
       );
+      expect(walletManager.isWalletLoaded()).toBe(false);
+    });
+
+    it('should surface a distinct cause for a corrupted/unreadable wallet file, not "Invalid password" (UX-7)', async () => {
+      (walletManager as any).currentProfileId = 'test-profile';
+
+      vi.mocked(fs.access).mockResolvedValue(undefined);
+      // Decryption itself succeeds (so this is NOT a wrong-password case),
+      // but the decrypted payload isn't valid wallet data (e.g. a corrupted
+      // or truncated wallet.enc).
+      (readEncryptedFile as MockedFunction<any>).mockResolvedValue('not valid json');
+
+      let caught: Error | undefined;
+      try {
+        await walletManager.loadWallet('correct-password');
+      } catch (error) {
+        caught = error as Error;
+      }
+
+      expect(caught).toBeDefined();
+      expect(caught!.message).toBe('Invalid wallet data format');
+      // The two failure classes must be textually distinguishable.
+      expect(caught!.message).not.toMatch(/invalid password/i);
       expect(walletManager.isWalletLoaded()).toBe(false);
     });
 

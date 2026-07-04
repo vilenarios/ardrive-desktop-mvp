@@ -53,11 +53,33 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
       
       // Switch to the profile with the provided password
       const success = await window.electronAPI.profiles.switch(profile.id, password);
-      
+
       if (success) {
         onProfileSelected(profile, password);
       } else {
-        setError('Invalid password. Please try again.');
+        // UX-7: profiles.switch() collapses every failure into `false`, but
+        // wallet-manager-secure now records the real cause (wrong password
+        // vs. a corrupted/unreadable wallet file) so this screen can tell
+        // them apart instead of always guessing "wrong password".
+        // wallet:get-last-auth-error follows the D-005 {success, data}
+        // envelope (it's a new handler), so unwrap it defensively.
+        let reason: string | null = null;
+        try {
+          const reasonResult: any = await window.electronAPI.wallet.getLastAuthError();
+          if (reasonResult && typeof reasonResult === 'object' && 'success' in reasonResult) {
+            reason = reasonResult.success ? (reasonResult.data ?? null) : null;
+          } else if (typeof reasonResult === 'string') {
+            reason = reasonResult;
+          }
+        } catch (reasonErr) {
+          console.error('Failed to fetch auth error reason:', reasonErr);
+        }
+
+        if (reason && !/invalid password/i.test(reason)) {
+          setError(`Could not unlock this profile: ${reason}`);
+        } else {
+          setError('Invalid password. Please try again.');
+        }
       }
     } catch (err) {
       console.error('Failed to authenticate profile:', err);
