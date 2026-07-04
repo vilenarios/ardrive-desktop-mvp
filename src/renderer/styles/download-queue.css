@@ -171,11 +171,19 @@
 }
 
 /* List — flex + overflow instead of a `calc(100vh - Npx)` magic number, same
- * technique activity-tab.css already uses for its own scroll region. */
+ * technique activity-tab.css already uses for its own scroll region.
+ * Background is one step down from the ambient `.tab-content` panel
+ * (`--surface-raised`, set by the shared dashboard-tabs.css) so each
+ * `.download-card` — itself `--surface-raised` — actually reads as raised
+ * against it, per DESIGN-SYSTEM.md §6.7 ("Table bg --surface, cell/row bg
+ * --surface-raised"). Without this the cards would match their own
+ * container's background exactly and only the 12%-opacity border would
+ * separate them. */
 .download-queue-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  background: var(--surface);
 }
 
 .download-queue-no-results {
