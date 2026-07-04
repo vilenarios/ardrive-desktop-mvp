@@ -1,4 +1,468 @@
 /* Modern Upload Queue Styles */
+/* DESIGN-8 (RESTYLE-1/2/3/4/9): the component previously rendered almost
+ * entirely via inline `style={{}}` objects and `onMouseEnter`/`onMouseLeave`
+ * handlers mutating those styles directly (§5A anti-pattern) — this file was
+ * imported but the component never actually used most of the classes below
+ * until this pass. Base (always-on) rules are kept ABOVE the responsive
+ * breakpoints section further down so the existing mobile overrides
+ * continue to win at narrow widths regardless of `!important` use. */
+
+/* Empty state */
+.upload-queue-empty {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+}
+
+.upload-queue-empty-icon {
+  color: var(--icon-low);
+  margin-bottom: var(--space-4);
+}
+
+.upload-queue-empty-title {
+  font-size: var(--text-body-lg);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.upload-queue-empty-subtitle {
+  font-size: var(--text-body-sm);
+  color: var(--text-tertiary);
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+/* Unified cost banner */
+.upload-queue-cost-banner {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-4);
+  align-items: center;
+  background: var(--surface-inset);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--border);
+}
+
+.balance-section {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+}
+
+.balance-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.balance-icon {
+  color: var(--icon-mid);
+}
+
+.balance-icon--turbo {
+  color: var(--info);
+}
+
+.balance-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+}
+
+.balance-value {
+  font-weight: 600;
+  font-size: var(--text-body-sm);
+  color: var(--text-primary);
+}
+
+.balance-value--turbo {
+  color: var(--info-fg);
+}
+
+.balance-divider {
+  width: 1px;
+  height: 30px;
+  background: var(--border);
+}
+
+.total-cost-section {
+  text-align: right;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border);
+}
+
+.total-cost-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  margin-bottom: 2px;
+}
+
+.total-cost-label {
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+}
+
+.total-cost-value {
+  font-weight: 600;
+  font-size: var(--text-body-lg);
+}
+
+.total-cost-value--free {
+  color: var(--success-fg);
+}
+
+.total-cost-value--unavailable {
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+.total-cost-unquoted-note {
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+/* Icon-only ghost button recipe (§5A) — replaces the onMouseEnter/onMouseLeave
+ * pair that used to mutate this button's background/color directly. */
+.upload-queue-cost-banner .refresh-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--icon-mid);
+  border-radius: var(--radius-sm);
+  transition: color var(--motion-base) var(--ease-standard),
+              background-color var(--motion-base) var(--ease-standard);
+}
+
+.upload-queue-cost-banner .refresh-button:hover {
+  background: var(--surface-inset);
+  color: var(--icon-high);
+}
+
+.upload-queue-cost-banner .refresh-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+/* Queue title row */
+.upload-queue-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+
+.upload-queue-title-row h2 {
+  margin: 0;
+}
+
+/* Conflict / skipped-for-balance notices — one hue each (RESTYLE-4): the
+ * insufficient-balance link below is underlined, not recolored, so a two-hue
+ * message never appears in one sentence. */
+.upload-queue-conflict-warning,
+.upload-queue-skipped-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-body-sm);
+  background: var(--warning-surface);
+  color: var(--warning-fg);
+}
+
+.upload-queue-skipped-notice {
+  margin-bottom: var(--space-4);
+}
+
+.skipped-notice-topup-link,
+.cost-topup-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Column headers (RESTYLE-3) */
+.upload-queue-header-row {
+  display: grid;
+  grid-template-columns: 20px 1fr auto 120px auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.upload-queue-header-row .col-right {
+  text-align: right;
+}
+
+/* File list */
+.upload-queue-file-list {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-4);
+}
+
+.upload-queue-file-item {
+  display: grid;
+  grid-template-columns: 20px 1fr auto 120px auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  transition: background-color var(--motion-moderate) var(--ease-standard);
+  position: relative;
+}
+
+.upload-queue-file-item.has-conflict {
+  background-color: var(--warning-surface);
+}
+
+.file-operation-icon {
+  color: var(--icon-mid);
+}
+
+.file-operation-icon--active {
+  color: var(--info-fg);
+}
+
+.file-info {
+  min-width: 0;
+}
+
+.file-info-name {
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-conflict-detail {
+  font-size: var(--text-caption);
+  color: var(--danger-fg);
+  margin-top: 2px;
+}
+
+/* Desktop: file-meta is a transparent grouping element so its two children
+ * (.file-size / .file-cost) land in their own grid columns, matching the
+ * header row above. The mobile breakpoint further down turns it into a real
+ * flex row instead (same technique already used by .tcm-comparison-header). */
+.file-meta {
+  display: contents;
+}
+
+.file-size {
+  font-size: var(--text-body-sm);
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.file-cost {
+  font-size: var(--text-body-sm);
+  text-align: right;
+}
+
+.cost-free {
+  color: var(--success-fg);
+  font-weight: 500;
+}
+
+.cost-value {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.cost-insufficient {
+  font-size: var(--text-caption);
+  color: var(--warning-fg);
+}
+
+.cost-unavailable {
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+}
+
+.file-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Row action buttons — icon-only ghost recipe (§5A), replacing three
+ * separate onMouseEnter/onMouseLeave pairs (RESTYLE-9). */
+.file-action-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color var(--motion-base) var(--ease-standard),
+              background-color var(--motion-base) var(--ease-standard);
+}
+
+.file-action-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.file-action-btn--cancel {
+  color: var(--warning-fg);
+}
+
+.file-action-btn--cancel:hover {
+  background: var(--warning-surface);
+}
+
+.file-action-btn--retry {
+  color: var(--brand);
+}
+
+.file-action-btn--retry:hover {
+  background: var(--brand-surface);
+}
+
+.file-action-btn--reject {
+  color: var(--icon-mid);
+}
+
+.file-action-btn--reject:hover {
+  background: var(--surface-inset);
+  color: var(--icon-high);
+}
+
+/* Bottom action row */
+.upload-queue-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: var(--space-2);
+}
+
+.left-actions,
+.right-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.right-actions {
+  gap: var(--space-3);
+}
+
+/* Retry Failed — outline-style; was a hardcoded `background: white` resting
+ * state (DARK-1) with an onMouseEnter/onMouseLeave color swap (RESTYLE-9). */
+.retry-failed-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--brand);
+  background: transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  color: var(--brand);
+  cursor: pointer;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
+}
+
+.retry-failed-btn:hover {
+  background: var(--brand);
+  color: var(--text-on-brand);
+}
+
+.retry-failed-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.clear-all-btn {
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--text-body);
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color var(--motion-base) var(--ease-standard);
+}
+
+.clear-all-btn:hover {
+  background: var(--surface-inset);
+}
+
+.clear-all-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Approve & Upload — primary button recipe (§5A): hover lift + branded glow
+ * built from --brand-rgb (RESTYLE-2 fixed the old hardcoded pre-rebrand red
+ * rgba(220,38,38,...) here), replacing the onMouseEnter/onMouseLeave pair. */
+.approve-all-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: var(--brand);
+  color: var(--text-on-brand);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--text-body);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard),
+              transform var(--motion-base) var(--ease-standard);
+}
+
+.approve-all-btn:hover:not(:disabled) {
+  background: var(--brand-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(var(--brand-rgb), 0.28);
+}
+
+.approve-all-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.approve-all-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.approve-all-btn:disabled {
+  background: var(--brand-disabled);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
 
 /* Responsive breakpoints */
 @media (max-width: 768px) {
@@ -135,30 +599,20 @@
 
 /* Hover states */
 .upload-queue-file-item:hover {
-  background-color: var(--gray-50);
+  background-color: var(--surface-inset);
 }
 
 .upload-queue-file-item.has-conflict:hover {
-  background-color: var(--warning-100);
+  background-color: var(--warning-surface);
 }
 
-/* Focus states for accessibility */
+/* Focus states for accessibility (app-wide fallback; left as-is — this rule
+ * reaches every button/input in the app, not just this surface, so it's out
+ * of scope for a DESIGN-5-only pass). */
 button:focus-visible,
 input:focus-visible {
   outline: 2px solid var(--ardrive-primary);
   outline-offset: 2px;
-}
-
-/* Cost banner refinements */
-.upload-queue-cost-banner {
-  position: relative;
-}
-
-.upload-queue-cost-banner .refresh-button {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 1;
 }
 
 /* File operation descriptions */
@@ -232,8 +686,8 @@ button {
   left: 50%;
   transform: translateX(-50%);
   padding: 4px 8px;
-  background-color: var(--gray-900);
-  color: white;
+  background-color: var(--surface-overlay);
+  color: var(--text-primary);
   font-size: 12px;
   border-radius: var(--radius-sm);
   white-space: nowrap;

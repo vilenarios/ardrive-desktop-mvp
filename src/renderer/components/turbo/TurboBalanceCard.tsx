@@ -1,5 +1,6 @@
 import React from 'react';
 import { RefreshCw, AlertCircle } from 'lucide-react';
+import { InfoButton } from '../common/InfoButton';
 
 interface TurboBalanceCardProps {
   balance: {
@@ -41,16 +42,26 @@ const TurboBalanceCard: React.FC<TurboBalanceCardProps> = ({
     <div className="tcm-balance-card-compact">
       <div className="tcm-balance-main">
         <div className="tcm-balance-info">
-          <div className="tcm-balance-label">Turbo Credits Balance</div>
+          <div className="tcm-balance-label-row">
+            <span className="tcm-balance-label">Turbo Credits Balance</span>
+            <InfoButton tooltip="Turbo Credits are prepaid, instant-upload credits you buy with a card — no crypto wallet required. They're a separate balance from AR tokens in your wallet, just priced on the same scale." />
+          </div>
           <div className="tcm-balance-value">
             <span className="tcm-balance-number">{balance ? balance.ar : '0.0000'}</span>
-            <span className="tcm-balance-unit">AR</span>
+            {/* TRUST-6: this is the Credits balance, not the AR wallet balance
+                (turbo-manager.ts converts winc -> an "AR-equivalent" figure for
+                display) — labeling it "AR" conflated the two currencies the
+                app elsewhere insists are distinct (see UserMenu's AR balance). */}
+            <span className="tcm-balance-unit">Credits</span>
           </div>
         </div>
-        
+
         <div className="tcm-balance-stats">
           <div className="tcm-stat">
-            <span className="label">Winston</span>
+            <span className="tcm-stat-label-row">
+              <span className="label">Winston</span>
+              <InfoButton tooltip="Winston is the smallest unit of AR — like a satoshi for Bitcoin. 1 AR = 10^12 Winston. Turbo Credits are priced on this same scale." />
+            </span>
             <span className="value">{balance ? parseFloat(balance.winc).toLocaleString() : '0'}</span>
           </div>
           {fiatEstimate && balance && (
@@ -60,9 +71,9 @@ const TurboBalanceCard: React.FC<TurboBalanceCardProps> = ({
             </div>
           )}
         </div>
-        
+
         <div className="tcm-balance-actions">
-          <button className="tcm-refresh-compact" onClick={onRefresh} disabled={loading}>
+          <button className="tcm-refresh-compact" onClick={onRefresh} disabled={loading} aria-label="Refresh Turbo Credits balance">
             <RefreshCw size={16} className={loading ? 'spinning' : ''} />
           </button>
         </div>

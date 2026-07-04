@@ -1,18 +1,24 @@
 /* Turbo Credits Manager Styles */
-/* Following ArDrive Design System Guidelines */
+/* DESIGN-8 (RESTYLE-6): ported off the legacy --gray-N / --ardrive-N bridge
+ * onto semantic tokens directly — hardcoded `white` backgrounds (DARK-1) made
+ * every panel here invisible-text-on-white in dark mode; `.tcm-amount-input`
+ * and `.tcm-currency-select select` had no explicit `color` at all, so typed
+ * text was literally invisible. Cards now use elevation/radius-lg tokens like
+ * the rest of the restyled app; the balance card — the single most important
+ * number on this screen — gets the signature accent-top treatment (§6.3). */
 
 /* Container */
 .turbo-credits-manager {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--gray-50);
+  background: var(--surface);
 }
 
 /* Header Section */
 .tcm-header {
-  background: white;
-  border-bottom: 1px solid var(--gray-200);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
   padding: var(--space-5) var(--space-6);
   position: sticky;
   top: 0;
@@ -33,39 +39,63 @@
 
 .tcm-header-title h1 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: var(--text-h4);
   font-weight: 600;
-  color: var(--gray-900);
+  color: var(--text-primary);
 }
 
+/* Decorative Zap icon — was --ardrive-warning (amber), a status hue used for
+ * a purely decorative mark (DSI-2). --accent is the signature ArDrive
+ * highlight used for exactly this kind of emphasis (§1, §6.10). */
 .tcm-header-icon {
-  color: var(--ardrive-warning);
+  color: var(--accent);
 }
 
 .tcm-close-btn {
   padding: var(--space-2) var(--space-4);
-  background: white;
-  border: 1px solid var(--gray-300);
-  border-radius: var(--radius);
-  color: var(--gray-700);
-  font-size: 0.875rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-body-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              border-color var(--motion-base) var(--ease-standard);
 }
 
 .tcm-close-btn:hover {
-  background: var(--gray-50);
-  border-color: var(--gray-400);
+  background: var(--surface-inset);
+  border-color: var(--border-strong);
 }
 
-/* Balance Card */
+.tcm-close-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+/* Balance Card — the single most important number on this screen; gets the
+ * signature accent-top treatment (§6.3 "Accent-top variant") rather than
+ * spreading it across every card on the page. */
 .tcm-balance-card-compact {
-  background: white;
-  border: 1px solid var(--gray-200);
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-2);
   padding: var(--space-4);
   margin: var(--space-4) var(--space-6);
+}
+
+.tcm-balance-card-compact::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--accent);
 }
 
 .tcm-balance-main {
@@ -78,13 +108,19 @@
   flex: 0 0 auto;
 }
 
+.tcm-balance-label-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
 .tcm-balance-label {
-  font-size: 0.6875rem;
+  font-size: var(--text-caption);
   font-weight: 600;
   text-transform: uppercase;
-  color: var(--gray-500);
+  color: var(--text-tertiary);
   letter-spacing: 0.5px;
-  margin-bottom: var(--space-1);
 }
 
 .tcm-balance-value {
@@ -96,14 +132,14 @@
 .tcm-balance-number {
   font-size: 1.75rem;
   font-weight: 700;
-  color: var(--gray-900);
+  color: var(--text-primary);
   line-height: 1;
 }
 
 .tcm-balance-unit {
-  font-size: 0.875rem;
+  font-size: var(--text-body-sm);
   font-weight: 500;
-  color: var(--gray-600);
+  color: var(--text-secondary);
 }
 
 .tcm-balance-stats {
@@ -111,7 +147,7 @@
   display: flex;
   gap: var(--space-6);
   padding-left: var(--space-6);
-  border-left: 1px solid var(--gray-200);
+  border-left: 1px solid var(--border);
 }
 
 .tcm-stat {
@@ -120,18 +156,24 @@
   gap: var(--space-1);
 }
 
+.tcm-stat-label-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 .tcm-stat .label {
-  font-size: 0.6875rem;
+  font-size: var(--text-caption);
   font-weight: 500;
   text-transform: uppercase;
-  color: var(--gray-500);
+  color: var(--text-tertiary);
   letter-spacing: 0.5px;
 }
 
 .tcm-stat .value {
-  font-size: 0.875rem;
+  font-size: var(--text-body-sm);
   font-weight: 600;
-  color: var(--gray-900);
+  color: var(--text-primary);
 }
 
 .tcm-balance-actions {
@@ -143,20 +185,26 @@
 .tcm-refresh-compact {
   width: 2rem;
   height: 2rem;
-  background: var(--gray-100);
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius);
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
-  color: var(--gray-600);
+  transition: border-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
+  color: var(--icon-mid);
 }
 
 .tcm-refresh-compact:hover {
-  background: var(--gray-200);
-  color: var(--gray-700);
+  border-color: var(--border-strong);
+  color: var(--icon-high);
+}
+
+.tcm-refresh-compact:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .tcm-refresh-compact:disabled {
@@ -174,10 +222,10 @@
   gap: var(--space-2);
   margin-top: var(--space-3);
   padding: var(--space-2) var(--space-3);
-  background: var(--warning-50);
-  border-radius: var(--radius);
-  font-size: 0.8125rem;
-  color: var(--warning-700);
+  background: var(--warning-surface);
+  border-radius: var(--radius-md);
+  font-size: var(--text-body-sm);
+  color: var(--warning-fg);
 }
 
 /* Tab Navigation */
@@ -193,25 +241,33 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  background: white;
-  border: 1px solid var(--gray-300);
-  border-radius: var(--radius);
-  color: var(--gray-700);
-  font-size: 0.875rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-body-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              border-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
 }
 
 .tcm-tab:hover {
-  background: var(--gray-50);
-  border-color: var(--gray-400);
+  background: var(--surface-inset);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.tcm-tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .tcm-tab.active {
-  background: var(--ardrive-primary);
-  color: white;
-  border-color: var(--ardrive-primary);
+  background: var(--brand);
+  color: var(--text-on-brand);
+  border-color: var(--brand);
 }
 
 .tcm-tab svg {
@@ -234,36 +290,37 @@
   gap: var(--space-2);
   padding: var(--space-3);
   margin: 0 var(--space-6) var(--space-4);
-  border-radius: var(--radius);
-  font-size: 0.875rem;
+  border-radius: var(--radius-md);
+  font-size: var(--text-body-sm);
 }
 
 .tcm-error-message {
-  background: var(--danger-50);
-  color: var(--danger-700);
-  border: 1px solid var(--danger-200);
+  background: var(--danger-surface);
+  color: var(--danger-fg);
+  border: 1px solid var(--danger);
 }
 
 .tcm-success-message {
-  background: var(--success-50);
-  color: var(--success-700);
-  border: 1px solid var(--success-200);
+  background: var(--success-surface);
+  color: var(--success-fg);
+  border: 1px solid var(--success);
 }
 
 /* Common Section Styles */
 .tcm-section {
-  background: white;
-  border: 1px solid var(--gray-200);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-1);
   padding: var(--space-5);
   margin-bottom: var(--space-4);
 }
 
 .tcm-section h3 {
   margin: 0 0 var(--space-4) 0;
-  font-size: 1.125rem;
+  font-size: var(--text-h6);
   font-weight: 600;
-  color: var(--gray-900);
+  color: var(--text-primary);
 }
 
 .tcm-section-header {
@@ -278,11 +335,11 @@
 }
 
 .tcm-beta-badge {
-  padding: var(--space-1) var(--space-2);
-  background: var(--info-100);
-  color: var(--info-700);
-  border-radius: var(--radius-sm);
-  font-size: 0.6875rem;
+  padding: 2px var(--space-2);
+  background: var(--info-surface);
+  color: var(--info-fg);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-caption);
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -296,19 +353,27 @@
 
 .tcm-quick-buy-option {
   padding: var(--space-4);
-  background: white;
-  border: 2px solid var(--gray-200);
-  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg);
   text-align: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-moderate) var(--ease-standard),
+              border-color var(--motion-moderate) var(--ease-standard),
+              box-shadow var(--motion-moderate) var(--ease-standard),
+              transform var(--motion-moderate) var(--ease-standard);
 }
 
-.tcm-quick-buy-option:hover {
-  background: var(--gray-50);
-  border-color: var(--ardrive-primary);
+.tcm-quick-buy-option:hover:not(:disabled) {
+  background: var(--surface-inset);
+  border-color: var(--brand);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--elevation-3);
+}
+
+.tcm-quick-buy-option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .tcm-quick-buy-option:disabled {
@@ -320,13 +385,13 @@
 .tcm-quick-buy-amount {
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--gray-900);
+  color: var(--text-primary);
   margin-bottom: var(--space-1);
 }
 
 .tcm-quick-buy-desc {
-  font-size: 0.75rem;
-  color: var(--gray-600);
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
 }
 
 /* Custom Amount Section */
@@ -344,63 +409,95 @@
 
 .tcm-currency-select select {
   padding: var(--space-3);
-  background: white;
-  border: 1px solid var(--gray-300);
-  border-radius: var(--radius);
-  font-size: 0.875rem;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-body-sm);
   font-weight: 500;
   cursor: pointer;
 }
 
+.tcm-currency-select select:focus-visible {
+  outline: none;
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+/* DARK-1: no explicit `color` here meant typed text inherited whatever
+ * ambient text color applied — on a hardcoded white input in dark mode that
+ * was invisible-on-white. Both are now explicit tokens. */
 .tcm-amount-input {
   flex: 1;
   padding: var(--space-3);
-  background: white;
-  border: 1px solid var(--gray-300);
-  border-radius: var(--radius);
-  font-size: 1rem;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-body-lg);
   font-weight: 500;
+  transition: border-color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.tcm-amount-input::placeholder {
+  color: var(--input-placeholder);
 }
 
 .tcm-amount-input:focus {
   outline: none;
-  border-color: var(--ardrive-primary);
-  box-shadow: 0 0 0 3px var(--ardrive-primary-100);
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--brand-surface);
 }
 
 .tcm-input-suffix {
-  font-size: 0.875rem;
+  font-size: var(--text-body-sm);
   font-weight: 500;
-  color: var(--gray-600);
+  color: var(--text-secondary);
 }
 
-/* Button Styles - Following Dashboard Pattern */
+/* Button Styles */
 .tcm-purchase-btn,
 .tcm-convert-btn {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-5);
-  background: var(--ardrive-primary);
-  color: white;
-  border: none;
-  border-radius: var(--radius);
-  font-size: 0.875rem;
-  font-weight: 500;
+  border-radius: var(--radius-md);
+  font-size: var(--text-body-sm);
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              border-color var(--motion-base) var(--ease-standard);
 }
 
+.tcm-purchase-btn {
+  background: var(--brand);
+  color: var(--text-on-brand);
+  border: none;
+}
+
+.tcm-purchase-btn:hover:not(:disabled) {
+  background: var(--brand-hover);
+}
+
+/* Locally-scoped secondary action — deliberately not the shared
+ * `.button.secondary` class (DARK-2: that class currently renders invisible
+ * white-on-white text in dark mode and is being fixed by a parallel lane). */
 .tcm-convert-btn {
-  background: var(--gray-700);
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
 }
 
-.tcm-purchase-btn:hover {
-  background: var(--ardrive-primary-hover);
+.tcm-convert-btn:hover:not(:disabled) {
+  background: var(--surface-inset);
 }
 
-.tcm-convert-btn:hover {
-  background: var(--gray-800);
+.tcm-purchase-btn:focus-visible,
+.tcm-convert-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .tcm-purchase-btn:disabled,
@@ -413,12 +510,12 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.75rem;
-  color: var(--gray-600);
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
 }
 
 .tcm-payment-info svg {
-  color: var(--success-600);
+  color: var(--success);
 }
 
 /* Convert Section */
@@ -433,9 +530,14 @@
   justify-content: space-between;
   align-items: center;
   padding: var(--space-3);
-  background: var(--gray-50);
-  border-radius: var(--radius);
-  font-size: 0.875rem;
+  background: var(--surface-inset);
+  border-radius: var(--radius-md);
+  font-size: var(--text-body-sm);
+  color: var(--text-secondary);
+}
+
+.tcm-convert-balance strong {
+  color: var(--text-primary);
 }
 
 .tcm-convert-warning {
@@ -443,16 +545,16 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3);
-  background: var(--warning-50);
-  border: 1px solid var(--warning-200);
+  background: var(--warning-surface);
+  border: 1px solid var(--warning);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-4);
-  color: var(--warning-800);
-  font-size: 0.8125rem;
+  color: var(--warning-fg);
+  font-size: var(--text-body-sm);
 }
 
 .tcm-convert-warning svg {
-  color: var(--warning-600);
+  color: var(--warning);
   flex-shrink: 0;
 }
 
@@ -464,16 +566,16 @@
 
 .tcm-warning-details {
   display: block;
-  font-size: 0.75rem;
-  color: var(--warning-700);
+  font-size: var(--text-caption);
+  color: var(--warning-fg);
 }
 
 .tcm-conversion-estimate {
   margin-top: var(--space-3);
   padding: var(--space-3);
-  background: var(--gray-50);
+  background: var(--surface-inset);
   border-radius: var(--radius-md);
-  border: 1px solid var(--gray-200);
+  border: 1px solid var(--border);
 }
 
 .tcm-estimate-row {
@@ -481,14 +583,15 @@
   justify-content: space-between;
   align-items: center;
   padding: var(--space-1) 0;
-  font-size: 0.875rem;
+  font-size: var(--text-body-sm);
+  color: var(--text-secondary);
 }
 
 .tcm-estimate-total {
-  border-top: 1px solid var(--gray-300);
+  border-top: 1px solid var(--border-strong);
   margin-top: var(--space-2);
   padding-top: var(--space-2);
-  color: var(--gray-900);
+  color: var(--text-primary);
 }
 
 /* Stats Grid */
@@ -500,27 +603,27 @@
 
 .tcm-stat-card {
   padding: var(--space-4);
-  background: var(--gray-50);
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   text-align: center;
 }
 
 .tcm-stat-icon {
-  color: var(--ardrive-primary);
+  color: var(--brand);
   margin-bottom: var(--space-2);
 }
 
 .tcm-stat-value {
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--gray-900);
+  color: var(--text-primary);
   margin-bottom: var(--space-1);
 }
 
 .tcm-stat-label {
-  font-size: 0.75rem;
-  color: var(--gray-600);
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -529,16 +632,16 @@
   display: flex;
   gap: var(--space-4);
   padding: var(--space-4);
-  background: white;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   margin-bottom: var(--space-3);
-  transition: all 0.2s ease;
+  transition: box-shadow var(--motion-moderate) var(--ease-standard);
 }
 
 .tcm-feature-card.tcm-coming-soon {
   opacity: 0.7;
-  background: var(--gray-50);
+  background: var(--surface-inset);
 }
 
 .tcm-feature-icon {
@@ -547,14 +650,15 @@
   justify-content: center;
   width: 3rem;
   height: 3rem;
-  background: var(--gray-100);
-  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  border-radius: var(--radius-lg);
+  color: var(--icon-high);
   flex-shrink: 0;
 }
 
 .tcm-feature-card.tcm-coming-soon .tcm-feature-icon {
-  background: var(--gray-200);
-  color: var(--gray-500);
+  background: var(--surface-sunken);
+  color: var(--icon-low);
 }
 
 .tcm-feature-content {
@@ -563,32 +667,32 @@
 
 .tcm-feature-content h4 {
   margin: 0 0 var(--space-1) 0;
-  font-size: 1rem;
+  font-size: var(--text-body-lg);
   font-weight: 600;
-  color: var(--gray-900);
+  color: var(--text-primary);
 }
 
 .tcm-feature-content p {
   margin: 0;
-  font-size: 0.875rem;
-  color: var(--gray-600);
+  font-size: var(--text-body-sm);
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 
 .tcm-coming-soon-badge {
   display: inline-block;
   margin-top: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  background: var(--gray-200);
-  color: var(--gray-700);
-  border-radius: var(--radius-sm);
-  font-size: 0.75rem;
+  padding: 2px var(--space-3);
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-caption);
   font-weight: 600;
 }
 
 .tcm-roadmap-note {
-  background: var(--gray-50);
-  border: 1px solid var(--gray-200);
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   margin-top: var(--space-6);
@@ -597,13 +701,13 @@
 
 .tcm-roadmap-note p {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--text-body-sm);
   line-height: 1.6;
-  color: var(--gray-700);
+  color: var(--text-secondary);
 }
 
 .tcm-roadmap-note strong {
-  color: var(--ardrive-primary);
+  color: var(--brand);
   font-weight: 600;
 }
 
@@ -613,33 +717,33 @@
   justify-content: space-between;
   align-items: flex-start;
   padding: var(--space-6);
-  background: var(--gray-50);
+  background: var(--surface-inset);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--gray-200);
+  border: 1px solid var(--border);
   margin-bottom: var(--space-6);
 }
 
 .tcm-about-hero-content h2 {
-  font-size: 1.5rem;
+  font-size: var(--text-h4);
   font-weight: 700;
   margin-bottom: var(--space-2);
-  color: var(--gray-900);
+  color: var(--text-primary);
 }
 
 .tcm-about-subtitle {
-  font-size: 1rem;
+  font-size: var(--text-body-lg);
   line-height: 1.6;
-  color: var(--gray-700);
+  color: var(--text-secondary);
   margin: 0;
   max-width: 500px;
 }
 
 .tcm-turbo-badge {
-  padding: var(--space-1) var(--space-3);
-  background: var(--success-100);
-  color: var(--success-700);
-  border-radius: var(--radius-sm);
-  font-size: 0.75rem;
+  padding: 2px var(--space-3);
+  background: var(--success-surface);
+  color: var(--success-fg);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-caption);
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -654,42 +758,45 @@
 
 .tcm-benefit-card {
   padding: var(--space-4);
-  background: white;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   text-align: center;
-  transition: all 0.2s ease;
+  transition: box-shadow var(--motion-moderate) var(--ease-standard),
+              border-color var(--motion-moderate) var(--ease-standard),
+              transform var(--motion-moderate) var(--ease-standard);
 }
 
 .tcm-benefit-card:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  border-color: var(--border-strong);
+  box-shadow: var(--elevation-3);
 }
 
 .tcm-benefit-icon {
   width: 3rem;
   height: 3rem;
-  background: var(--gray-100);
-  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 0 auto var(--space-3);
-  color: var(--ardrive-primary);
+  color: var(--brand);
 }
 
 .tcm-benefit-card h4 {
   margin: 0 0 var(--space-2) 0;
-  font-size: 1rem;
+  font-size: var(--text-body-lg);
   font-weight: 600;
-  color: var(--gray-900);
+  color: var(--text-primary);
 }
 
 .tcm-benefit-card p {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--text-body-sm);
   line-height: 1.5;
-  color: var(--gray-600);
+  color: var(--text-secondary);
 }
 
 /* Comparison Table */
@@ -697,8 +804,8 @@
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 1px;
-  background: var(--gray-200);
-  border-radius: var(--radius-md);
+  background: var(--border);
+  border-radius: var(--radius-lg);
   overflow: hidden;
   margin-top: var(--space-4);
 }
@@ -709,10 +816,10 @@
 
 .tcm-comparison-header > div {
   padding: var(--space-3);
-  background: var(--gray-100);
+  background: var(--surface-inset);
   font-weight: 600;
-  font-size: 0.875rem;
-  color: var(--gray-900);
+  font-size: var(--text-body-sm);
+  color: var(--text-primary);
   text-align: center;
 }
 
@@ -726,42 +833,50 @@
 
 .tcm-comparison-row > div {
   padding: var(--space-3);
-  background: white;
-  font-size: 0.875rem;
+  background: var(--surface-raised);
+  font-size: var(--text-body-sm);
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: var(--space-2);
+}
+
+.tcm-comparison-row svg {
+  flex-shrink: 0;
 }
 
 .tcm-comparison-row > div:first-child {
   font-weight: 500;
-  color: var(--gray-900);
+  color: var(--text-primary);
   justify-content: flex-start;
 }
 
 .tcm-comparison-row > div:nth-child(2) {
-  color: var(--gray-600);
+  color: var(--text-tertiary);
 }
 
 .tcm-comparison-row > div:last-child {
-  color: var(--success-700);
+  color: var(--success-fg);
   font-weight: 500;
 }
 
 /* Economics Card */
 .tcm-economics-card {
-  background: var(--info-50);
-  border: 1px solid var(--info-200);
+  background: var(--info-surface);
+  border: 1px solid var(--info);
   border-radius: var(--radius-lg);
   padding: var(--space-6);
   margin-top: var(--space-6);
 }
 
 .tcm-economics-card h3 {
-  font-size: 1.125rem;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-h6);
   font-weight: 600;
   margin-bottom: var(--space-4);
-  color: var(--gray-900);
+  color: var(--text-primary);
 }
 
 .tcm-economics-content {
@@ -771,13 +886,13 @@
 }
 
 .tcm-economics-point {
-  font-size: 0.875rem;
+  font-size: var(--text-body-sm);
   line-height: 1.6;
-  color: var(--gray-700);
+  color: var(--text-secondary);
 }
 
 .tcm-economics-point strong {
-  color: var(--gray-900);
+  color: var(--text-primary);
   font-weight: 600;
 }
 

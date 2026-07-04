@@ -1,0 +1,309 @@
+/* Download Queue Tab Styles */
+/* DESIGN-8 (RESTYLE-5): this tab had no dedicated stylesheet at all — 100%
+ * inline `style={{}}`, a hardcoded `background: white` row (DARK-1), an
+ * onMouseEnter/onMouseLeave pair mutating boxShadow directly (RESTYLE-9,
+ * §5A anti-pattern), raw `0.2s`/`0.3s` transitions instead of --motion-*
+ * tokens, and an arbitrary `calc(100vh - 400px)` scroll height (likely to
+ * clip awkwardly on smaller windows). Ported onto real classes + tokens,
+ * matching the flex/overflow pattern activity-tab.css already uses for its
+ * own scroll region instead of a magic vh number. Also adds the search/
+ * filter bar Activity and Storage already have (this tab had neither). */
+
+.download-queue-tab {
+  height: 100%;
+}
+
+/* Empty state */
+.download-queue-empty {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+}
+
+.download-queue-empty-icon {
+  color: var(--icon-low);
+  margin-bottom: var(--space-4);
+}
+
+.download-queue-empty-title {
+  font-size: var(--text-body-lg);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.download-queue-empty-subtitle {
+  font-size: var(--text-body-sm);
+  color: var(--text-tertiary);
+  max-width: 400px;
+  margin: 0 auto var(--space-6);
+}
+
+/* Header */
+.download-queue-header {
+  padding: var(--space-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-inset);
+}
+
+.download-queue-header h2 {
+  font-size: var(--text-h6);
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.download-queue-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.download-queue-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.download-queue-status {
+  font-size: var(--text-body-sm);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.download-queue-stats {
+  display: flex;
+  gap: var(--space-6);
+  align-items: center;
+  font-size: var(--text-body-sm);
+  color: var(--text-secondary);
+  margin-top: var(--space-3);
+}
+
+.download-queue-stat {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.download-queue-stat-icon--active {
+  color: var(--info-fg);
+}
+
+.download-queue-stat-icon--danger {
+  color: var(--danger-fg);
+}
+
+.download-queue-stat-icon--warning {
+  color: var(--warning-fg);
+}
+
+.download-queue-total-size {
+  margin-left: auto;
+}
+
+/* Search + filter (RESTYLE-5) */
+.download-queue-filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.download-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.download-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--icon-mid);
+  pointer-events: none;
+}
+
+.download-search-input,
+.download-filter-select {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: var(--text-body-sm);
+  transition: border-color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.download-search-input {
+  width: 220px;
+  padding-left: 32px;
+}
+
+.download-search-input::placeholder {
+  color: var(--input-placeholder);
+}
+
+.download-filter-select {
+  cursor: pointer;
+}
+
+.download-search-input:hover:not(:focus),
+.download-filter-select:hover:not(:focus) {
+  border-color: var(--border-strong);
+}
+
+.download-search-input:focus,
+.download-filter-select:focus {
+  outline: none;
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--brand-surface);
+}
+
+.download-search-input:focus-visible,
+.download-filter-select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* List — flex + overflow instead of a `calc(100vh - Npx)` magic number, same
+ * technique activity-tab.css already uses for its own scroll region. */
+.download-queue-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.download-queue-no-results {
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--text-tertiary);
+}
+
+.download-queue-list-inner {
+  padding: var(--space-4);
+}
+
+.download-queue-separator {
+  margin: var(--space-4) 0;
+  padding-top: var(--space-4);
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+}
+
+/* Download card — was a hardcoded `background: white` with an
+ * onMouseEnter/onMouseLeave pair mutating boxShadow (DARK-1 + RESTYLE-9).
+ * Not clickable as a whole row (only its action buttons are), so no
+ * `cursor: pointer` here — the original cursor implied an interaction the
+ * row didn't have. */
+.download-card {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+  background: var(--surface-raised);
+  transition: box-shadow var(--motion-moderate) var(--ease-standard),
+              border-color var(--motion-moderate) var(--ease-standard);
+}
+
+.download-card:hover {
+  box-shadow: var(--elevation-2);
+  border-color: var(--border-strong);
+}
+
+.download-card-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.download-status-icon-wrap {
+  flex-shrink: 0;
+}
+
+/* In-progress is an ordinary, expected state — not an alert — so it takes
+ * --info rather than the brand/danger hues (mirrors DSI-2's rationale:
+ * status hues are reserved for real signals, not decoration). */
+.download-status-icon--active {
+  color: var(--info-fg);
+}
+
+.download-status-icon--success {
+  color: var(--success-fg);
+}
+
+.download-status-icon--danger {
+  color: var(--danger-fg);
+}
+
+.download-status-icon--warning {
+  color: var(--warning-fg);
+}
+
+.download-status-icon--muted {
+  color: var(--icon-mid);
+}
+
+.download-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.download-filename {
+  font-weight: 500;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.download-meta {
+  font-size: var(--text-body-sm);
+  color: var(--text-secondary);
+  display: flex;
+  gap: var(--space-3);
+}
+
+.download-error {
+  font-size: var(--text-caption);
+  color: var(--danger-fg);
+  margin-top: 4px;
+}
+
+.download-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.download-progress-track {
+  margin-top: var(--space-3);
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.download-progress-fill {
+  height: 100%;
+  background: var(--brand);
+  transition: width var(--motion-slow) var(--ease-standard);
+}
+
+@media (max-width: 640px) {
+  .download-queue-filters {
+    flex-wrap: wrap;
+  }
+
+  .download-search-input {
+    width: 100%;
+  }
+}

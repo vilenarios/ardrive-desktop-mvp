@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { 
+import {
   Download,
   CheckCircle,
   Clock,
@@ -9,8 +9,10 @@ import {
   XCircle,
   Pause,
   Play,
-  Cloud
+  Cloud,
+  Search
 } from 'lucide-react';
+import { InfoButton } from '../common/InfoButton';
 
 interface FileDownload {
   id: string;
@@ -36,6 +38,8 @@ interface DownloadQueueTabProps {
   onSyncDrive?: () => void;
 }
 
+type StatusFilter = 'all' | 'downloading' | 'paused' | 'failed' | 'queued';
+
 export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
   downloads,
   onOpenFolder,
@@ -46,6 +50,10 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
 }) => {
   const [queueStatus, setQueueStatus] = React.useState<{ queued: number; active: number; total: number } | null>(null);
   const [queuedDownloads, setQueuedDownloads] = React.useState<any[]>([]);
+  // RESTYLE-5: Activity/Storage both have search+filter; this tab had
+  // neither. Local-only state — filters what's already loaded, no new IPC.
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>('all');
 
   // Fetch queue status and queued downloads periodically
   React.useEffect(() => {
@@ -56,7 +64,7 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
         if (statusResult.success) {
           setQueueStatus(statusResult.data);
         }
-        
+
         // Fetch queued downloads (show up to 30)
         const queuedResult = await window.electronAPI.files.getQueuedDownloads(30);
         if (queuedResult.success) {
@@ -73,6 +81,12 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
     return () => clearInterval(interval);
   }, []);
 
+  const matchesFilters = React.useCallback((download: any) => {
+    if (statusFilter !== 'all' && download.status !== statusFilter) return false;
+    if (searchQuery.trim() && !download.fileName?.toLowerCase().includes(searchQuery.trim().toLowerCase())) return false;
+    return true;
+  }, [searchQuery, statusFilter]);
+
   // Filter to only show active downloads (queue items)
   const activeDownloads = useMemo(() => {
     return downloads
@@ -80,13 +94,20 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
         // Only show active downloads (downloading, paused, or failed that can be retried)
         return download.status === 'downloading' || download.status === 'paused' || download.status === 'failed';
       })
+      .filter(matchesFilters)
       .sort((a, b) => {
         // Sort by date (newest first)
         return new Date(b.downloadedAt).getTime() - new Date(a.downloadedAt).getTime();
       });
-  }, [downloads]);
+  }, [downloads, matchesFilters]);
 
-  // Stats for active downloads only (queue items)
+  const filteredQueuedDownloads = useMemo(
+    () => queuedDownloads.filter(matchesFilters),
+    [queuedDownloads, matchesFilters]
+  );
+
+  // Stats for active downloads only (queue items) — unaffected by the
+  // search/filter above, so the header always reflects the true queue.
   const downloadStats = useMemo(() => {
     const stats = {
       active: 0,
@@ -101,7 +122,7 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
         if (download.status === 'downloading') stats.active++;
         else if (download.status === 'failed') stats.failed++;
         else if (download.status === 'paused') stats.paused++;
-        
+
         stats.totalSize += download.fileSize;
       }
     });
@@ -121,11 +142,11 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
     const now = new Date();
     const diffMs = now.getTime() - new Date(date).getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     if (diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins} minutes ago`;
     if (diffMins < 1440) return `${Math.floor(diffMins / 60)} hours ago`;
-    
+
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',
       day: 'numeric',
@@ -137,62 +158,44 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'downloading':
-        return <Loader size={16} className="animate-spin" style={{ color: 'var(--ardrive-primary-600)' }} />;
+        return <Loader size={16} className="animate-spin download-status-icon download-status-icon--active" />;
       case 'completed':
-        return <CheckCircle size={16} style={{ color: 'var(--success-600)' }} />;
+        return <CheckCircle size={16} className="download-status-icon download-status-icon--success" />;
       case 'failed':
-        return <XCircle size={16} style={{ color: 'var(--error-600)' }} />;
+        return <XCircle size={16} className="download-status-icon download-status-icon--danger" />;
       case 'paused':
-        return <Pause size={16} style={{ color: 'var(--warning-600)' }} />;
+        return <Pause size={16} className="download-status-icon download-status-icon--warning" />;
       case 'queued':
-        return <Clock size={16} style={{ color: 'var(--gray-500)' }} />;
+        return <Clock size={16} className="download-status-icon download-status-icon--muted" />;
       default:
-        return <Clock size={16} style={{ color: 'var(--gray-500)' }} />;
+        return <Clock size={16} className="download-status-icon download-status-icon--muted" />;
     }
   };
 
   // Combine active downloads and queued downloads
   const allDownloads = useMemo(() => {
-    return [...activeDownloads, ...queuedDownloads];
-  }, [activeDownloads, queuedDownloads]);
-  
-  // Show empty state when there are no downloads at all
-  if (allDownloads.length === 0) {
+    return [...activeDownloads, ...filteredQueuedDownloads];
+  }, [activeDownloads, filteredQueuedDownloads]);
+
+  const hasAnyDownloads = downloads.length > 0 || queuedDownloads.length > 0;
+  const hasActiveFilters = statusFilter !== 'all' || searchQuery.trim().length > 0;
+
+  // Show empty state when there are no downloads at all (not filtered out)
+  if (!hasAnyDownloads) {
     return (
       <div className="card">
         <h2 style={{ margin: '0 0 var(--space-6) 0' }}>Download Queue</h2>
-        <div style={{
-          textAlign: 'center',
-          padding: 'var(--space-8) var(--space-4)',
-          color: 'var(--gray-500)'
-        }}>
-          <Download size={40} style={{ 
-            color: 'var(--gray-400)', 
-            marginBottom: 'var(--space-4)' 
-          }} />
-          <p style={{ 
-            fontSize: '16px', 
-            color: 'var(--gray-600)',
-            marginBottom: 'var(--space-2)'
-          }}>
-            No Pending Downloads
-          </p>
-          <p style={{ 
-            fontSize: '14px',
-            color: 'var(--gray-500)',
-            maxWidth: '400px',
-            margin: '0 auto',
-            marginBottom: 'var(--space-6)'
-          }}>
+        <div className="download-queue-empty">
+          <Download size={40} className="download-queue-empty-icon" />
+          <p className="download-queue-empty-title">No Pending Downloads</p>
+          <p className="download-queue-empty-subtitle">
             Files being downloaded from Arweave will show up here
           </p>
           {onSyncDrive && (
             <button
               className="button primary"
               onClick={onSyncDrive}
-              style={{
-                marginTop: 'var(--space-2)'
-              }}
+              style={{ marginTop: 'var(--space-2)' }}
             >
               Check for new files to download
             </button>
@@ -205,21 +208,14 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
   return (
     <div className="download-queue-tab">
       {/* Header with stats */}
-      <div style={{
-        padding: 'var(--space-6)',
-        borderBottom: '1px solid var(--gray-200)',
-        backgroundColor: 'var(--gray-50)'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '600', margin: 0 }}>Download Queue</h2>
+      <div className="download-queue-header">
+        <div className="download-queue-header-top">
+          <span className="download-queue-title-row">
+            <h2>Download Queue</h2>
+            <InfoButton tooltip="The cloud icon makes a file cloud-only: it stays stored permanently on Arweave but is removed from this device to free up space. You can re-download it anytime." />
+          </span>
           {queueStatus && (
-            <div style={{ 
-              fontSize: '14px', 
-              color: 'var(--gray-600)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-2)'
-            }}>
+            <div className="download-queue-status">
               {queueStatus.total > 0 ? (
                 <>
                   <Loader size={14} className={queueStatus.active > 0 ? 'animate-spin' : ''} />
@@ -233,237 +229,194 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
         </div>
 
         {/* Stats */}
-        <div style={{
-          display: 'flex',
-          gap: 'var(--space-6)',
-          fontSize: '14px',
-          color: 'var(--gray-600)'
-        }}>
+        <div className="download-queue-stats">
           {downloadStats.active > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <Loader size={14} className="animate-spin" style={{ color: 'var(--ardrive-primary-600)' }} />
+            <div className="download-queue-stat">
+              <Loader size={14} className="animate-spin download-queue-stat-icon download-queue-stat-icon--active" />
               <span>{downloadStats.active} downloading</span>
             </div>
           )}
           {downloadStats.failed > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <XCircle size={14} style={{ color: 'var(--error-600)' }} />
+            <div className="download-queue-stat">
+              <XCircle size={14} className="download-queue-stat-icon download-queue-stat-icon--danger" />
               <span>{downloadStats.failed} failed</span>
             </div>
           )}
           {downloadStats.paused > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <Pause size={14} style={{ color: 'var(--warning-600)' }} />
+            <div className="download-queue-stat">
+              <Pause size={14} className="download-queue-stat-icon download-queue-stat-icon--warning" />
               <span>{downloadStats.paused} paused</span>
             </div>
           )}
-          <div style={{ marginLeft: 'auto' }}>
+          <div className="download-queue-total-size">
             {formatFileSize(downloadStats.totalSize)} total
           </div>
         </div>
+
+        {/* Search + filter (RESTYLE-5) */}
+        <div className="download-queue-filters">
+          <div className="download-search-wrap">
+            <Search size={14} className="download-search-icon" />
+            <input
+              type="text"
+              className="download-search-input"
+              placeholder="Search downloads..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Search downloads by file name"
+            />
+          </div>
+          <select
+            className="download-filter-select"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            aria-label="Filter downloads by status"
+          >
+            <option value="all">All statuses</option>
+            <option value="downloading">Downloading</option>
+            <option value="paused">Paused</option>
+            <option value="failed">Failed</option>
+            <option value="queued">Queued</option>
+          </select>
+        </div>
       </div>
 
-
       {/* Download list */}
-      <div style={{
-        overflowY: 'auto',
-        maxHeight: 'calc(100vh - 400px)'
-      }}>
+      <div className="download-queue-list">
         {allDownloads.length === 0 ? (
-          <div style={{
-            padding: 'var(--space-8)',
-            textAlign: 'center',
-            color: 'var(--gray-500)'
-          }}>
-            No downloads in queue
+          <div className="download-queue-no-results">
+            {hasActiveFilters ? 'No downloads match your search' : 'No downloads in queue'}
           </div>
         ) : (
-          <div style={{ padding: 'var(--space-4)' }}>
+          <div className="download-queue-list-inner">
             {allDownloads.map((download, index) => {
               // Check if we need to show a separator before queued items
-              const showQueueSeparator = index === activeDownloads.length && activeDownloads.length > 0 && queuedDownloads.length > 0;
-              
+              const showQueueSeparator = index === activeDownloads.length && activeDownloads.length > 0 && filteredQueuedDownloads.length > 0;
+
               return (
                 <React.Fragment key={download.id}>
                   {showQueueSeparator && (
-                    <div style={{
-                      margin: 'var(--space-4) 0',
-                      padding: 'var(--space-2) 0',
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      color: 'var(--gray-600)',
-                      borderTop: '1px solid var(--gray-200)',
-                      paddingTop: 'var(--space-4)'
-                    }}>
+                    <div className="download-queue-separator">
                       Queued Downloads {queueStatus && queueStatus.queued > 30 && `(showing first 30 of ${queueStatus.queued})`}
                     </div>
                   )}
-                  <div
-                    style={{
-                  padding: 'var(--space-4)',
-                  border: '1px solid var(--gray-200)',
-                  borderRadius: 'var(--radius-md)',
-                  marginBottom: 'var(--space-3)',
-                  backgroundColor: 'white',
-                  transition: 'box-shadow 0.2s',
-                  cursor: 'pointer'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-              >
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-3)'
-                }}>
-                  {/* Status icon */}
-                  <div style={{ flexShrink: 0 }}>
-                    {getStatusIcon(download.status)}
-                  </div>
+                  <div className="download-card">
+                    <div className="download-card-main">
+                      {/* Status icon */}
+                      <div className="download-status-icon-wrap">
+                        {getStatusIcon(download.status)}
+                      </div>
 
-                  {/* File info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontWeight: '500',
-                      marginBottom: '4px',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {download.fileName}
+                      {/* File info */}
+                      <div className="download-info">
+                        <div className="download-filename">
+                          {download.fileName}
+                        </div>
+                        <div className="download-meta">
+                          <span>{formatFileSize(download.fileSize)}</span>
+                          {download.status === 'queued' && download.queuePosition && (
+                            <>
+                              <span>•</span>
+                              <span>Position #{download.queuePosition} in queue</span>
+                            </>
+                          )}
+                          {download.status !== 'queued' && download.downloadedAt && (
+                            <>
+                              <span>•</span>
+                              <span>{formatDate(download.downloadedAt)}</span>
+                            </>
+                          )}
+                          {download.status === 'downloading' && (
+                            <>
+                              <span>•</span>
+                              <span>{download.progress}% downloaded</span>
+                            </>
+                          )}
+                        </div>
+                        {download.error && (
+                          <div className="download-error">
+                            {download.error}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="download-actions">
+                        {download.status === 'completed' && (
+                          <button
+                            className="button small outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // For cross-platform compatibility, just pass the full file path
+                              // The main process will handle extracting the directory properly
+                              console.log('Opening folder for file:', download.localPath);
+                              onOpenFolder(download.localPath);
+                            }}
+                            title="Open containing folder"
+                          >
+                            <FolderOpen size={14} />
+                          </button>
+                        )}
+                        {download.status === 'failed' && onRetryDownload && (
+                          <button
+                            className="button small outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onRetryDownload(download.id);
+                            }}
+                            title="Retry download"
+                          >
+                            <RefreshCw size={14} />
+                          </button>
+                        )}
+                        {download.status === 'downloading' && onPauseDownload && (
+                          <button
+                            className="button small outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onPauseDownload(download.id);
+                            }}
+                            title="Pause download"
+                          >
+                            <Pause size={14} />
+                          </button>
+                        )}
+                        {download.status === 'paused' && onResumeDownload && (
+                          <button
+                            className="button small outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onResumeDownload(download.id);
+                            }}
+                            title="Resume download"
+                          >
+                            <Play size={14} />
+                          </button>
+                        )}
+                        {(download.status === 'downloading' || download.status === 'paused' || download.status === 'queued') && (
+                          <button
+                            className="button small outline"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await window.electronAPI.files.cancelDownload(download.fileId);
+                            }}
+                            title={download.status === 'queued' ? 'Remove from queue' : 'Make cloud-only (cancel download)'}
+                          >
+                            <Cloud size={14} />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div style={{
-                      fontSize: '13px',
-                      color: 'var(--gray-600)',
-                      display: 'flex',
-                      gap: 'var(--space-3)'
-                    }}>
-                      <span>{formatFileSize(download.fileSize)}</span>
-                      {download.status === 'queued' && download.queuePosition && (
-                        <>
-                          <span>•</span>
-                          <span>Position #{download.queuePosition} in queue</span>
-                        </>
-                      )}
-                      {download.status !== 'queued' && download.downloadedAt && (
-                        <>
-                          <span>•</span>
-                          <span>{formatDate(download.downloadedAt)}</span>
-                        </>
-                      )}
-                      {download.status === 'downloading' && (
-                        <>
-                          <span>•</span>
-                          <span>{download.progress}%</span>
-                        </>
-                      )}
-                    </div>
-                    {download.error && (
-                      <div style={{
-                        fontSize: '12px',
-                        color: 'var(--error-600)',
-                        marginTop: '4px'
-                      }}>
-                        {download.error}
+
+                    {/* Progress bar for active downloads */}
+                    {download.status === 'downloading' && (
+                      <div className="download-progress-track">
+                        <div
+                          className="download-progress-fill"
+                          style={{ width: `${download.progress}%` }}
+                        />
                       </div>
                     )}
-                  </div>
-
-                  {/* Actions */}
-                  <div style={{
-                    display: 'flex',
-                    gap: 'var(--space-2)',
-                    flexShrink: 0
-                  }}>
-                    {download.status === 'completed' && (
-                      <button
-                        className="button small outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          // For cross-platform compatibility, just pass the full file path
-                          // The main process will handle extracting the directory properly
-                          console.log('Opening folder for file:', download.localPath);
-                          onOpenFolder(download.localPath);
-                        }}
-                        title="Open containing folder"
-                      >
-                        <FolderOpen size={14} />
-                      </button>
-                    )}
-                    {download.status === 'failed' && onRetryDownload && (
-                      <button
-                        className="button small outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRetryDownload(download.id);
-                        }}
-                        title="Retry download"
-                      >
-                        <RefreshCw size={14} />
-                      </button>
-                    )}
-                    {download.status === 'downloading' && onPauseDownload && (
-                      <button
-                        className="button small outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onPauseDownload(download.id);
-                        }}
-                        title="Pause download"
-                      >
-                        <Pause size={14} />
-                      </button>
-                    )}
-                    {download.status === 'paused' && onResumeDownload && (
-                      <button
-                        className="button small outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onResumeDownload(download.id);
-                        }}
-                        title="Resume download"
-                      >
-                        <Play size={14} />
-                      </button>
-                    )}
-                    {(download.status === 'downloading' || download.status === 'paused' || download.status === 'queued') && (
-                      <button
-                        className="button small outline"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          await window.electronAPI.files.cancelDownload(download.fileId);
-                        }}
-                        title={download.status === 'queued' ? "Remove from queue" : "Make cloud-only (cancel download)"}
-                      >
-                        <Cloud size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Progress bar for active downloads */}
-                {download.status === 'downloading' && (
-                  <div style={{
-                    marginTop: 'var(--space-3)',
-                    height: '4px',
-                    backgroundColor: 'var(--gray-200)',
-                    borderRadius: '2px',
-                    overflow: 'hidden'
-                  }}>
-                    <div
-                      style={{
-                        height: '100%',
-                        width: `${download.progress}%`,
-                        backgroundColor: 'var(--ardrive-primary-600)',
-                        transition: 'width 0.3s ease'
-                      }}
-                    />
-                  </div>
-                )}
                   </div>
                 </React.Fragment>
               );
