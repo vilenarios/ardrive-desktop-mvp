@@ -457,7 +457,13 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
               <div>
                 <div style={{ fontSize: '12px', color: 'var(--gray-500)' }}>AR Balance</div>
                 <div style={{ fontWeight: '600', fontSize: '14px' }}>
-                  {walletInfo ? parseFloat(walletInfo.balance).toFixed(4) : '0.0000'} AR
+                  {/* MONEY-13: balance can be '' (fetch unavailable, e.g. a
+                      gateway 429) - never let that reach parseFloat and render "NaN" */}
+                  {!walletInfo
+                    ? '0.0000 AR'
+                    : (walletInfo.balance === '' || isNaN(parseFloat(walletInfo.balance)))
+                      ? 'Unavailable'
+                      : `${parseFloat(walletInfo.balance).toFixed(4)} AR`}
                 </div>
               </div>
             </div>

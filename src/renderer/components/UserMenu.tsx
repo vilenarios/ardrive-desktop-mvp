@@ -73,7 +73,15 @@ const UserMenu: React.FC<UserMenuProps> = ({
     }
   };
 
+  // MONEY-13: balance can arrive as '' (explicitly unavailable, e.g. a
+  // gateway 429) or otherwise non-numeric. Never let that reach a numeric
+  // formatter and render "NaN" - surface it as "Unavailable" instead.
+  const isBalanceUnavailable = (balance: string) => {
+    return balance === '' || balance === undefined || balance === null || isNaN(parseFloat(balance));
+  };
+
   const formatBalance = (balance: string) => {
+    if (isBalanceUnavailable(balance)) return 'Unavailable';
     const num = parseFloat(balance);
     if (num === 0) return '0';
     if (num < 0.0001) return '<0.0001';
@@ -221,7 +229,9 @@ const UserMenu: React.FC<UserMenuProps> = ({
                 </div>
               </div>
               <div className="balance-controls">
-                <div className="balance-value">{formatBalance(walletBalance)} AR</div>
+                <div className="balance-value">
+                  {formatBalance(walletBalance)}{isBalanceUnavailable(walletBalance) ? '' : ' AR'}
+                </div>
                 <button
                   onClick={handleRefreshARBalance}
                   disabled={isRefreshingAR}

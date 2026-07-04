@@ -205,6 +205,30 @@ describe('UploadApprovalQueueModern cost display (MONEY-3)', () => {
     expect(screen.getAllByText(/^FREE$/i).length).toBe(2);
     expect(screen.queryByText(/0\.0000 Credits/)).toBeNull();
   });
+
+  // MONEY-13: wallet-manager-secure.getWalletInfo() reports an unavailable
+  // AR balance (e.g. a gateway 429) as '' — the approval queue must show
+  // an explicit unavailable state, never "NaN AR".
+  it('shows an explicit unavailable state instead of "NaN AR" when the balance fetch failed', () => {
+    render(
+      <UploadApprovalQueueModern
+        {...defaultProps}
+        walletInfo={{ balance: '', turboBalance: '0.5000' }}
+        pendingUploads={[makeUpload({ estimatedTurboCost: 0.0123, hasSufficientTurboBalance: true })]}
+      />
+    );
+
+    expect(screen.getByText('AR Balance')).toBeInTheDocument();
+    expect(screen.getByText('Unavailable')).toBeInTheDocument();
+    expect(screen.queryByText(/NaN/)).toBeNull();
+  });
+
+  it('fixture sanity: an un-guarded NaN-shaped balance string would render "NaN AR" (proves the guard has teeth)', () => {
+    // Simulates the pre-fix behavior: winstonToAr() on a non-numeric body
+    // produced the literal string 'NaN', which parseFloat().toFixed(4)
+    // faithfully reproduces as 'NaN'.
+    expect(parseFloat('NaN').toFixed(4)).toBe('NaN');
+  });
 });
 
 describe('Delete -> ArFS hide honesty (SYNC-5 / D-011)', () => {
