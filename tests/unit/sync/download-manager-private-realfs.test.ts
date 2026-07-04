@@ -150,7 +150,7 @@ describe('QA PROBE round 2: PRIV-1 after 4c3973d', () => {
     expect(mockDb.updateDownload).toHaveBeenCalledWith('dl-1', { status: 'completed', progress: 100 });
   });
 
-  it('REGRESSION: a REAL manifest in a PUBLIC drive still takes downloadManifestFile (raw /raw/ fetch)', async () => {
+  it('REGRESSION: a REAL manifest in a PUBLIC drive still takes downloadManifestFile (SYNC-18: sandboxed non-/raw/ fetch)', async () => {
     mockDb.getDriveMappings.mockResolvedValue([mapping('public')]);
     manager = mkManager(mockArDrive);
     const localFilePath = path.join(tmpDir, 'DriveManifest.json');
@@ -171,7 +171,7 @@ describe('QA PROBE round 2: PRIV-1 after 4c3973d', () => {
     await manager['performFileDownload'](fileData, localFilePath, tmpDir, 'dl-2', 'ph-2');
 
     expect(mockStreamingDownload).toHaveBeenCalledWith(
-      'https://turbo-gateway.com/raw/manifest-tx',
+      'https://turbo-gateway.com/manifest-tx',
       localFilePath,
       'dl-2',
       expect.any(Object)

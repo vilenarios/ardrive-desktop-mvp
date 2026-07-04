@@ -700,7 +700,7 @@ export class DownloadManager {
       let hash: string = ''; // Declare hash variable outside the if/else block
       
       if (isManifest) {
-        console.log(`Detected manifest file: ${fileData.name}, using raw download method`);
+        console.log(`Detected manifest file: ${fileData.name}, using manifest download method`);
         const manifestResult = await this.downloadManifestFile(fileData, localFilePath, downloadId);
         hash = manifestResult.hash;
       } else if (isPrivateDownload) {
@@ -1151,20 +1151,22 @@ export class DownloadManager {
 
   private async downloadManifestFile(fileData: any, localFilePath: string, downloadId: string): Promise<{ hash: string }> {
     try {
-      // For manifests, we need to download from the raw endpoint.
-      // SYNC-17: gateway host is configurable (defaults to turbo-gateway.com).
-      // NOTE: turbo-gateway.com's /raw/ endpoint currently returns 504 (only the
-      // sandbox-redirected GET /<txid> serves data) — public-manifest downloads
-      // via /raw/ may need a gateway that serves /raw/. Tracked as a SYNC-17
-      // follow-up; manifests are public-only and a narrow path.
+      // SYNC-18: turbo-gateway.com's /raw/<txid> endpoint returns 504 — it only
+      // serves data via the sandbox-redirected GET /<txid> path (same as every
+      // other data fetch in this file, see the non-manifest branch above).
+      // Manifests are public-only (core exposes only uploadPublicManifest), so
+      // there is no private/decryption concern here — just fetch the same tx
+      // through the working URL shape instead of /raw/. This also works
+      // unchanged on arweave.net-style gateways, which serve plain data at
+      // GET /<txid> too.
       const gatewayUrl = getGatewayUrl();
-      const rawUrl = `${gatewayUrl}/raw/${fileData.dataTxId}`;
-      
-      console.log(`Downloading manifest from raw URL: ${rawUrl}`);
-      
+      const manifestUrl = `${gatewayUrl}/${fileData.dataTxId}`;
+
+      console.log(`Downloading manifest from: ${manifestUrl}`);
+
       // Use streaming download for manifests too
       const downloadResult = await this.streamingDownloader.downloadFile(
-        rawUrl,
+        manifestUrl,
         localFilePath,
         downloadId,
         {
