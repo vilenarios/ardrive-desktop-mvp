@@ -263,8 +263,9 @@ Gate follow-ups filed: clear-cache-before-list window (list-then-swap, SYNC-9/SY
 **Private move/rename (and hide) paths.** Evidence: §3.7/§1.7 (only `*Public*` ArFS calls exist). Pairs with SYNC-5's hide implementation; upstream ardrive-core-js work allowed (D-016).
 QA finding 2026-07-03: sync-manager.ts:1559/1608 log raw rename/move results — safe today only because public results omit `key` (version-fragile); when touching these paths, route through `summarizeArFSResult` (SEC-1's whitelist util).
 
-### PRIV-7 · P2 · Phase 3 · `todo`
+### PRIV-7 · P2 · Phase 3 · `in-progress`
 **Don't gate drive unlock on the 8-char wallet-password validator.** Evidence: §3.10 (drives from other clients with shorter passwords can never unlock).
+Claimed 2026-07-04 (overnight loop, branch fix/PRIV-7-unlock-validation, Opus implementer).
 
 ---
 
@@ -319,9 +320,9 @@ Acceptance: a failed sync shows the error and the modal is dismissible; no infin
 ### UX-9 · P2 · Track D · `todo`
 **Replace `window.location.reload()`/`alert()`/`confirm()`** with state refresh + in-app dialogs (Dashboard drive flows, ActivityTab retry, add-profile). Evidence: §5.6, §5.10.
 
-### UX-10 · P1 · Phase 3 · `in-progress`
+### UX-10 · P1 · Phase 3 · `done`
 **Fix Copy Link dead URLs.** Evidence: §5.6 (fileId UUID preferred over dataTxId → dead arweave.net links).
-Claimed 2026-07-04 (overnight loop, branch fix/UX-10-copy-link, Sonnet implementer).
+Done 2026-07-04 (branch fix/UX-10-copy-link, Sonnet qa-gate PASS): ActivityTab's Copy Link + View Online now build `https://arweave.net/<dataTxId>` via a single `getRawGatewayUrl` helper (fileId never used); both buttons are hidden (not dead) when a file has no dataTxId. Gate independently confirmed every other renderer copy-link site (StorageTab/OverviewTab/FileLinkActions/link-generator/SetupSuccessScreen) already gates on dataTxId or falls back to an app link, not a raw fileId URL. Behavioral test disproved-on-old-code; full suite 353 green.
 Acceptance: copied links resolve; files without a dataTxId offer no raw-gateway link.
 
 ### UX-11 · P2 · Track D · `todo`
