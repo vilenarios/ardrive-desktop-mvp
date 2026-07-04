@@ -46,7 +46,8 @@ describe('ProfileSwitcher Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockElectronAPI.profiles.list.mockResolvedValue(mockProfiles);
+    // UX-3: profiles.* now return the IpcResult envelope.
+    mockElectronAPI.profiles.list.mockResolvedValue({ success: true, data: mockProfiles });
   });
 
   /** Opens the profile dropdown and returns a scoped query helper for it. */
@@ -111,7 +112,7 @@ describe('ProfileSwitcher Component', () => {
   });
 
   it('should handle successful profile switch', async () => {
-    mockElectronAPI.profiles.switch.mockResolvedValue(true);
+    mockElectronAPI.profiles.switch.mockResolvedValue({ success: true, data: true });
 
     render(<ProfileSwitcher {...defaultProps} />);
     await openPasswordPrompt();
@@ -131,7 +132,7 @@ describe('ProfileSwitcher Component', () => {
   });
 
   it('should show an error and keep the modal open on wrong password', async () => {
-    mockElectronAPI.profiles.switch.mockResolvedValue(false);
+    mockElectronAPI.profiles.switch.mockResolvedValue({ success: true, data: false });
 
     render(<ProfileSwitcher {...defaultProps} />);
     await openPasswordPrompt();
@@ -192,7 +193,7 @@ describe('ProfileSwitcher Component', () => {
   });
 
   it('should submit the password with the Enter key', async () => {
-    mockElectronAPI.profiles.switch.mockResolvedValue(true);
+    mockElectronAPI.profiles.switch.mockResolvedValue({ success: true, data: true });
 
     render(<ProfileSwitcher {...defaultProps} />);
     await openPasswordPrompt();

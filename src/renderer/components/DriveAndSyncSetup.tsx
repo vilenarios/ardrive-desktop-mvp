@@ -149,7 +149,8 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
     try {
       // Check wallet is loaded first
       setSetupProgress('Checking wallet...');
-      const walletInfo = await window.electronAPI.wallet.getInfo();
+      const walletInfoResult = await window.electronAPI.wallet.getInfo();
+      const walletInfo = walletInfoResult.success ? walletInfoResult.data : null;
       if (!walletInfo) {
         throw new Error('Wallet not loaded. Please ensure your wallet is properly imported.');
       }

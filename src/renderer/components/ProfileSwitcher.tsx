@@ -54,7 +54,8 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
 
   const loadProfiles = useCallback(async () => {
     try {
-      const profileList = await window.electronAPI.profiles.list();
+      const profileListResult = await window.electronAPI.profiles.list();
+      const profileList = profileListResult.success ? profileListResult.data : [];
       if (isMountedRef.current) {
         setProfiles(profileList);
       }
@@ -81,9 +82,11 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
     setLoading(true);
     
     try {
-      // Attempt to switch profile with password
-      const success = await window.electronAPI.profiles.switch(selectedProfileId, password);
-      
+      // Attempt to switch profile with password (UX-3: unwrap envelope —
+      // `if (!result)` on the always-truthy wrapper would never fire).
+      const switchResult = await window.electronAPI.profiles.switch(selectedProfileId, password);
+      const success = switchResult.success && switchResult.data;
+
       if (!success) {
         setPasswordError('Invalid password');
         setLoading(false);

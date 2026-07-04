@@ -30,7 +30,8 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
   const loadProfiles = async () => {
     try {
       setLoading(true);
-      const profileList = await window.electronAPI.profiles.list();
+      const profileListResult = await window.electronAPI.profiles.list();
+      const profileList = profileListResult.success ? profileListResult.data : [];
       console.log('Loaded profiles in ProfileManagement:', profileList);
       setProfiles(profileList || []);
     } catch (err) {
@@ -51,8 +52,11 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
       setAuthenticating(true);
       setError(null);
       
-      // Switch to the profile with the provided password
-      const success = await window.electronAPI.profiles.switch(profile.id, password);
+      // Switch to the profile with the provided password (UX-3: unwrap
+      // envelope — profiles.switch now returns IpcResult<boolean>, and a raw
+      // `if (result)` on the always-truthy wrapper would be silently wrong).
+      const switchResult = await window.electronAPI.profiles.switch(profile.id, password);
+      const success = switchResult.success && switchResult.data;
 
       if (success) {
         onProfileSelected(profile, password);
@@ -95,8 +99,9 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
       await loadProfiles();
       setDeleteConfirm(null);
       
-      // Check if this was the last profile and redirect to wallet setup
-      const updatedProfiles = await window.electronAPI.profiles.list();
+      // Check if this was the last profile and redirect to wallet setup (UX-3: unwrap)
+      const updatedProfilesResult = await window.electronAPI.profiles.list();
+      const updatedProfiles = updatedProfilesResult.success ? updatedProfilesResult.data : [];
       if (!updatedProfiles || updatedProfiles.length === 0) {
         onCreateNewProfile();
       }

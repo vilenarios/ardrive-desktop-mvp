@@ -357,7 +357,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   useEffect(() => {
     const loadProfileCount = async () => {
       try {
-        const profiles = await window.electronAPI.profiles.list();
+        const profilesResult = await window.electronAPI.profiles.list();
+        const profiles = profilesResult.success ? profilesResult.data : [];
         setProfileCount(profiles.length);
       } catch (error) {
         console.error('Failed to load profile count:', error);

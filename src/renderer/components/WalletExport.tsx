@@ -105,22 +105,31 @@ const WalletExport: React.FC<WalletExportProps> = ({ walletAddress, onClose }) =
     setWarning('');
 
     try {
-      const result = await window.electronAPI.wallet.export({
+      // UX-3: wallet.export now returns the IpcResult envelope wrapping the
+      // inner ExportResult. Unwrap the outer envelope first (a thrown setup
+      // error surfaces as outer.success === false), then read the inner
+      // ExportResult's own success/data/error/warning.
+      const outer = await window.electronAPI.wallet.export({
         format: selectedFormat,
         password,
         newPassword: selectedFormat === 'jwk-encrypted' ? (newPassword || password) : undefined
       });
 
-      if (result.success) {
-        setExportData(result.data || '');
-        setWarning(result.warning || '');
-        setExportComplete(true);
-        setRevealed(false);
-        setShowFinalWarning(false);
+      if (!outer.success) {
+        setError(outer.error || 'Export failed');
       } else {
-        setError(result.error || 'Export failed');
-        if (result.warning) {
-          setWarning(result.warning);
+        const result = outer.data;
+        if (result.success) {
+          setExportData(result.data || '');
+          setWarning(result.warning || '');
+          setExportComplete(true);
+          setRevealed(false);
+          setShowFinalWarning(false);
+        } else {
+          setError(result.error || 'Export failed');
+          if (result.warning) {
+            setWarning(result.warning);
+          }
         }
       }
     } catch (err) {

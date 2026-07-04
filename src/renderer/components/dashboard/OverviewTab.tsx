@@ -98,7 +98,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
   const loadWalletBalances = async () => {
     try {
-      const wallet = await window.electronAPI.wallet.getInfo();
+      const walletResult = await window.electronAPI.wallet.getInfo();
+      const wallet = walletResult.success ? walletResult.data : null;
       let turboBalance = null;
       
       try {
@@ -112,7 +113,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       }
       
       setWalletBalances({
-        ar: parseFloat(wallet.balance) || 0,
+        ar: wallet ? parseFloat(wallet.balance) || 0 : 0,
         turbo: turboBalance
       });
     } catch (error) {

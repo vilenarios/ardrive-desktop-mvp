@@ -156,15 +156,17 @@ describe('MONEY-6: top-up refresh reaches blocked queue rows in the production c
   beforeEach(() => {
     vi.clearAllMocks();
     // Boot straight to the dashboard (app-toast-wiring recipe)
-    mockElectronAPI.config.get.mockResolvedValue({ syncFolder: '/sync' });
-    mockElectronAPI.profiles.list.mockResolvedValue([profile]);
-    mockElectronAPI.profile.getActive.mockResolvedValue(profile);
-    mockElectronAPI.wallet.hasStoredWallet.mockResolvedValue(true);
+    // UX-3: config/profiles/profile/wallet handlers now return the IpcResult envelope.
+    mockElectronAPI.config.get.mockResolvedValue({ success: true, data: { syncFolder: '/sync' } });
+    mockElectronAPI.profiles.list.mockResolvedValue({ success: true, data: [profile] });
+    mockElectronAPI.profile.getActive.mockResolvedValue({ success: true, data: profile });
+    mockElectronAPI.wallet.hasStoredWallet.mockResolvedValue({ success: true, data: true });
     // Un-forced getInfo (boot) returns the stale balance; only a FORCED
-    // refresh sees the post-top-up balance.
-    mockElectronAPI.wallet.getInfo.mockImplementation(async (forceRefresh?: boolean) =>
-      forceRefresh ? freshWalletInfo : staleWalletInfo
-    );
+    // refresh sees the post-top-up balance. (UX-3: enveloped.)
+    mockElectronAPI.wallet.getInfo.mockImplementation(async (forceRefresh?: boolean) => ({
+      success: true,
+      data: forceRefresh ? freshWalletInfo : staleWalletInfo,
+    }));
     mockElectronAPI.arns.getProfile.mockResolvedValue(null);
     // Real handler shape: {success, data} envelope (main.ts drive:listWithStatus)
     mockElectronAPI.drive.listWithStatus.mockResolvedValue({ success: true, data: [driveA] });
@@ -226,9 +228,11 @@ describe('MONEY-6: top-up refresh reaches blocked queue rows in the production c
     fireEvent.click(screen.getByText('top up Turbo Credits'));
     await screen.findByText('stub-turbo-manager');
 
+    // UX-3: a forced refresh that rejects still surfaces as a rejected promise
+    // to the preload caller (refreshWalletInfo's try/catch); enveloped otherwise.
     mockElectronAPI.wallet.getInfo.mockImplementation(async (forceRefresh?: boolean) => {
       if (forceRefresh) throw new Error('gateway unreachable');
-      return staleWalletInfo;
+      return { success: true, data: staleWalletInfo };
     });
 
     fireEvent.click(screen.getByText('stub-close-turbo-manager'));
@@ -247,8 +251,9 @@ describe('MONEY-6: top-up refresh reaches blocked queue rows in the production c
     await screen.findByText('stub-turbo-manager');
 
     // wallet:get-info returns null when no wallet info is available
+    // (UX-3: enveloped — the null lives in .data, not the wrapper).
     mockElectronAPI.wallet.getInfo.mockImplementation(async (forceRefresh?: boolean) =>
-      forceRefresh ? null : staleWalletInfo
+      forceRefresh ? { success: true, data: null } : { success: true, data: staleWalletInfo }
     );
 
     fireEvent.click(screen.getByText('stub-close-turbo-manager'));

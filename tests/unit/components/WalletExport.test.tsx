@@ -76,9 +76,10 @@ describe('WalletExport reveal-mask (SEC-12)', () => {
 
   describe('seed phrase export', () => {
     beforeEach(() => {
+      // UX-3: outer IpcResult envelope wraps the inner ExportResult.
       mockElectronAPI.wallet.export.mockResolvedValue({
         success: true,
-        data: SENTINEL_SEED,
+        data: { success: true, data: SENTINEL_SEED },
       });
     });
 
@@ -115,7 +116,7 @@ describe('WalletExport reveal-mask (SEC-12)', () => {
     beforeEach(() => {
       mockElectronAPI.wallet.export.mockResolvedValue({
         success: true,
-        data: SENTINEL_PRIVATE_KEY,
+        data: { success: true, data: SENTINEL_PRIVATE_KEY },
       });
     });
 
@@ -147,7 +148,7 @@ describe('WalletExport reveal-mask (SEC-12)', () => {
     beforeEach(() => {
       mockElectronAPI.wallet.export.mockResolvedValue({
         success: true,
-        data: SENTINEL_JWK,
+        data: { success: true, data: SENTINEL_JWK },
       });
     });
 
@@ -180,7 +181,7 @@ describe('WalletExport reveal-mask (SEC-12)', () => {
     it('renders the password-protected keyfile directly — no reveal gate', async () => {
       mockElectronAPI.wallet.export.mockResolvedValue({
         success: true,
-        data: '{"ciphertext":"SENTINEL-ENCRYPTED-BLOB"}',
+        data: { success: true, data: '{"ciphertext":"SENTINEL-ENCRYPTED-BLOB"}' },
       });
 
       renderComponent();

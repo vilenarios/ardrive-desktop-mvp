@@ -34,8 +34,9 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = ({
 
   const loadProfiles = async () => {
     try {
-      const profileList = await window.electronAPI.profiles.list();
-      setProfiles(profileList.sort((a: any, b: any) => 
+      const profileListResult = await window.electronAPI.profiles.list();
+      const profileList = profileListResult.success ? profileListResult.data : [];
+      setProfiles(profileList.sort((a: any, b: any) =>
         new Date(b.lastUsedAt).getTime() - new Date(a.lastUsedAt).getTime()
       ));
     } catch (error) {
@@ -61,9 +62,11 @@ const ProfileSelection: React.FC<ProfileSelectionProps> = ({
     setPasswordError(null);
     
     try {
-      // Attempt to switch profile with password
-      const success = await window.electronAPI.profiles.switch(selectedProfileId, password);
-      
+      // Attempt to switch profile with password (UX-3: unwrap envelope —
+      // `if (!result)` on the always-truthy wrapper would never fire).
+      const switchResult = await window.electronAPI.profiles.switch(selectedProfileId, password);
+      const success = switchResult.success && switchResult.data;
+
       if (!success) {
         setPasswordError('Invalid password');
         return;

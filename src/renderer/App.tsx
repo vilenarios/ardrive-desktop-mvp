@@ -61,11 +61,11 @@ const App: React.FC = () => {
   // balance.
   const refreshWalletInfo = async () => {
     try {
-      const freshWalletInfo = await window.electronAPI.wallet.getInfo(true);
+      const freshWalletInfoResult = await window.electronAPI.wallet.getInfo(true);
       // Guard: never clear walletInfo on a null/failed fetch — App only
       // renders the dashboard while walletInfo is set.
-      if (freshWalletInfo) {
-        setWalletInfo(freshWalletInfo);
+      if (freshWalletInfoResult.success && freshWalletInfoResult.data) {
+        setWalletInfo(freshWalletInfoResult.data);
       }
     } catch (error) {
       console.error('Failed to refresh wallet info:', error);
@@ -84,20 +84,27 @@ const App: React.FC = () => {
     // "Create New Account".
     let existingProfileConfirmed = false;
     try {
-      // Load config
-      const appConfig = await window.electronAPI.config.get();
-      setConfig(appConfig);
+      // Load config (UX-3: IpcResult envelope)
+      const appConfigResult = await window.electronAPI.config.get();
+      if (appConfigResult.success) {
+        setConfig(appConfigResult.data);
+      }
 
-      // Check if we have any profiles first
-      const profiles = await window.electronAPI.profiles.list();
+      // Check if we have any profiles first (UX-3: unwrap envelope)
+      const profilesResult = await window.electronAPI.profiles.list();
+      const profiles = profilesResult.success ? profilesResult.data : [];
       if (!profiles || profiles.length === 0) {
         setAppState('wallet-setup');
         return;
       }
 
-      // Check if there's an active profile with a loaded wallet
-      const activeProfile = await window.electronAPI.profile.getActive();
-      const hasWallet = await window.electronAPI.wallet.hasStoredWallet();
+      // Check if there's an active profile with a loaded wallet (UX-3: unwrap
+      // envelope — the result wrapper is always truthy, so a raw `!result`
+      // guard would be silently wrong).
+      const activeProfileResult = await window.electronAPI.profile.getActive();
+      const activeProfile = activeProfileResult.success ? activeProfileResult.data : null;
+      const hasWalletResult = await window.electronAPI.wallet.hasStoredWallet();
+      const hasWallet = hasWalletResult.success && hasWalletResult.data;
 
       if (!activeProfile || !hasWallet) {
         setAppState('profile-management');
@@ -106,11 +113,13 @@ const App: React.FC = () => {
 
       existingProfileConfirmed = true;
 
-      // Load wallet info and profile
-      const [wallet, profile] = await Promise.all([
+      // Load wallet info and profile (UX-3: unwrap envelopes)
+      const [walletResult, profileResult] = await Promise.all([
         window.electronAPI.wallet.getInfo(),
         window.electronAPI.profile.getActive()
       ]);
+      const wallet = walletResult.success ? walletResult.data : null;
+      const profile = profileResult.success ? profileResult.data : null;
 
       if (!wallet || !profile) {
         // An existing profile's wallet failed to load — not a reason to
@@ -368,12 +377,15 @@ const App: React.FC = () => {
     
     // Load critical data (drives) and basic profile in parallel
     try {
-      const [wallet, profile, driveListResult] = await Promise.all([
+      const [walletResult, profileResult, driveListResult] = await Promise.all([
         window.electronAPI.wallet.getInfo(),
         window.electronAPI.profile.getActive(),
         window.electronAPI.drive.listWithStatus()
       ]);
-      
+      // UX-3: unwrap the wallet/profile envelopes.
+      const wallet = walletResult.success ? walletResult.data : null;
+      const profile = profileResult.success ? profileResult.data : null;
+
       console.log('[handleWalletImported] Raw drive list result:', driveListResult);
       
       // Extract drives from the result (UX-3: IpcResult envelope)
@@ -549,8 +561,9 @@ const App: React.FC = () => {
       setSyncStatus(null);
       setUploads([]);
       
-      // Check if we have multiple profiles to show profile management
-      const profiles = await window.electronAPI.profiles.list();
+      // Check if we have multiple profiles to show profile management (UX-3: unwrap)
+      const profilesResult = await window.electronAPI.profiles.list();
+      const profiles = profilesResult.success ? profilesResult.data : [];
       if (profiles && profiles.length > 0) {
         setAppState('profile-management');
       } else {
@@ -780,8 +793,9 @@ const App: React.FC = () => {
             }}
             onSkipSetup={handleSkipSetup}
             onBack={() => {
-              // Go back to profile selection if multiple profiles exist
-              window.electronAPI.profiles.list().then(profiles => {
+              // Go back to profile selection if multiple profiles exist (UX-3: unwrap)
+              window.electronAPI.profiles.list().then(profilesResult => {
+                const profiles = profilesResult.success ? profilesResult.data : [];
                 if (profiles && profiles.length > 1) {
                   setAppState('profile-management');
                 } else {

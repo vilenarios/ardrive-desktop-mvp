@@ -555,17 +555,17 @@ class ArDriveApp {
 
   private setupIpcHandlers() {
     // Wallet operations
-    ipcMain.handle('wallet:import', async (_, walletPath: string, password: string) => {
+    ipcMain.handle('wallet:import', envelopeHandler(async (_, walletPath: string, password: string) => {
       try {
         console.log('Main process - wallet:import called');
-        
+
         // Validate inputs with comprehensive validation
         const validatedPath = InputValidator.validateFilePath(walletPath, 'walletPath');
         const validatedPassword = InputValidator.validatePassword(password, 'password');
-        
+
         console.log('Wallet path:', InputValidator.sanitizeForLogging(validatedPath));
         console.log('Password validation passed');
-        
+
         return await this.walletManager.importWallet(validatedPath, validatedPassword);
       } catch (error) {
         if (error instanceof ValidationError) {
@@ -575,9 +575,9 @@ class ArDriveApp {
         console.error('Main process - wallet:import error:', error);
         throw error;
       }
-    });
+    }));
 
-    ipcMain.handle('wallet:get-info', safeIpcHandler(async (_, forceRefresh?: boolean) => {
+    ipcMain.handle('wallet:get-info', envelopeHandler(async (_, forceRefresh?: boolean) => {
       // If forceRefresh is true, clear the cache to get fresh data
       if (forceRefresh) {
         console.log('Force refreshing wallet balance');
@@ -599,7 +599,7 @@ class ArDriveApp {
       return walletInfo;
     }));
 
-    ipcMain.handle('wallet:ensure-loaded', safeIpcHandler(async () => {
+    ipcMain.handle('wallet:ensure-loaded', envelopeHandler(async () => {
       // Check if wallet is loaded, if not try to auto-load
       if (!this.walletManager.isWalletLoaded()) {
         return await this.walletManager.attemptAutoLoad();
@@ -607,23 +607,26 @@ class ArDriveApp {
       return true;
     }));
 
-    ipcMain.handle('wallet:is-loaded', async () => {
+    ipcMain.handle('wallet:is-loaded', envelopeHandler(async () => {
       return this.walletManager.isWalletLoaded();
-    });
+    }));
 
-    ipcMain.handle('wallet:has-stored', async () => {
+    ipcMain.handle('wallet:has-stored', envelopeHandler(async () => {
       return await this.walletManager.hasStoredWallet();
-    });
+    }));
 
     // UX-7: the specific reason the last password-based profiles:switch
     // attempt failed (e.g. "Invalid password" vs a corrupted/IO wallet-file
     // failure), so the login UI can tell them apart. profiles:switch itself
     // keeps returning a plain boolean for backward compatibility.
-    ipcMain.handle('wallet:get-last-auth-error', safeIpcHandler(async () => {
-      return { success: true, data: this.walletManager.getLastAuthError() };
+    // UX-3: return the raw auth-error payload; envelopeHandler supplies the
+    // single {success,data} wrapper (previously this hand-rolled the envelope
+    // under safeIpcHandler, so callers see the same {success,data} shape).
+    ipcMain.handle('wallet:get-last-auth-error', envelopeHandler(async () => {
+      return this.walletManager.getLastAuthError();
     }));
 
-    ipcMain.handle('wallet:clear-stored', safeIpcHandler(async () => {
+    ipcMain.handle('wallet:clear-stored', envelopeHandler(async () => {
       // SEC-3: stop the watcher and drop wallet-bearing sync state before the
       // wallet session and database are torn down.
       await this.syncManager.stopAndClearAllState();
@@ -631,7 +634,7 @@ class ArDriveApp {
       return true;
     }));
 
-    ipcMain.handle('wallet:logout', safeIpcHandler(async () => {
+    ipcMain.handle('wallet:logout', envelopeHandler(async () => {
       // SEC-3: stop the watcher and drop wallet-bearing sync state before the
       // wallet session and database are torn down.
       await this.syncManager.stopAndClearAllState();
@@ -639,7 +642,7 @@ class ArDriveApp {
       return true;
     }));
 
-    ipcMain.handle('wallet:import-from-seed-phrase', async (_, seedPhrase: string, password: string) => {
+    ipcMain.handle('wallet:import-from-seed-phrase', envelopeHandler(async (_, seedPhrase: string, password: string) => {
       try {
         console.log('Main process - wallet:import-from-seed-phrase called');
         
@@ -659,9 +662,9 @@ class ArDriveApp {
         console.error('Main process - wallet:import-from-seed-phrase error:', error);
         throw error;
       }
-    });
+    }));
 
-    ipcMain.handle('wallet:create-new', async (_, password: string) => {
+    ipcMain.handle('wallet:create-new', envelopeHandler(async (_, password: string) => {
       try {
         console.log('Main process - wallet:create-new called');
         
@@ -678,29 +681,22 @@ class ArDriveApp {
         console.error('Main process - wallet:create-new error:', error);
         throw error;
       }
-    });
+    }));
 
     // UX-20: Finalize a newly-created account only after the user confirms
     // they've saved the recovery phrase. This is where the profile + encrypted
     // wallet are actually persisted (deferred from wallet:create-new, which now
     // only prepares the account in memory).
-    ipcMain.handle('wallet:complete-setup', async () => {
-      try {
-        console.log('Main process - wallet:complete-setup called');
-        const result = await this.walletManager.completeGeneratedWalletSetup();
-        return { success: true, data: result };
-      } catch (error) {
-        console.error('Main process - wallet:complete-setup error:', error instanceof Error ? error.message : error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to complete account setup'
-        };
-      }
-    });
+    // UX-3: envelopeHandler now supplies the {success,data}/{success,error}
+    // wrapper (the hand-rolled envelope was removed); return the raw payload.
+    ipcMain.handle('wallet:complete-setup', envelopeHandler(async () => {
+      console.log('Main process - wallet:complete-setup called');
+      return await this.walletManager.completeGeneratedWalletSetup();
+    }));
 
 
     // Ethereum wallet operations (TODO: Implement when ardrive-core-js supports Ethereum)
-    ipcMain.handle('wallet:import-ethereum-from-file', async (_, walletPath: string, password: string) => {
+    ipcMain.handle('wallet:import-ethereum-from-file', envelopeHandler(async (_, walletPath: string, password: string) => {
       try {
         console.log('Main process - wallet:import-ethereum-from-file called');
         console.log('Wallet path:', walletPath);
@@ -720,11 +716,15 @@ class ArDriveApp {
         console.error('Main process - wallet:import-ethereum-from-file error:', error);
         throw error;
       }
-    });
+    }));
 
 
     // Wallet export operations
-    ipcMain.handle('wallet:export', async (_, options: {
+    // UX-3: enveloped — resolves to IpcResult<ExportResult>. The inner
+    // ExportResult keeps its own success/data/error/warning (business-level
+    // export outcome); the outer envelope only turns false on a thrown setup
+    // error (e.g. no active profile). Callers unwrap outer, then read inner.
+    ipcMain.handle('wallet:export', envelopeHandler(async (_, options: {
       format: 'jwk-encrypted' | 'jwk-plain' | 'seed-phrase' | 'private-key';
       password: string;
       newPassword?: string;
@@ -733,18 +733,18 @@ class ArDriveApp {
         const { initializeWalletExportManager } = await import('./wallet-export-manager');
         const exportManager = initializeWalletExportManager(this.walletManager);
         const activeProfile = await profileManager.getActiveProfile();
-        
+
         if (!activeProfile) {
           throw new Error('No active profile');
         }
-        
+
         const result = await exportManager.exportWallet(options, activeProfile.id);
         return result;
       } catch (error) {
         console.error('Failed to export wallet:', error);
         throw error;
       }
-    });
+    }));
 
     // ArNS operations
     ipcMain.handle('arns:get-profile', async (_, address: string) => {
@@ -764,34 +764,34 @@ class ArDriveApp {
     });
 
     // Keychain/Security operations
-    ipcMain.handle('security:is-keychain-available', async () => {
+    ipcMain.handle('security:is-keychain-available', envelopeHandler(async () => {
       return this.walletManager.isKeychainAvailable();
-    });
-    
-    ipcMain.handle('security:get-method', async () => {
+    }));
+
+    ipcMain.handle('security:get-method', envelopeHandler(async () => {
       return this.walletManager.getSecurityMethod();
-    });
+    }));
 
     // Profile operations
-    ipcMain.handle('profiles:list', async () => {
+    ipcMain.handle('profiles:list', envelopeHandler(async () => {
       try {
         return await profileManager.getProfiles();
       } catch (error) {
         console.error('Failed to list profiles:', error);
         throw error;
       }
-    });
+    }));
 
-    ipcMain.handle('profiles:get-active', async () => {
+    ipcMain.handle('profiles:get-active', envelopeHandler(async () => {
       try {
         return await profileManager.getActiveProfile();
       } catch (error) {
         console.error('Failed to get active profile:', error);
         return null;
       }
-    });
+    }));
 
-    ipcMain.handle('profiles:switch', async (_, profileId: string, password?: string) => {
+    ipcMain.handle('profiles:switch', envelopeHandler(async (_, profileId: string, password?: string) => {
       try {
         // Validate inputs
         const validatedProfileId = InputValidator.validateProfileId(profileId, 'profileId');
@@ -820,9 +820,9 @@ class ArDriveApp {
         console.error('Failed to switch profile:', error);
         throw error;
       }
-    });
+    }));
 
-    ipcMain.handle('profiles:update', async (_, profileId: string, updates: any) => {
+    ipcMain.handle('profiles:update', envelopeHandler(async (_, profileId: string, updates: any) => {
       try {
         // Validate inputs
         const validatedProfileId = InputValidator.validateProfileId(profileId, 'profileId');
@@ -847,9 +847,9 @@ class ArDriveApp {
         console.error('Failed to update profile:', error);
         throw error;
       }
-    });
+    }));
 
-    ipcMain.handle('profiles:delete', async (_, profileId: string) => {
+    ipcMain.handle('profiles:delete', envelopeHandler(async (_, profileId: string) => {
       try {
         // Validate input
         const validatedProfileId = InputValidator.validateProfileId(profileId, 'profileId');
@@ -864,7 +864,7 @@ class ArDriveApp {
         console.error('Failed to delete profile:', error);
         throw error;
       }
-    });
+    }));
 
     // Drive operations
     ipcMain.handle('drive:list', envelopeHandler(async () => {
@@ -2623,30 +2623,26 @@ class ArDriveApp {
     });
 
     // Config operations
-    ipcMain.handle('config:get', async () => {
+    ipcMain.handle('config:get', envelopeHandler(async () => {
       return await configManager.getConfig();
-    });
+    }));
 
-    ipcMain.handle('config:mark-first-run-complete', async () => {
+    ipcMain.handle('config:mark-first-run-complete', envelopeHandler(async () => {
       return await configManager.markFirstRunComplete();
-    });
+    }));
 
-    // DESIGN-2: persist the ThemeProvider's manual light/dark/system override
-    ipcMain.handle('config:set-theme', async (_, theme: unknown) => {
-      try {
-        const validated = InputValidator.validateThemePreference(theme);
-        await configManager.setThemePreference(validated);
-        return { success: true };
-      } catch (error) {
-        console.error('[Config] Failed to set theme preference:', error);
-        throw new Error(error instanceof Error ? error.message : 'Failed to set theme preference');
-      }
-    });
+    // DESIGN-2: persist the ThemeProvider's manual light/dark/system override.
+    // UX-3: envelopeHandler supplies the {success}/{success,error} wrapper;
+    // return void (no payload) instead of the old hand-rolled {success:true}.
+    ipcMain.handle('config:set-theme', envelopeHandler(async (_, theme: unknown) => {
+      const validated = InputValidator.validateThemePreference(theme);
+      await configManager.setThemePreference(validated);
+    }));
 
-    ipcMain.handle('config:clear-drive', async () => {
+    ipcMain.handle('config:clear-drive', envelopeHandler(async () => {
       // Clear sync folder
       await configManager.setSyncFolder('');
-      
+
       // Also stop sync if active
       if (this.syncManager) {
         await this.syncManager.stopSync();
@@ -2655,7 +2651,7 @@ class ArDriveApp {
         await this.syncManager.stopSync();
       }
       return true;
-    });
+    }));
 
     // Turbo operations
     ipcMain.handle('turbo:get-balance', async () => {
@@ -2795,10 +2791,10 @@ class ArDriveApp {
       };
     });
 
-    ipcMain.handle('config:clear-folder', async () => {
+    ipcMain.handle('config:clear-folder', envelopeHandler(async () => {
       // Clear sync folder
       await configManager.setSyncFolder('');
-      
+
       // Also stop sync if active
       if (this.syncManager) {
         await this.syncManager.stopSync();
@@ -2807,7 +2803,7 @@ class ArDriveApp {
         await this.syncManager.stopSync();
       }
       return true;
-    });
+    }));
 
     // Dialog operations
     ipcMain.handle('dialog:select-folder', async () => {
