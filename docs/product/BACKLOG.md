@@ -319,9 +319,9 @@ Acceptance: a failed sync shows the error and the modal is dismissible; no infin
 ### UX-9 · P2 · Track D · `todo`
 **Replace `window.location.reload()`/`alert()`/`confirm()`** with state refresh + in-app dialogs (Dashboard drive flows, ActivityTab retry, add-profile). Evidence: §5.6, §5.10.
 
-### UX-10 · P1 · Phase 3 · `in-progress`
+### UX-10 · P1 · Phase 3 · `done`
 **Fix Copy Link dead URLs.** Evidence: §5.6 (fileId UUID preferred over dataTxId → dead arweave.net links).
-Claimed 2026-07-04 (overnight loop, branch fix/UX-10-copy-link, Sonnet implementer).
+Done 2026-07-04 (branch fix/UX-10-copy-link, Sonnet qa-gate PASS): ActivityTab's Copy Link + View Online now build `https://arweave.net/<dataTxId>` via a single `getRawGatewayUrl` helper (fileId never used); both buttons are hidden (not dead) when a file has no dataTxId. Gate independently confirmed every other renderer copy-link site (StorageTab/OverviewTab/FileLinkActions/link-generator/SetupSuccessScreen) already gates on dataTxId or falls back to an app link, not a raw fileId URL. Behavioral test disproved-on-old-code; full suite 353 green.
 Acceptance: copied links resolve; files without a dataTxId offer no raw-gateway link.
 
 ### UX-11 · P2 · Track D · `todo`
