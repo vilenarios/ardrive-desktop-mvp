@@ -209,7 +209,7 @@ Acceptance: hashing a multi-GB file keeps process memory flat (stream-based); pe
 **Real download hash verification.** Evidence: §2.2 (compares against never-populated field). Needs upstream hash capture at upload/listing time.
 QA finding 2026-07-03 (SYNC-2 gate): failed re-download keeps stale `localFileExists=1` — display-level only (`isDownloaded` at main.ts:1086 can claim downloaded for an externally-deleted file whose re-download failed); fix alongside verification.
 
-### SYNC-13 · P1 · Phase 2 · `todo`
+### SYNC-13 · P1 · Phase 2 · `in-progress`
 **Fix the 30s FileStateManager eviction feedback loop.** Evidence: §2.14.
 Fix: key "expected downloads" by path+size/hash rather than a fixed 30s window, or extend until watcher-quiet.
 
