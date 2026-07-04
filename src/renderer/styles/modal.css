@@ -1,0 +1,444 @@
+/**
+ * Drive modals (DESIGN-7) — CreateDriveModal, AddExistingDriveModal,
+ * PrivateDriveUnlockModal.
+ *
+ * These three surfaces previously hardcoded `backgroundColor: 'white'` and
+ * `rgba(0, 0, 0, 0.5)` inline on the panel/overlay — invisible-on-dark
+ * breakage (F7). This file gives them the DESIGN-SYSTEM.md §6.4 modal
+ * treatment (surface-overlay panel, 6px accent-top bar, elevation-4,
+ * radius-xl) as reusable classes, plus the §5A hover/active/focus-visible
+ * states for every interactive element inside them, so the components can
+ * drop their inline style objects and JS onMouseEnter/onMouseLeave handlers.
+ *
+ * Deliberately its own class names (not the app-wide .modal-overlay/
+ * .modal-content in styles.css) so this signature treatment doesn't leak
+ * onto unrelated modals (file-details, payment, etc.) outside this item's
+ * scope.
+ */
+
+.drive-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: modalFadeIn var(--motion-base) var(--ease-out);
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalSlideIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.drive-modal-panel {
+  position: relative;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elevation-4);
+  padding: var(--space-6);
+  width: 90%;
+  max-height: 80vh;
+  overflow: auto;
+  animation: modalSlideIn var(--motion-slow) var(--ease-out);
+}
+
+/* Signature ArDrive accent-top bar (§6.3/§6.4/§6.10) */
+.drive-modal-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: var(--accent);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+}
+
+.drive-modal-panel.size-md { max-width: 500px; }
+.drive-modal-panel.size-lg { max-width: 600px; }
+.drive-modal-panel.size-sm { max-width: 420px; }
+
+/* Header row: icon + title + close button */
+.drive-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+
+.drive-modal-title {
+  margin: 0;
+  font-size: var(--text-h5);
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.drive-modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-1);
+  color: var(--icon-mid);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--motion-base) var(--ease-standard),
+              background-color var(--motion-base) var(--ease-standard),
+              transform var(--motion-fast) var(--ease-standard);
+}
+
+.drive-modal-close:hover:not(:disabled) {
+  color: var(--icon-high);
+  background: var(--surface-inset);
+}
+
+.drive-modal-close:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.drive-modal-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.drive-modal-close:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Inline banners: error / neutral info. (Permanent-password warning reuses
+ * the existing app-wide .security-warning class.) */
+.modal-banner {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  margin-bottom: var(--space-4);
+  font-size: var(--text-body);
+  line-height: 1.4;
+}
+
+.modal-banner svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.modal-banner.is-error {
+  background: var(--danger-surface);
+  border-color: var(--danger);
+  color: var(--danger-fg);
+}
+
+.modal-banner.is-neutral {
+  background: var(--surface-inset);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+/* Drive privacy selection cards (CreateDriveModal) */
+.drive-privacy-options {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.drive-privacy-option {
+  flex: 1;
+  padding: var(--space-4);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color var(--motion-base) var(--ease-standard),
+              background-color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.drive-privacy-option svg {
+  display: block;
+  margin: 0 auto var(--space-2);
+  color: var(--icon-mid);
+  transition: color var(--motion-base) var(--ease-standard);
+}
+
+.drive-privacy-option:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  box-shadow: var(--elevation-2);
+}
+
+.drive-privacy-option:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.drive-privacy-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.drive-privacy-option.is-selected {
+  border-color: var(--brand);
+  background: var(--brand-surface);
+}
+
+.drive-privacy-option.is-selected svg {
+  color: var(--brand);
+}
+
+.drive-privacy-option-title {
+  font-weight: 500;
+  margin-bottom: var(--space-1);
+  color: var(--text-primary);
+}
+
+.drive-privacy-option-desc {
+  font-size: var(--text-body-sm);
+  color: var(--text-secondary);
+}
+
+/* Scrollable drive list (AddExistingDriveModal) */
+.drive-list {
+  margin-bottom: var(--space-6);
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.drive-list-item {
+  width: 100%;
+  padding: var(--space-4);
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  transition: background-color var(--motion-base) var(--ease-standard);
+}
+
+.drive-list-item:last-child {
+  border-bottom: none;
+}
+
+.drive-list-item:hover:not(:disabled):not(.is-selected) {
+  background: var(--surface-inset);
+}
+
+.drive-list-item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.drive-list-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.drive-list-item.is-selected {
+  background: var(--brand-surface);
+}
+
+.drive-list-item-check {
+  width: 20px;
+  flex-shrink: 0;
+  color: var(--brand);
+}
+
+.drive-list-item-icon {
+  color: var(--icon-mid);
+  flex-shrink: 0;
+}
+
+.drive-list-item-name {
+  font-weight: 500;
+  font-size: 15px;
+  margin-bottom: 2px;
+  color: var(--text-primary);
+}
+
+.drive-list-item-meta {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.drive-list-item-privacy-icon {
+  color: var(--icon-low);
+  flex-shrink: 0;
+}
+
+/* Footer action row */
+.drive-modal-footer {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  justify-content: flex-end;
+}
+
+/* Dashed "create new drive" affordance — shared by AddExistingDriveModal's
+ * empty state and WelcomeBackScreen's drive-selection list. */
+.drive-create-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: border-color var(--motion-base) var(--ease-standard),
+              background-color var(--motion-base) var(--ease-standard);
+}
+
+.drive-create-option:hover {
+  border-color: var(--brand);
+  background: var(--brand-surface);
+}
+
+.drive-create-option:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.drive-create-option svg {
+  color: var(--brand);
+  flex-shrink: 0;
+}
+
+.drive-create-option-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.drive-create-option-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* Selectable drive card (WelcomeBackScreen "choose a drive to sync") */
+.drive-select-card {
+  display: block;
+  width: 100%;
+  padding: var(--space-4);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--motion-base) var(--ease-standard),
+              background-color var(--motion-base) var(--ease-standard);
+}
+
+.drive-select-card:hover:not(.is-selected) {
+  border-color: var(--border-strong);
+  background: var(--surface-inset);
+}
+
+.drive-select-card:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.drive-select-card.is-selected {
+  border-color: var(--brand);
+  background: var(--brand-surface);
+}
+
+/* Small icon+label action buttons (SetupSuccessScreen copy/view-transaction) */
+.modal-copy-button {
+  padding: var(--space-2);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  transition: border-color var(--motion-base) var(--ease-standard),
+              background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
+}
+
+.modal-copy-button:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-inset);
+}
+
+.modal-copy-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.modal-copy-button.is-copied {
+  color: var(--success-fg);
+}
+
+.modal-copy-button.is-link {
+  color: var(--brand);
+}
+
+.modal-copy-button.is-link:hover {
+  border-color: var(--brand);
+  background: var(--brand-surface);
+}
+
+/* Toggle-button style used for "Show/Hide Technical Details" */
+.modal-toggle-button {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  margin: 0 auto;
+  transition: color var(--motion-base) var(--ease-standard),
+              background-color var(--motion-base) var(--ease-standard);
+}
+
+.modal-toggle-button:hover {
+  background: var(--surface-inset);
+  color: var(--text-primary);
+}
+
+.modal-toggle-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drive-modal-overlay,
+  .drive-modal-panel {
+    animation: none;
+  }
+}

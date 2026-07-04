@@ -1,0 +1,200 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <!-- Real app stylesheet. Faithful markup mirrors WelcomeBackScreen.tsx /
+       SetupSuccessScreen.tsx (same classNames/inline-style tokens). -->
+  <link rel="stylesheet" href="../../src/renderer/styles.css" />
+  <style>
+    html, body { margin: 0; background: var(--surface); }
+    .ic { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2;
+          fill: none; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+    .demo-screen { width: 1280px; min-height: 780px; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; }
+  </style>
+</head>
+<body>
+
+  <!-- ============== WelcomeBackScreen ============== -->
+  <div class="demo-screen" style="background: var(--surface)">
+    <div style="width:100%;max-width:720px;padding:var(--space-8);background:var(--surface-raised);border-radius:var(--radius-lg);box-shadow:var(--elevation-3)">
+
+      <div style="text-align:center;margin-bottom:var(--space-8)">
+        <div style="width:64px;height:64px;margin:0 auto var(--space-4);background:var(--surface-inset);border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid var(--border)">
+          <svg class="ic" viewBox="0 0 24 24" style="width:32px;height:32px;color:var(--icon-mid)"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <h2 style="margin-bottom:var(--space-3);font-size:32px;font-weight:600;color:var(--text-primary)">Welcome Back, phil!</h2>
+        <p style="font-size:18px;color:var(--text-secondary);line-height:1.6">Great news! You already have 2 Drives ready to sync.</p>
+      </div>
+
+      <h3 style="font-size:16px;font-weight:600;margin-bottom:var(--space-4);color:var(--text-secondary)">Choose a drive to sync:</h3>
+
+      <div style="display:flex;flex-direction:column;gap:var(--space-3);margin-bottom:var(--space-6)">
+        <label class="drive-select-card is-selected">
+          <div style="display:flex;align-items:center;gap:var(--space-3)">
+            <svg class="ic" viewBox="0 0 24 24" style="width:24px;height:24px;color:var(--brand);flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+            <div style="flex:1">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2)">
+                <h4 style="font-size:16px;font-weight:600;color:var(--text-primary);display:flex;align-items:center;gap:var(--space-2)">My Public Drive</h4>
+                <span style="font-size:12px;padding:2px 8px;background:var(--info-surface);border-radius:var(--radius-sm);color:var(--info-fg)">Public</span>
+              </div>
+              <div style="display:flex;gap:var(--space-4);font-size:14px;color:var(--text-secondary)">
+                <div style="display:flex;align-items:center;gap:var(--space-1)">
+                  <svg class="ic" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  Created Jun 12, 2025
+                </div>
+                <div style="display:flex;align-items:center;gap:var(--space-1)">
+                  <svg class="ic" viewBox="0 0 24 24" style="width:14px;height:14px"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                  1.2 GB
+                </div>
+              </div>
+            </div>
+            <svg class="ic" viewBox="0 0 24 24" style="width:20px;height:20px;color:var(--brand)"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+        </label>
+
+        <label class="drive-select-card">
+          <div style="display:flex;align-items:center;gap:var(--space-3)">
+            <svg class="ic" viewBox="0 0 24 24" style="width:24px;height:24px;color:var(--icon-mid);flex-shrink:0"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <div style="flex:1">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2)">
+                <h4 style="font-size:16px;font-weight:600;color:var(--text-primary);display:flex;align-items:center;gap:var(--space-2)">Private Drive <span style="font-size:14px;opacity:0.8">🦊🌲🔑</span></h4>
+                <span style="font-size:12px;padding:2px 8px;background:var(--warning-surface);border-radius:var(--radius-sm);color:var(--warning-fg)">Private</span>
+              </div>
+              <div style="display:flex;gap:var(--space-4);font-size:14px;color:var(--text-secondary)">
+                <div style="display:flex;align-items:center;gap:var(--space-1)">Created Mar 2, 2025</div>
+              </div>
+            </div>
+          </div>
+        </label>
+
+        <button class="drive-create-option">
+          <svg class="ic" viewBox="0 0 24 24" style="width:24px;height:24px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <div>
+            <div class="drive-create-option-title">Create New Drive</div>
+            <div class="drive-create-option-desc">Start fresh with a new Drive</div>
+          </div>
+        </button>
+      </div>
+
+      <div style="display:flex;gap:var(--space-3);align-items:center;justify-content:space-between">
+        <div style="display:flex;gap:var(--space-3)">
+          <button class="button outline" style="display:flex;align-items:center;gap:var(--space-2)">
+            <svg class="ic" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            Back
+          </button>
+          <button class="button outline" style="display:flex;align-items:center;gap:var(--space-2)">
+            <svg class="ic" viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+            Skip Setup
+          </button>
+        </div>
+        <button class="button large" style="font-size:16px;padding:12px 24px;display:flex;align-items:center;gap:var(--space-2)">
+          Continue with Selected Drive
+          <svg class="ic" viewBox="0 0 24 24" style="width:18px;height:18px"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </div>
+
+      <p style="margin-top:var(--space-4);font-size:13px;color:var(--text-tertiary);text-align:center">
+        You can add more drives or change your selection later from the dashboard.
+      </p>
+    </div>
+  </div>
+
+  <!-- ============== SetupSuccessScreen (technical details expanded) ============== -->
+  <div class="demo-screen" style="background: var(--surface)">
+    <div style="width:100%;max-width:600px;padding:var(--space-8);background:var(--surface-raised);border-radius:var(--radius-lg);box-shadow:var(--elevation-3);text-align:center">
+
+      <div style="width:80px;height:80px;margin:0 auto var(--space-6);background:var(--success-surface);border-radius:50%;display:flex;align-items:center;justify-content:center">
+        <svg class="ic" viewBox="0 0 24 24" style="width:48px;height:48px;color:var(--success)"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      </div>
+
+      <h1 style="font-size:32px;font-weight:700;margin-bottom:var(--space-6);color:var(--text-primary)">🎉 Your Drive Is Ready, phil!</h1>
+
+      <div style="background:var(--surface-inset);border-radius:var(--radius-md);padding:var(--space-5);margin-bottom:var(--space-6);text-align:left">
+        <h3 style="font-size:16px;font-weight:600;margin-bottom:var(--space-4);color:var(--text-primary)">Setup Summary</h3>
+        <div style="display:flex;flex-direction:column;gap:var(--space-3)">
+          <div style="display:flex;align-items:center;gap:var(--space-3)">
+            <div style="width:32px;height:32px;background:var(--brand-surface);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg class="ic" viewBox="0 0 24 24" style="width:18px;height:18px;color:var(--brand)"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+            </div>
+            <div>
+              <p style="font-size:14px;color:var(--text-secondary);margin-bottom:2px">Drive Name</p>
+              <p style="font-size:15px;font-weight:600;color:var(--text-primary)">My Public Drive</p>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:var(--space-3)">
+            <div style="width:32px;height:32px;background:var(--warning-surface);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg class="ic" viewBox="0 0 24 24" style="width:18px;height:18px;color:var(--warning)"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+            </div>
+            <div>
+              <p style="font-size:14px;color:var(--text-secondary);margin-bottom:2px">Drive Type</p>
+              <p style="font-size:15px;font-weight:600;color:var(--text-primary)">Public</p>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:var(--space-3)">
+            <div style="width:32px;height:32px;background:var(--brand-surface);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg class="ic" viewBox="0 0 24 24" style="width:18px;height:18px;color:var(--brand)"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            </div>
+            <div style="flex:1">
+              <p style="font-size:14px;color:var(--text-secondary);margin-bottom:2px">Local Sync Folder</p>
+              <p style="font-size:15px;font-weight:600;color:var(--text-primary)">/Users/phil/ArDrive/My Public Drive</p>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:var(--space-3)">
+            <div style="width:32px;height:32px;background:var(--success-surface);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg class="ic" viewBox="0 0 24 24" style="width:18px;height:18px;color:var(--success)"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </div>
+            <div>
+              <p style="font-size:14px;color:var(--text-secondary);margin-bottom:2px">Auto-Sync</p>
+              <p style="font-size:15px;font-weight:600;color:var(--text-primary)">Enabled</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button class="modal-toggle-button" style="margin-top:var(--space-4)">
+        <svg class="ic" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+        Hide Technical Details
+      </button>
+
+      <div style="margin-top:var(--space-3);padding:var(--space-4);background:var(--surface-inset);border-radius:var(--radius-md);border:1px solid var(--border);font-size:14px;text-align:left">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3);gap:var(--space-2)">
+          <div style="flex:1">
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:4px">Drive ID</p>
+            <p style="font-family:var(--font-mono);font-size:13px;color:var(--text-primary);word-break:break-all">3f9a1c2d-88e4-4b0a-9c1e-7a2b5d6f0e11</p>
+          </div>
+          <button class="modal-copy-button is-copied">
+            <svg class="ic" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copied!
+          </button>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-2)">
+          <div style="flex:1">
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:4px">Drive Transaction ID</p>
+            <p style="font-family:var(--font-mono);font-size:13px;color:var(--text-primary);word-break:break-all">a1b2c3d4e5f60718293a4b5c6d7e8f9012345678</p>
+          </div>
+          <div style="display:flex;gap:var(--space-2);flex-shrink:0">
+            <button class="modal-copy-button">
+              <svg class="ic" viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy
+            </button>
+            <button class="modal-copy-button is-link">
+              <svg class="ic" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              View
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <p style="font-size:16px;color:var(--text-secondary);line-height:1.6;margin-top:var(--space-6);margin-bottom:var(--space-6)">
+        Your files will now sync between your local folder and the Permaweb. You can manage uploads, view files, and monitor sync status in the dashboard.
+      </p>
+
+      <button class="button large" style="width:100%;font-size:16px;padding:var(--space-4);display:flex;align-items:center;justify-content:center;gap:var(--space-2)">
+        Open Dashboard
+        <svg class="ic" viewBox="0 0 24 24" style="width:20px;height:20px"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
+    </div>
+  </div>
+
+</body>
+</html>

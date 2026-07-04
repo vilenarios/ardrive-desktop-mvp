@@ -49,15 +49,15 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
       alignItems: 'center',
       justifyContent: 'center',
       padding: 'var(--space-6)',
-      background: 'var(--gray-50)'
+      background: 'var(--surface)'
     }}>
       <div style={{
         width: '100%',
         maxWidth: '600px',
         padding: 'var(--space-8)',
-        background: 'white',
+        background: 'var(--surface-raised)',
         borderRadius: 'var(--radius-lg)',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+        boxShadow: 'var(--elevation-3)',
         textAlign: 'center'
       }}>
         {/* Success Icon */}
@@ -65,13 +65,13 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
           width: '80px',
           height: '80px',
           margin: '0 auto var(--space-6)',
-          background: 'var(--success-100)',
+          background: 'var(--success-surface)',
           borderRadius: '50%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center'
         }}>
-          <CheckCircle size={48} style={{ color: 'var(--success-600)' }} />
+          <CheckCircle size={48} style={{ color: 'var(--success)' }} />
         </div>
 
         {/* Title */}
@@ -79,14 +79,14 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
           fontSize: '32px',
           fontWeight: '700',
           marginBottom: 'var(--space-6)',
-          color: 'var(--gray-900)'
+          color: 'var(--text-primary)'
         }}>
           🎉 Your Drive Is Ready{currentProfile && (currentProfile.arnsName || currentProfile.name) ? `, ${currentProfile.arnsName || currentProfile.name}` : ''}!
         </h1>
 
         {/* Summary Box */}
         <div style={{
-          background: 'var(--gray-50)',
+          background: 'var(--surface-inset)',
           borderRadius: 'var(--radius-md)',
           padding: 'var(--space-5)',
           marginBottom: 'var(--space-6)',
@@ -96,7 +96,7 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
             fontSize: '16px',
             fontWeight: '600',
             marginBottom: 'var(--space-4)',
-            color: 'var(--gray-900)'
+            color: 'var(--text-primary)'
           }}>
             Setup Summary
           </h3>
@@ -107,18 +107,18 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
               <div style={{
                 width: '32px',
                 height: '32px',
-                background: 'var(--ardrive-primary-100)',
+                background: 'var(--brand-surface)',
                 borderRadius: 'var(--radius-sm)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0
               }}>
-                <Globe size={18} style={{ color: 'var(--ardrive-primary)' }} />
+                <Globe size={18} style={{ color: 'var(--brand)' }} />
               </div>
               <div>
-                <p style={{ fontSize: '14px', color: 'var(--gray-600)', marginBottom: '2px' }}>Drive Name</p>
-                <p style={{ fontSize: '15px', fontWeight: '600', color: 'var(--gray-900)' }}>{driveName}</p>
+                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Drive Name</p>
+                <p style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>{driveName}</p>
               </div>
             </div>
 
@@ -127,18 +127,18 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
               <div style={{
                 width: '32px',
                 height: '32px',
-                background: 'var(--warning-100)',
+                background: 'var(--warning-surface)',
                 borderRadius: 'var(--radius-sm)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0
               }}>
-                <Globe size={18} style={{ color: 'var(--warning-600)' }} />
+                <Globe size={18} style={{ color: 'var(--warning)' }} />
               </div>
               <div>
-                <p style={{ fontSize: '14px', color: 'var(--gray-600)', marginBottom: '2px' }}>Drive Type</p>
-                <p style={{ fontSize: '15px', fontWeight: '600', color: 'var(--gray-900)' }}>{driveType}</p>
+                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Drive Type</p>
+                <p style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>{driveType}</p>
               </div>
             </div>
 
@@ -147,21 +147,21 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
               <div style={{
                 width: '32px',
                 height: '32px',
-                background: 'var(--ardrive-primary-100)',
+                background: 'var(--brand-surface)',
                 borderRadius: 'var(--radius-sm)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0
               }}>
-                <FolderOpen size={18} style={{ color: 'var(--ardrive-primary)' }} />
+                <FolderOpen size={18} style={{ color: 'var(--brand)' }} />
               </div>
               <div style={{ flex: 1 }}>
-                <p style={{ fontSize: '14px', color: 'var(--gray-600)', marginBottom: '2px' }}>Local Sync Folder</p>
-                <p style={{ 
-                  fontSize: '15px', 
-                  fontWeight: '600', 
-                  color: 'var(--gray-900)',
+                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Local Sync Folder</p>
+                <p style={{
+                  fontSize: '15px',
+                  fontWeight: '600',
+                  color: 'var(--text-primary)',
                   wordBreak: 'break-all'
                 }}>
                   {localSyncFolder}
@@ -174,18 +174,18 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
               <div style={{
                 width: '32px',
                 height: '32px',
-                background: autoSyncEnabled ? 'var(--success-100)' : 'var(--gray-100)',
+                background: autoSyncEnabled ? 'var(--success-surface)' : 'var(--surface-inset)',
                 borderRadius: 'var(--radius-sm)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0
               }}>
-                <Zap size={18} style={{ color: autoSyncEnabled ? 'var(--success-600)' : 'var(--gray-500)' }} />
+                <Zap size={18} style={{ color: autoSyncEnabled ? 'var(--success)' : 'var(--icon-mid)' }} />
               </div>
               <div>
-                <p style={{ fontSize: '14px', color: 'var(--gray-600)', marginBottom: '2px' }}>Auto-Sync</p>
-                <p style={{ fontSize: '15px', fontWeight: '600', color: 'var(--gray-900)' }}>
+                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Auto-Sync</p>
+                <p style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>
                   {autoSyncEnabled ? 'Enabled' : 'Disabled'}
                 </p>
               </div>
@@ -196,29 +196,9 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
         {/* Technical Details Toggle */}
         {(driveId || rootFolderId || driveTxId) && (
           <button
+            className="modal-toggle-button"
             onClick={() => setShowTechnicalDetails(!showTechnicalDetails)}
-            style={{
-              marginTop: 'var(--space-4)',
-              background: 'none',
-              border: 'none',
-              color: 'var(--gray-600)',
-              fontSize: '14px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 'var(--space-1)',
-              padding: 'var(--space-2)',
-              borderRadius: 'var(--radius-sm)',
-              transition: 'all 0.2s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--gray-100)';
-              e.currentTarget.style.color = 'var(--gray-800)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.color = 'var(--gray-600)';
-            }}
+            style={{ marginTop: 'var(--space-4)' }}
           >
             {showTechnicalDetails ? (
               <>
@@ -239,25 +219,25 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
           <div style={{
             marginTop: 'var(--space-3)',
             padding: 'var(--space-4)',
-            backgroundColor: 'var(--gray-50)',
+            backgroundColor: 'var(--surface-inset)',
             borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--gray-200)',
+            border: '1px solid var(--border)',
             fontSize: '14px'
           }}>
             {driveId && (
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
                 justifyContent: 'space-between',
                 marginBottom: 'var(--space-3)',
                 gap: 'var(--space-2)'
               }}>
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: '13px', color: 'var(--gray-600)', marginBottom: '4px' }}>Drive ID</p>
-                  <p style={{ 
-                    fontFamily: 'var(--font-mono)', 
-                    fontSize: '13px', 
-                    color: 'var(--gray-800)',
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Drive ID</p>
+                  <p style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '13px',
+                    color: 'var(--text-primary)',
                     wordBreak: 'break-all'
                   }}>
                     {driveId}
@@ -265,30 +245,7 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
                 </div>
                 <button
                   onClick={() => handleCopy(driveId, 'driveId')}
-                  style={{
-                    padding: 'var(--space-2)',
-                    background: 'white',
-                    border: '1px solid var(--gray-300)',
-                    borderRadius: 'var(--radius-sm)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-1)',
-                    fontSize: '12px',
-                    color: copiedField === 'driveId' ? 'var(--success-600)' : 'var(--gray-600)',
-                    transition: 'all 0.2s ease',
-                    flexShrink: 0
-                  }}
-                  onMouseEnter={(e) => {
-                    if (copiedField !== 'driveId') {
-                      e.currentTarget.style.borderColor = 'var(--gray-400)';
-                      e.currentTarget.style.backgroundColor = 'var(--gray-50)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--gray-300)';
-                    e.currentTarget.style.backgroundColor = 'white';
-                  }}
+                  className={`modal-copy-button ${copiedField === 'driveId' ? 'is-copied' : ''}`}
                 >
                   <Copy size={14} />
                   {copiedField === 'driveId' ? 'Copied!' : 'Copy'}
@@ -297,19 +254,19 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
             )}
 
             {rootFolderId && (
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
                 justifyContent: 'space-between',
                 marginBottom: 'var(--space-3)',
                 gap: 'var(--space-2)'
               }}>
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: '13px', color: 'var(--gray-600)', marginBottom: '4px' }}>Root Folder ID</p>
-                  <p style={{ 
-                    fontFamily: 'var(--font-mono)', 
-                    fontSize: '13px', 
-                    color: 'var(--gray-800)',
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Root Folder ID</p>
+                  <p style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '13px',
+                    color: 'var(--text-primary)',
                     wordBreak: 'break-all'
                   }}>
                     {rootFolderId}
@@ -317,30 +274,7 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
                 </div>
                 <button
                   onClick={() => handleCopy(rootFolderId, 'rootFolderId')}
-                  style={{
-                    padding: 'var(--space-2)',
-                    background: 'white',
-                    border: '1px solid var(--gray-300)',
-                    borderRadius: 'var(--radius-sm)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-1)',
-                    fontSize: '12px',
-                    color: copiedField === 'rootFolderId' ? 'var(--success-600)' : 'var(--gray-600)',
-                    transition: 'all 0.2s ease',
-                    flexShrink: 0
-                  }}
-                  onMouseEnter={(e) => {
-                    if (copiedField !== 'rootFolderId') {
-                      e.currentTarget.style.borderColor = 'var(--gray-400)';
-                      e.currentTarget.style.backgroundColor = 'var(--gray-50)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--gray-300)';
-                    e.currentTarget.style.backgroundColor = 'white';
-                  }}
+                  className={`modal-copy-button ${copiedField === 'rootFolderId' ? 'is-copied' : ''}`}
                 >
                   <Copy size={14} />
                   {copiedField === 'rootFolderId' ? 'Copied!' : 'Copy'}
@@ -349,18 +283,18 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
             )}
 
             {driveTxId && (
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: 'var(--space-2)'
               }}>
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: '13px', color: 'var(--gray-600)', marginBottom: '4px' }}>Drive Transaction ID</p>
-                  <p style={{ 
-                    fontFamily: 'var(--font-mono)', 
-                    fontSize: '13px', 
-                    color: 'var(--gray-800)',
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Drive Transaction ID</p>
+                  <p style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '13px',
+                    color: 'var(--text-primary)',
                     wordBreak: 'break-all'
                   }}>
                     {driveTxId}
@@ -369,56 +303,14 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
                 <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0 }}>
                   <button
                     onClick={() => handleCopy(driveTxId, 'driveTxId')}
-                    style={{
-                      padding: 'var(--space-2)',
-                      background: 'white',
-                      border: '1px solid var(--gray-300)',
-                      borderRadius: 'var(--radius-sm)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-1)',
-                      fontSize: '12px',
-                      color: copiedField === 'driveTxId' ? 'var(--success-600)' : 'var(--gray-600)',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (copiedField !== 'driveTxId') {
-                        e.currentTarget.style.borderColor = 'var(--gray-400)';
-                        e.currentTarget.style.backgroundColor = 'var(--gray-50)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--gray-300)';
-                      e.currentTarget.style.backgroundColor = 'white';
-                    }}
+                    className={`modal-copy-button ${copiedField === 'driveTxId' ? 'is-copied' : ''}`}
                   >
                     <Copy size={14} />
                     {copiedField === 'driveTxId' ? 'Copied!' : 'Copy'}
                   </button>
                   <button
                     onClick={() => openTransaction(driveTxId)}
-                    style={{
-                      padding: 'var(--space-2)',
-                      background: 'white',
-                      border: '1px solid var(--gray-300)',
-                      borderRadius: 'var(--radius-sm)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-1)',
-                      fontSize: '12px',
-                      color: 'var(--ardrive-primary)',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--ardrive-primary)';
-                      e.currentTarget.style.backgroundColor = 'var(--ardrive-primary-50)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--gray-300)';
-                      e.currentTarget.style.backgroundColor = 'white';
-                    }}
+                    className="modal-copy-button is-link"
                   >
                     <ExternalLink size={14} />
                     View
@@ -432,11 +324,11 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
         {/* Reassurance Copy */}
         <p style={{
           fontSize: '16px',
-          color: 'var(--gray-600)',
+          color: 'var(--text-secondary)',
           lineHeight: '1.6',
           marginBottom: 'var(--space-6)'
         }}>
-          Your files will now sync between your local folder and the Permaweb. 
+          Your files will now sync between your local folder and the Permaweb.
           You can manage uploads, view files, and monitor sync status in the dashboard.
         </p>
 

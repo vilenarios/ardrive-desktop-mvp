@@ -95,7 +95,7 @@ const Settings: React.FC<SettingsProps> = ({
                   {currentFolder || 'No folder selected'}
                 </div>
                 {folderError && (
-                  <div className="folder-error" style={{ color: 'var(--red-700, #b91c1c)', fontSize: '13px', marginBottom: 'var(--space-2)' }}>
+                  <div className="folder-error" style={{ color: 'var(--danger-fg)', fontSize: '13px', marginBottom: 'var(--space-2)' }}>
                     {folderError}
                   </div>
                 )}
