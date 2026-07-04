@@ -96,12 +96,34 @@ export class InputValidator {
   }
 
   /**
-   * Validates a password
+   * Validates a NEW password we are minting (wallet creation/import, private
+   * drive creation). Enforces the 8-char minimum-strength policy.
    */
   static validatePassword(value: any, fieldName: string = 'password'): string {
     return this.validateString(value, fieldName, {
       required: true,
       minLength: this.CONSTRAINTS.MIN_PASSWORD_LENGTH,
+      maxLength: this.CONSTRAINTS.MAX_PASSWORD_LENGTH
+    });
+  }
+
+  /**
+   * Validates a password supplied to UNLOCK / derive a key against EXISTING
+   * encrypted data (e.g. a private drive created by another ArDrive client).
+   *
+   * PRIV-7: unlike validatePassword — which enforces our 8-char NEW-password
+   * policy — this MUST accept whatever the user provides, because the drive's
+   * password was minted elsewhere and may be shorter than our minimum. A drive
+   * with a 3-char password created in another client could otherwise NEVER be
+   * unlocked here. Unlock correctness comes from trial decryption downstream
+   * (PRIV-2: derive the key and verify it decrypts the drive entity), NOT from
+   * a length/strength check. We still reject empty / non-string input and cap
+   * the length as a basic abuse guard.
+   */
+  static validateExistingPassword(value: any, fieldName: string = 'password'): string {
+    return this.validateString(value, fieldName, {
+      required: true,
+      minLength: 0,
       maxLength: this.CONSTRAINTS.MAX_PASSWORD_LENGTH
     });
   }

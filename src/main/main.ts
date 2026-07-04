@@ -858,8 +858,13 @@ class ArDriveApp {
     ipcMain.handle('drive:unlock', safeIpcHandler(async (_, driveId: string, password: string) => {
       try {
         const validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
-        const validatedPassword = InputValidator.validatePassword(password, 'password');
-        
+        // PRIV-7: unlocking an EXISTING private drive must accept whatever
+        // password the user provides (drives from other ArDrive clients may use
+        // a password shorter than our 8-char NEW-password minimum). Do NOT run
+        // the new-password strength validator here; wrong passwords are still
+        // rejected by trial decryption in unlockPrivateDrive (PRIV-2).
+        const validatedPassword = InputValidator.validateExistingPassword(password, 'password');
+
         const unlockResult = await this.walletManager.unlockPrivateDrive(validatedDriveId, validatedPassword);
         
         if (unlockResult.success) {
