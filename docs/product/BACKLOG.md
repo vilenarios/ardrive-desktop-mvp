@@ -263,8 +263,9 @@ Gate follow-ups filed: clear-cache-before-list window (list-then-swap, SYNC-9/SY
 **Private move/rename (and hide) paths.** Evidence: §3.7/§1.7 (only `*Public*` ArFS calls exist). Pairs with SYNC-5's hide implementation; upstream ardrive-core-js work allowed (D-016).
 QA finding 2026-07-03: sync-manager.ts:1559/1608 log raw rename/move results — safe today only because public results omit `key` (version-fragile); when touching these paths, route through `summarizeArFSResult` (SEC-1's whitelist util).
 
-### PRIV-7 · P2 · Phase 3 · `todo`
+### PRIV-7 · P2 · Phase 3 · `in-progress`
 **Don't gate drive unlock on the 8-char wallet-password validator.** Evidence: §3.10 (drives from other clients with shorter passwords can never unlock).
+Claimed 2026-07-04 (overnight loop, branch fix/PRIV-7-unlock-validation, Opus implementer).
 
 ---
 
