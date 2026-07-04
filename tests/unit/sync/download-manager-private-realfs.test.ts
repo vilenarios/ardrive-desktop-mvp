@@ -37,6 +37,9 @@ vi.mock('../../../src/main/drive-key-manager', () => ({
 
 vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: vi.fn(() => []) },
+  // SYNC-17: DownloadManager now transitively imports config-manager (for the
+  // configurable gateway host), which reads app.getPath at construction.
+  app: { getPath: vi.fn(() => '/mock/user-data') },
 }));
 
 const DRIVE_ID = '11111111-1111-4111-8111-111111111111';
@@ -168,7 +171,7 @@ describe('QA PROBE round 2: PRIV-1 after 4c3973d', () => {
     await manager['performFileDownload'](fileData, localFilePath, tmpDir, 'dl-2', 'ph-2');
 
     expect(mockStreamingDownload).toHaveBeenCalledWith(
-      'https://arweave.net/raw/manifest-tx',
+      'https://turbo-gateway.com/raw/manifest-tx',
       localFilePath,
       'dl-2',
       expect.any(Object)
@@ -197,7 +200,7 @@ describe('QA PROBE round 2: PRIV-1 after 4c3973d', () => {
     await manager['performFileDownload'](fileData, localFilePath, tmpDir, 'dl-3', 'ph-3');
 
     expect(mockStreamingDownload).toHaveBeenCalledWith(
-      'https://arweave.net/pub-tx',
+      'https://turbo-gateway.com/pub-tx',
       localFilePath,
       'dl-3',
       expect.any(Object)

@@ -15,6 +15,7 @@ import { keychainService } from './keychain-service';
 import { driveKeyManager } from './drive-key-manager';
 import { getDriveEmojiFingerprint } from './utils/drive-fingerprint';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
+import { getGatewayConfig } from './gateway';
 
 /**
  * Secure Wallet Manager
@@ -157,12 +158,9 @@ export class SecureWalletManager {
   private async deriveAddressFromSeedPhrase(seedPhrase: string): Promise<string> {
     const { WalletDAO, SeedPhrase } = await import('ardrive-core-js');
     const Arweave = (await import('arweave')).default;
-    const arweave = Arweave.init({
-      host: 'arweave.net',
-      port: 443,
-      protocol: 'https',
+    const arweave = Arweave.init(getGatewayConfig({
       timeout: 120000
-    });
+    }));
 
     const walletDAO = new WalletDAO(arweave);
     const seedPhraseObj = new SeedPhrase(seedPhrase.trim());
@@ -232,12 +230,9 @@ export class SecureWalletManager {
       
       // Initialize Arweave instance
       const Arweave = (await import('arweave')).default;
-      const arweave = Arweave.init({
-        host: 'arweave.net',
-        port: 443,
-        protocol: 'https',
+      const arweave = Arweave.init(getGatewayConfig({
         timeout: 120000
-      });
+      }));
       
       // Create WalletDAO instance
       const walletDAO = new WalletDAO(arweave);
@@ -403,13 +398,10 @@ export class SecureWalletManager {
 
       // Initialize ArDrive with custom gateway configuration
       const Arweave = (await import('arweave')).default;
-      const arweaveInstance = Arweave.init({
-        host: 'arweave.net',
-        port: 443,
-        protocol: 'https',
+      const arweaveInstance = Arweave.init(getGatewayConfig({
         timeout: 120000,
         logging: true
-      });
+      }));
 
       this.arDrive = arDriveFactory({ 
         wallet,
@@ -502,13 +494,10 @@ export class SecureWalletManager {
 
       // Initialize ArDrive with custom gateway configuration
       const Arweave = (await import('arweave')).default;
-      const arweaveInstance = Arweave.init({
-        host: 'arweave.net',
-        port: 443,
-        protocol: 'https',
+      const arweaveInstance = Arweave.init(getGatewayConfig({
         timeout: 120000,
         logging: true
-      });
+      }));
 
       this.arDrive = arDriveFactory({ 
         wallet,
@@ -555,12 +544,9 @@ export class SecureWalletManager {
     try {
       // Handle Arweave wallet
       const Arweave = (await import('arweave')).default;
-      const arweave = Arweave.init({
-        host: 'arweave.net',
-        port: 443,
-        protocol: 'https',
+      const arweave = Arweave.init(getGatewayConfig({
         timeout: 120000
-      });
+      }));
       
       // Use ownerToAddress with the wallet's public key 'n' parameter
       const address = await arweave.wallets.ownerToAddress(this.walletJson.n);
@@ -1039,11 +1025,7 @@ export class SecureWalletManager {
   // Get address from JWK
   async getAddressFromJWK(jwk: any): Promise<string> {
     const Arweave = (await import('arweave')).default;
-    const arweave = Arweave.init({
-      host: 'arweave.net',
-      port: 443,
-      protocol: 'https'
-    });
+    const arweave = Arweave.init(getGatewayConfig());
     
     // Use ownerToAddress with the wallet's public key 'n' parameter
     const address = await arweave.wallets.ownerToAddress(jwk.n);
@@ -1396,13 +1378,10 @@ export class SecureWalletManager {
       const privateKeyData = await driveKeyManager.getPrivateKeyData();
       
       // Create new ArDrive instance with private key data
-      const arweaveInstance = Arweave.init({
-        host: 'arweave.net',
-        port: 443,
-        protocol: 'https',
+      const arweaveInstance = Arweave.init(getGatewayConfig({
         timeout: 120000,
         logging: true
-      });
+      }));
       
       // Create ArDrive with private key data included
       // Note: arDriveFactory may not accept privateKeyData directly

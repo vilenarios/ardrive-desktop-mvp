@@ -107,6 +107,21 @@ export class ConfigManager {
     await this.saveGlobalConfig();
   }
 
+  // SYNC-17: the Arweave gateway host lives on the global config (device/app-level,
+  // like theme) so it applies before any profile is active — wallet ops during
+  // onboarding must be able to reach a non-rate-limited gateway. Returns the raw
+  // configured value (may be undefined); the default (turbo-gateway.com) is
+  // applied by src/main/gateway.ts, the single resolution point. Synchronous so
+  // it can be read from the many synchronous Arweave.init() call sites.
+  getGatewayHost(): string | undefined {
+    return this.globalConfig.gatewayHost;
+  }
+
+  async setGatewayHost(host: string): Promise<void> {
+    this.globalConfig.gatewayHost = host;
+    await this.saveGlobalConfig();
+  }
+
   // Legacy clear methods removed - use removeDriveMapping instead
 
   // Migration removed - legacy fields no longer supported

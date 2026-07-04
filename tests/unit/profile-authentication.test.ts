@@ -45,6 +45,7 @@ vi.mock('../../src/main/profile-manager', () => ({
 vi.mock('../../src/main/config-manager', () => ({
   configManager: {
     setActiveProfile: vi.fn().mockResolvedValue(undefined),
+    getGatewayHost: vi.fn(),
   },
 }));
 

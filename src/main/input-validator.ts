@@ -272,6 +272,25 @@ export class InputValidator {
   }
 
   /**
+   * Validates an Arweave gateway host (SYNC-17). Hostname only — no protocol,
+   * path, port, or slashes (the app supplies https/443 itself). Rejects
+   * anything outside DNS hostname characters so a malicious/malformed value can
+   * never smuggle a protocol (`javascript:`), a path, or credentials into the
+   * URLs / Arweave.init host we build from it.
+   */
+  static validateGatewayHost(value: any, fieldName: string = 'gatewayHost'): string {
+    // Pre-trim so surrounding whitespace is forgiven (validateString applies the
+    // pattern before its own trim). The pattern then rejects any embedded
+    // whitespace, protocol, path, port, or slash.
+    const trimmed = typeof value === 'string' ? value.trim() : value;
+    return this.validateString(trimmed, fieldName, {
+      minLength: 1,
+      maxLength: 253,
+      pattern: /^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/
+    });
+  }
+
+  /**
    * Validates a positive number
    */
   static validatePositiveNumber(

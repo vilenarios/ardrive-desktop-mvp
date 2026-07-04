@@ -1,4 +1,5 @@
 import { ARIO, ANT } from '@ar.io/sdk';
+import { getGatewayUrl } from './gateway';
 
 export interface ArNSProfile {
   name: string | null;
@@ -158,7 +159,7 @@ export class ArNSService {
       if (cached && cached.logo !== undefined && Date.now() - cached.timestamp < CACHE_DURATION) {
         return { 
           name: primaryName, 
-          avatar: cached.logo ? `https://arweave.net/${cached.logo}` : null 
+          avatar: cached.logo ? `${getGatewayUrl()}/${cached.logo}` : null
         };
       }
 
@@ -174,7 +175,7 @@ export class ArNSService {
 
       return { 
         name: primaryName, 
-        avatar: logo ? `https://arweave.net/${logo}` : null 
+        avatar: logo ? `${getGatewayUrl()}/${logo}` : null
       };
     } catch (error) {
       console.error('Error fetching ArNS profile:', error);

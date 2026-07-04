@@ -7,6 +7,12 @@ export interface AppConfig {
   driveMappings?: DriveSyncMapping[];
   /** DESIGN-2: manual theme override. 'system' (default) follows the OS preference. */
   theme?: 'light' | 'dark' | 'system';
+  /**
+   * SYNC-17: Arweave gateway host override (device/app-level, like `theme`).
+   * Unset → defaults to turbo-gateway.com (see src/main/gateway.ts). Lets a user
+   * whose default gateway is rate-limited point the app at a working one.
+   */
+  gatewayHost?: string;
 }
 
 export interface DriveSyncMapping {
