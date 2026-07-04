@@ -592,6 +592,14 @@ class ArDriveApp {
       return await this.walletManager.hasStoredWallet();
     });
 
+    // UX-7: the specific reason the last password-based profiles:switch
+    // attempt failed (e.g. "Invalid password" vs a corrupted/IO wallet-file
+    // failure), so the login UI can tell them apart. profiles:switch itself
+    // keeps returning a plain boolean for backward compatibility.
+    ipcMain.handle('wallet:get-last-auth-error', safeIpcHandler(async () => {
+      return { success: true, data: this.walletManager.getLastAuthError() };
+    }));
+
     ipcMain.handle('wallet:clear-stored', safeIpcHandler(async () => {
       // SEC-3: stop the watcher and drop wallet-bearing sync state before the
       // wallet session and database are torn down.

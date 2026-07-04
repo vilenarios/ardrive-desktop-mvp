@@ -10,9 +10,14 @@ import { PrivateDriveUnlockModal } from './components/PrivateDriveUnlockModal';
 import ToastContainer from './components/ToastContainer';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { useToast } from './hooks/useToast';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 // Simple app states
-type AppState = 'loading' | 'profile-management' | 'wallet-setup' | 'drive-setup' | 'sync-setup' | 'welcome-back' | 'dashboard';
+// UX-7: 'boot-error' is a fail-safe landing spot for an EXISTING profile whose
+// boot sequence failed (thrown exception or a failed drive fetch) — distinct
+// from 'wallet-setup'/'drive-setup', which are reserved for a confirmed brand
+// new account / a confirmed-empty (successful fetch, zero drives) result.
+type AppState = 'loading' | 'profile-management' | 'wallet-setup' | 'drive-setup' | 'sync-setup' | 'welcome-back' | 'dashboard' | 'boot-error';
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('loading');
@@ -27,6 +32,7 @@ const App: React.FC = () => {
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [selectedPrivateDrive, setSelectedPrivateDrive] = useState<DriveInfo | null>(null);
   const [showPrivateDriveUnlock, setShowPrivateDriveUnlock] = useState(false);
+  const [bootError, setBootError] = useState<string | null>(null);
   const { toasts, toast, removeToast } = useToast();
 
   useEffect(() => {
@@ -68,6 +74,15 @@ const App: React.FC = () => {
 
   const initializeApp = async () => {
     console.log('🔴 [RENDERER] initializeApp called at:', new Date().toISOString());
+    // UX-7: once we've confirmed this is an existing profile with a stored
+    // wallet (below), a failure anywhere past that point — a thrown
+    // exception or a failed drive fetch — is a boot problem, not evidence of
+    // a fresh/empty account. Route those to the fail-safe error+retry screen
+    // instead of wallet-setup/create-drive, which must stay reserved for a
+    // genuinely-new profile or a confirmed-empty (successful fetch, zero
+    // drives) result. An offline existing user must never see
+    // "Create New Account".
+    let existingProfileConfirmed = false;
     try {
       // Load config
       const appConfig = await window.electronAPI.config.get();
@@ -83,11 +98,13 @@ const App: React.FC = () => {
       // Check if there's an active profile with a loaded wallet
       const activeProfile = await window.electronAPI.profile.getActive();
       const hasWallet = await window.electronAPI.wallet.hasStoredWallet();
-      
+
       if (!activeProfile || !hasWallet) {
         setAppState('profile-management');
         return;
       }
+
+      existingProfileConfirmed = true;
 
       // Load wallet info and profile
       const [wallet, profile] = await Promise.all([
@@ -96,7 +113,10 @@ const App: React.FC = () => {
       ]);
 
       if (!wallet || !profile) {
-        setAppState('wallet-setup');
+        // An existing profile's wallet failed to load — not a reason to
+        // offer account creation. Surface it as a retryable boot failure.
+        setBootError('Could not load your wallet. Check your connection and try again.');
+        setAppState('boot-error');
         return;
       }
 
@@ -124,17 +144,29 @@ const App: React.FC = () => {
       // Check if drive exists
       const driveListResult = await window.electronAPI.drive.listWithStatus();
       console.log('[initializeApp] Raw drive list result:', driveListResult);
-      
-      // Extract drives from result
-      let driveList = [];
-      if (driveListResult) {
-        if (driveListResult.success && driveListResult.data) {
-          driveList = driveListResult.data;
-        } else if (Array.isArray(driveListResult)) {
-          driveList = driveListResult;
-        }
+
+      // Extract drives from result. UX-7: distinguish a fetch FAILURE
+      // (envelope success:false, or no result at all) from a confirmed-empty
+      // successful fetch — only the latter may route to drive creation. A
+      // network/gateway error must never be silently treated as "0 drives".
+      let driveList: DriveInfoWithStatus[] = [];
+      let driveFetchFailed = false;
+      if (!driveListResult) {
+        driveFetchFailed = true;
+      } else if (driveListResult.success === false) {
+        driveFetchFailed = true;
+      } else if (driveListResult.success && driveListResult.data) {
+        driveList = driveListResult.data;
+      } else if (Array.isArray(driveListResult)) {
+        driveList = driveListResult;
       }
-      console.log('[initializeApp] Extracted drive list:', driveList);
+      console.log('[initializeApp] Extracted drive list:', driveList, 'failed:', driveFetchFailed);
+
+      if (driveFetchFailed) {
+        setBootError('Could not load your drives. Check your connection and try again.');
+        setAppState('boot-error');
+        return;
+      }
 
       // UX-19: populate drive state here so every downstream branch (welcome-back
       // for a locked primary private drive, welcome-back for all-private drives,
@@ -145,7 +177,8 @@ const App: React.FC = () => {
       setDrives(driveList);
 
       if (!driveList || driveList.length === 0) {
-        // No drives at all - go to drive setup
+        // Confirmed empty: the fetch succeeded and there are genuinely no
+        // drives yet. Only now is routing into drive creation correct.
         setAppState('drive-setup');
         return;
       }
@@ -232,8 +265,18 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to initialize app:', error);
-      toast.error('Failed to initialize app');
-      setAppState('wallet-setup');
+      // UX-7: only a brand-new/unconfirmed profile may fall back to
+      // wallet-setup. Once we know an existing profile+wallet were already
+      // set up, any boot exception (offline, transient fetch failure, etc.)
+      // must land on the fail-safe error+retry screen instead — never on
+      // "Create New Account".
+      if (existingProfileConfirmed) {
+        setBootError(error instanceof Error ? error.message : 'Failed to load your account. Check your connection and try again.');
+        setAppState('boot-error');
+      } else {
+        toast.error('Failed to initialize app');
+        setAppState('wallet-setup');
+      }
     }
   };
 
@@ -497,6 +540,14 @@ const App: React.FC = () => {
     await initializeApp();
   };
 
+  // UX-7: retry from the fail-safe boot-error screen — re-run the same boot
+  // sequence rather than routing anywhere destructive.
+  const handleRetryBoot = async () => {
+    setBootError(null);
+    setAppState('loading');
+    await initializeApp();
+  };
+
   const handleLogout = async () => {
     try {
       await window.electronAPI.wallet.logout();
@@ -652,6 +703,46 @@ const App: React.FC = () => {
               animation: 'spin 1s linear infinite'
             }} />
             <p style={{ color: 'var(--gray-600)' }}>Loading ArDrive...</p>
+          </div>
+        );
+
+      case 'boot-error':
+        return (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100vh',
+            flexDirection: 'column',
+            gap: 'var(--space-4)',
+            padding: 'var(--space-4)',
+            textAlign: 'center'
+          }}>
+            <AlertTriangle size={48} color="var(--gray-600)" />
+            <p style={{ color: 'var(--gray-900)', fontWeight: 600, maxWidth: '360px' }}>
+              We couldn&apos;t load your account
+            </p>
+            <p style={{ color: 'var(--gray-600)', maxWidth: '360px' }}>
+              {bootError || 'Check your connection and try again.'}
+            </p>
+            <button
+              onClick={handleRetryBoot}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+                padding: 'var(--space-2) var(--space-4)',
+                background: 'var(--ardrive-primary)',
+                color: 'white',
+                border: 'none',
+                borderRadius: 'var(--radius-md)',
+                cursor: 'pointer',
+                fontWeight: 500
+              }}
+            >
+              <RefreshCw size={16} />
+              Retry
+            </button>
           </div>
         );
 

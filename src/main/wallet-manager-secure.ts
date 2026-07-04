@@ -40,6 +40,12 @@ export class SecureWalletManager {
   // retry and cleared on logout/profile-switch so a Back-and-retry can never
   // leave an orphaned profile/wallet or a divergent persisted seed phrase.
   private pendingGeneratedWallet: { seedPhrase: string; password: string; address: string } | null = null;
+  // UX-7: the specific reason the most recent password-based profile
+  // switch/login attempt failed (e.g. "Invalid password" vs a corrupted/IO
+  // wallet-file failure), for callers that need to distinguish those without
+  // changing switchProfile()'s existing boolean contract. Null when the last
+  // attempt succeeded or none has been made yet.
+  private lastAuthError: string | null = null;
 
   constructor() {
     // Storage paths determined dynamically based on active profile
@@ -523,6 +529,14 @@ export class SecureWalletManager {
       return true;
     } catch (error) {
       console.error('Failed to load wallet:', error);
+      // UX-7: preserve the real cause (e.g. the "Invalid password" thrown
+      // above) instead of collapsing every failure into one generic message
+      // — the login UI needs to tell a wrong password apart from a
+      // corrupted/unreadable wallet file. This is a local wallet decrypt, so
+      // surfacing the specific cause is not a meaningful info leak.
+      if (error instanceof Error) {
+        throw error;
+      }
       throw new Error('Failed to decrypt wallet');
     }
   }
@@ -605,60 +619,59 @@ export class SecureWalletManager {
   }
 
   async listDrives(): Promise<DriveInfo[]> {
+    console.log('Listing drives...');
+
+    // If the wallet/ArDrive instance isn't ready yet, there's genuinely
+    // nothing to list (not a fetch failure) — keep returning [] here so
+    // flows that run before a wallet is loaded aren't blocked.
+    let walletInfo: WalletInfo | null;
     try {
-      console.log('Listing drives...');
-      const walletInfo = await this.getWalletInfo();
-      if (!walletInfo) {
-        throw new Error('Could not get wallet info');
-      }
-      
-      if (!this.arDrive) {
-        throw new Error('ArDrive not initialized');
-      }
-      
-      const address = walletInfo.address;
-      console.log('Wallet address:', `${address.slice(0,4)}...${address.slice(-4)}`);
-      
-      let drives;
-      try {
-        // Get private key data for unlocked drives
-        const privateKeyData = await driveKeyManager.getPrivateKeyData();
-        
-        // Get all drives for this address with private key data
-        drives = await this.arDrive.getAllDrivesForAddress({ 
-          address: new ArweaveAddress(address),
-          privateKeyData: privateKeyData
-        });
-        
-      } catch (networkError: any) {
-        console.error('Network error details:', {
-          message: networkError?.message,
-          stack: networkError?.stack,
-          name: networkError?.name
-        });
-        
-        throw networkError;
-      }
-      
-      // Map to our DriveInfo format
-      const driveInfos = drives.map((drive: any) => ({
-        id: drive.driveId.toString(),
-        name: drive.name, // Will be decrypted name if drive is unlocked
-        privacy: drive.drivePrivacy as 'public' | 'private',
-        rootFolderId: drive.rootFolderId === 'ENCRYPTED' ? '' : drive.rootFolderId.toString(),
-        // Convert unixTime from seconds to milliseconds, or use current time if not available  
-        dateCreated: drive.unixTime ? drive.unixTime * 1000 : Date.now(),
-        size: 0, // Will need to calculate this from drive contents
-        isPrivate: drive.drivePrivacy === 'private'
-      }));
-      
-      return driveInfos;
-      
+      walletInfo = await this.getWalletInfo();
     } catch (error) {
-      console.error('Failed to list drives:', error);
-      // Return empty array instead of throwing to allow drive creation
+      console.error('Failed to get wallet info while listing drives:', error);
       return [];
     }
+    if (!walletInfo || !this.arDrive) {
+      console.log('listDrives: wallet/ArDrive not ready yet, returning empty list');
+      return [];
+    }
+
+    const address = walletInfo.address;
+    console.log('Wallet address:', `${address.slice(0,4)}...${address.slice(-4)}`);
+
+    // Get private key data for unlocked drives, then fetch all drives for
+    // this address. UX-7: let a genuine fetch failure (network error,
+    // gateway timeout, etc.) propagate instead of being swallowed into an
+    // empty array — callers (e.g. boot routing in App.tsx) must be able to
+    // tell "confirmed zero drives" apart from "couldn't fetch drives", or an
+    // offline existing user gets routed into create-drive/create-account.
+    let drives;
+    try {
+      const privateKeyData = await driveKeyManager.getPrivateKeyData();
+      drives = await this.arDrive.getAllDrivesForAddress({
+        address: new ArweaveAddress(address),
+        privateKeyData: privateKeyData
+      });
+    } catch (networkError: any) {
+      console.error('Failed to fetch drives from network:', {
+        message: networkError?.message,
+        stack: networkError?.stack,
+        name: networkError?.name
+      });
+      throw networkError;
+    }
+
+    // Map to our DriveInfo format
+    return drives.map((drive: any) => ({
+      id: drive.driveId.toString(),
+      name: drive.name, // Will be decrypted name if drive is unlocked
+      privacy: drive.drivePrivacy as 'public' | 'private',
+      rootFolderId: drive.rootFolderId === 'ENCRYPTED' ? '' : drive.rootFolderId.toString(),
+      // Convert unixTime from seconds to milliseconds, or use current time if not available
+      dateCreated: drive.unixTime ? drive.unixTime * 1000 : Date.now(),
+      size: 0, // Will need to calculate this from drive contents
+      isPrivate: drive.drivePrivacy === 'private'
+    }));
   }
 
   async createDrive(name: string, privacy: 'private' | 'public' = 'public'): Promise<DriveInfo> {
@@ -754,6 +767,16 @@ export class SecureWalletManager {
     return this.arDrive !== null && this.wallet !== null;
   }
 
+  /**
+   * UX-7: the specific reason the most recent password-based profile
+   * switch/login attempt failed (e.g. "Invalid password" vs a corrupted/IO
+   * wallet-file failure). switchProfile() itself still resolves to a plain
+   * boolean for backward compatibility; callers that need the cause (e.g.
+   * the login screen) can check this right after a `false` result.
+   */
+  getLastAuthError(): string | null {
+    return this.lastAuthError;
+  }
 
   async hasStoredWallet(): Promise<boolean> {
     try {
@@ -884,8 +907,11 @@ export class SecureWalletManager {
 
   // Internal method that performs the actual profile switch
   private async _performProfileSwitch(profileId: string, password?: string): Promise<boolean> {
+    // UX-7: reset before each attempt so a stale reason from a previous
+    // failed attempt never leaks into this one.
+    this.lastAuthError = null;
     try {
-      
+
       // Quick check: if already on this profile and wallet is loaded, return success
       if (this.currentProfileId === profileId && this.isWalletLoaded()) {
         return true;
@@ -911,10 +937,11 @@ export class SecureWalletManager {
         
         try {
           const loaded = await this.loadWallet(password);
-          
+
           if (!loaded) {
             // Restore previous profile ID on failure
             this.currentProfileId = previousProfileId;
+            this.lastAuthError = 'No wallet found for this profile';
             return false;
           }
           
@@ -928,7 +955,7 @@ export class SecureWalletManager {
           return true;
         } catch (error: any) {
           console.error('Failed to load wallet with provided password:', error);
-          
+
           // Restore previous state on failure
           this.currentProfileId = previousProfileId;
           this.arDrive = previousArDrive;
@@ -938,7 +965,14 @@ export class SecureWalletManager {
             await this.storeSessionPassword(previousSessionPassword);
             this.clearPassword(previousSessionPassword);
           }
-          
+
+          // UX-7: switchProfile() keeps its existing boolean contract (every
+          // failure still resolves `false`, restoring prior tests' behavior),
+          // but the real cause — e.g. "Invalid password" vs a corrupted/IO
+          // wallet-file failure from loadWallet() — is preserved here so the
+          // login UI can tell them apart via getLastAuthError().
+          this.lastAuthError = error instanceof Error ? error.message : 'Failed to authenticate';
+
           return false;
         }
       } else {
@@ -965,6 +999,9 @@ export class SecureWalletManager {
         throw innerError;
       }
     } catch (error) {
+      // UX-7: a structural failure outside the password path (e.g. manager
+      // update failure) — still resolve `false`, but record the cause too.
+      this.lastAuthError = error instanceof Error ? error.message : 'Profile switch failed';
       return false;
     }
   }
