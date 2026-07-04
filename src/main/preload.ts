@@ -195,6 +195,14 @@ const api = {
     removePaymentCompletedListener: () => {
       ipcRenderer.removeAllListeners('payment-completed');
     },
+    // MONEY-7: fired when the user closes the payment window without
+    // completing checkout (exactly one of completed/cancelled ever fires).
+    onPaymentCancelled: (callback: () => void) => {
+      ipcRenderer.on('payment-cancelled', callback);
+    },
+    removePaymentCancelledListener: () => {
+      ipcRenderer.removeAllListeners('payment-cancelled');
+    },
   },
 
   // Security operations

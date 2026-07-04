@@ -115,11 +115,21 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
         loadTurboBalance();
       }, 2000);
     });
-    
+
+    // MONEY-7: listen for the user closing the payment window without
+    // completing checkout — exactly one of completed/cancelled ever fires.
+    window.electronAPI.payment.onPaymentCancelled(() => {
+      console.log('Payment window closed without completing.');
+      setError(null);
+      setSuccessMessage('Payment window closed. No charge was made.');
+      setTimeout(() => setSuccessMessage(null), 5000);
+    });
+
     // Cleanup listeners on unmount
     return () => {
       window.electronAPI.removeWalletInfoUpdatedListener();
       window.electronAPI.payment.removePaymentCompletedListener();
+      window.electronAPI.payment.removePaymentCancelledListener();
     };
   }, []);
 
@@ -162,8 +172,11 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
       const session = await window.electronAPI.turbo.createCheckoutSession(finalAmount, topUpCurrency);
       
       if (session.url) {
-        // Open payment in modal window
-        await window.electronAPI.payment.openWindow(session.url);
+        // Open payment in modal window (MONEY-7: returns an envelope)
+        const openResult = await window.electronAPI.payment.openWindow(session.url);
+        if (openResult && openResult.success === false) {
+          throw new Error(openResult.error || 'Failed to open payment window');
+        }
         setSuccessMessage('Payment window opened. Complete your payment and the window will close automatically.');
         setError(null);
       } else {

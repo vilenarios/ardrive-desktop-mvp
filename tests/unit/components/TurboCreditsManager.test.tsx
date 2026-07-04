@@ -26,6 +26,8 @@ const mockElectronAPI = {
     openWindow: vi.fn(),
     onPaymentCompleted: vi.fn(),
     removePaymentCompletedListener: vi.fn(),
+    onPaymentCancelled: vi.fn(),
+    removePaymentCancelledListener: vi.fn(),
   },
   onWalletInfoUpdated: vi.fn(),
   removeWalletInfoUpdatedListener: vi.fn(),
