@@ -138,6 +138,10 @@ Acceptance: a file grown after approval is not uploaded at the larger size witho
 ### MONEY-12 · P1 · Track B · `todo`
 **Upstream: AbortSignal support in ardrive-core-js upload/create APIs.** Filed per D-016 as MONEY-2's merge condition: `uploadAllEntities`, `createPublicFolder`, `createPrivateFolder` accept no AbortSignal (ardrive-core-js lib/ardrive.d.ts), so a single already-launched paid call cannot be halted mid-flight — MONEY-2's checkpoints stop everything not yet launched. True cancel-in-flight needs core to thread a signal into its gateway/turbo requests.
 
+### MONEY-13 · P1 · Phase 3 · `todo`
+**AR balance renders as NaN during a gateway 429.** Found via on-chain UAT 2026-07-04. `arweave.js` `wallets.getBalance` swallows an HTTP 429 rate-limit — it resolves with the raw 429 HTML body as the "winston" string, so `winstonToAr` yields `NaN` and error-keyed retries never fire. The app's AR-balance path (`wallet-manager-secure.getWalletInfo`) then displays **NaN AR** during rate-limiting.
+Acceptance: a 429 / non-numeric response from the balance endpoint never renders as NaN; the UI shows a transient "unavailable"/retry state instead; validate numeric + retry on error bodies; behavioral test with a mocked non-numeric response.
+
 ### MONEY-11 · P2 · Track D · `todo`
 **Usage Statistics shows fabricated zeros.** Implementer finding 2026-07-03 (during MONEY-4): the Turbo Settings tab's surviving "Usage Statistics" section renders hardcoded 0 files / 0 AR / 0 GB — same fabricated-data class as the removed Auto Top-Up. Wire to real per-profile stats (uploads table aggregates) or remove the panel.
 Acceptance: every figure in Usage Statistics derives from real data, or the panel is gone.
@@ -420,6 +424,7 @@ Done 2026-07-03 (45b1b2e + adopted QA probe, qa-gate PASS — real-engine advers
 Fix: dedicated funded test wallet (small Turbo balance) checked into secrets (never the repo); free-tier (<100KB) fixtures for upload UAT; ArLocal or mocked gateway for integration tests; document in CLAUDE.md what may/may not spend.
 Acceptance: an agent can run an end-to-end upload UAT spending only free-tier or explicitly-budgeted test credits.
 Note 2026-07-03 (Phil, direct): tester wallet designated — `/mnt/c/source/arweave-keyfile-iKryOeZQMONi2965nKz528htMMN_sBcjlhc-VncoRjA.json` (the 'ikry' wallet: many drives, AR, Turbo Credits). Rules of engagement: reference by path only (contents never read into logs/transcripts/repo); free-tier (<100KB) files only unless Phil budgets spend per item; UAT runs against a disposable user-data dir, never real profile data. Local machine only — the path must never appear in CI config.
+Progress 2026-07-04: on-chain UAT harness BUILT at `scripts/onchain-uat/` (gateway-configurable via ARDRIVE_GATEWAY_HOST/GQL_GATEWAY, reads .env, no secrets). Batch 1 PARTIAL — owner-scoped GQL enumeration works (17 ikry drives: 13 public + 4 private), drive-key derivation works (app module), spend ZERO (ikry balance unchanged). BLOCKED (infra, not code): R2–R5 private decrypt + all Batch 2 free-tier writes — arweave.net hard-429'd the IP all session (transient burst throttle); no fallback gateway had both a full GQL index and reliable data/anchor. RE-RUN needed after cooldown to complete the paramount private-decrypt round-trip + real sync-write UAT. Money-rule corrected: `getUploadCosts` returns BASE price (not free-tier) — gate on size(<100 KiB) + zero-balance wallet + balance-delta, not on cost estimate.
 
 ### INFRA-10 · P1 · Phase 4 · `todo`
 **IPC dead-surface reconciliation.** Evidence: §6.1-6.2. Remove or implement: `drive:get-metadata`/`refresh-metadata`, `multi-sync:*` (per UX-15), unexposed `sync:set-folder`/`sync:get-uploads`, ethereum stub, `wallet.completeSetup` fake, dead event channels (`sync:status-update`, `upload:complete`, `activity:update`, `sync:pending-uploads-updated`, `sync:upload-completed`), driveId/mappingId confusion (main.ts:1901).
@@ -470,10 +475,11 @@ Acceptance (each): surface matches DESIGN-SYSTEM.md in light+dark; token-driven;
 
 Work items in the ardrive-core-js repo that desktop depends on. Same loop applies (implement → QA → merge there); desktop consumes via version bump with an interop check.
 
-### CORE-1 · P1 · Track C · `deferred`
+### CORE-1 · P1 · Track C (elevated 2026-07-04 — near-term robustness for private-drive verification) · `in-progress`
 **Owner-scoped GQL queries (turbo-gateway compatibility).** Per D-018: most ArFS queries fail on turbo-gateway.com GQL unless an `owner` is supplied. Audit every GQL query core-js emits (drive/folder/file listings, drive discovery, manifest lookups) and thread `owner` through; desktop always knows the owner for its own drives (profile wallet address). BLOCKS SYNC-15's metadata migration.
 **Reference implementation (D-019, Phil): ardrive-web's GraphQL queries** — the web app already runs owner-scoped; diff core-js's queries against web's and converge, including web's pattern for owner-unknown discovery flows (add-existing-drive by ID).
 Acceptance: full drive listing + sync round-trip succeeds against turbo-gateway.com GQL; interop test vectors pass on both turbo-gateway and arweave.net; query shapes match ardrive-web's where semantics agree.
+Harness finding 2026-07-04 (on-chain UAT): owner-scoped enumeration actually WORKS (17 ikry drives returned WITH owner on a full-index gateway; empty results were rate-limit / index-gaps, NOT missing-owner). The concrete near-term bug: core-js `getPrivateDrive` reads `edges[0].node` with NO empty-edges guard → opaque `TypeError: Cannot read properties of undefined (reading 'node')` when GQL returns zero edges (wrong owner OR index gap) instead of a clear "drive not found". **IMMEDIATE fix (authorized core-js lane): guard empty edges + surface a clear error**; keep the broader owner-threading audit (D-018) for turbo-gateway compat as the larger CORE-1 scope.
 
 ### CORE-2 · P1 · Track C · `deferred`
 **Incremental sync support.** Per D-018: listing APIs that accept a since/cursor (block height or timestamp) so clients fetch only changes instead of full drive history. Desktop consumers: SYNC-8 remote polling, drive_metadata_cache refresh (`lastMetadataSyncAt` already exists in the schema, waiting for this).
