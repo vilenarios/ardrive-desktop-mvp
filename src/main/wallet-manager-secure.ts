@@ -1,8 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as os from 'os';
 import { app } from 'electron';
-import { arDriveFactory, ArDrive, readJWKFile, ArweaveAddress, EID } from 'ardrive-core-js';
+import { arDriveFactory, ArDrive, JWKWallet, ArweaveAddress, EID } from 'ardrive-core-js';
 import Arweave from 'arweave';
 import { DriveInfo, DriveInfoWithStatus, WalletInfo, WalletStorageFormat } from '../types';
 import { turboManager } from './turbo-manager';
@@ -121,92 +120,78 @@ export class SecureWalletManager {
       // Extract the JWK JSON
       const walletJson = jwkWallet.getPrivateKey();
       
-      // Convert to string for storage
-      const walletData = JSON.stringify(walletJson);
-      
-      // Create a temporary file for ardrive-core-js
-      const tempDir = os.tmpdir();
-      const tempWalletPath = path.join(tempDir, `temp-wallet-${Date.now()}.json`);
-      
-      try {
-        // Write wallet to temp file
-        await fs.writeFile(tempWalletPath, walletData);
-        
-        // Load wallet using ArDrive Core function
-        const wallet = readJWKFile(tempWalletPath);
-        
-        // Get wallet address for profile creation
-        const address = await arweave.wallets.ownerToAddress(walletJson.n);
-        
-        // Check if profile exists for this address
-        let profile = await profileManager.getProfileByAddress(address);
-        if (!profile) {
-          // Create new profile
-          const profileName = `Wallet ${address.slice(0, 6)}...${address.slice(-4)}`;
-          profile = await profileManager.createProfile(profileName, address);
-        }
-        
-        // Set as active profile
-        await profileManager.setActiveProfile(profile.id);
-        this.currentProfileId = profile.id;
-        
-        // Set config manager active profile
-        await configManager.setActiveProfile(profile.id);
-        
-        // Set database manager active profile for data isolation
-        await databaseManager.setActiveProfile(profile.id);
-        
-        // Create wallet storage format with metadata
-        const walletStorage: WalletStorageFormat = {
-          type: 'arweave',
-          jwk: walletJson,
-          metadata: {
-            createdFrom,
-            seedPhrase: seedPhrase.trim(), // Store the seed phrase
-            createdAt: new Date().toISOString()
-          }
-        };
-        
-        // Store encrypted wallet to profile-specific file using secure encryption
-        await writeEncryptedFile(this.getWalletStoragePath(), JSON.stringify(walletStorage), password);
-        console.log('Wallet stored securely in profile:', profile.id);
-        
-        // Store both wallet formats
-        this.wallet = wallet;
-        this.walletJson = walletJson;
-        
-        // Store password securely in encrypted memory for session only
-        await this.storeSessionPassword(password);
-        
-        // Initialize ArDrive
-        this.arDrive = arDriveFactory({ 
-          wallet,
-          arweave: arweave,
-          turboSettings: {
-            turboUrl: new URL('https://upload.ardrive.io')
-          }
-        });
-        
-        console.log('ArDrive initialized successfully');
-        
-        // Initialize Drive Key Manager for private drive support
-        driveKeyManager.setWallet(walletJson);
-        console.log('Drive key manager initialized');
-        
-        // Initialize Turbo
-        try {
-          await turboManager.initialize(walletJson);
-          console.log('Turbo manager initialized successfully');
-        } catch (turboError) {
-          console.error('Failed to initialize Turbo manager:', turboError);
-        }
-        
-        
-        return true;
-      } finally {
-        // Securely delete temp file
-        await secureDeleteFile(tempWalletPath);
+      // Construct the wallet object in memory from the decrypted JWK.
+      // SEC-5: the private key must never be written to disk (no temp file).
+      const wallet = new JWKWallet(walletJson);
+
+      // Get wallet address for profile creation
+      const address = await arweave.wallets.ownerToAddress(walletJson.n);
+
+      // Check if profile exists for this address
+      let profile = await profileManager.getProfileByAddress(address);
+      if (!profile) {
+        // Create new profile
+        const profileName = `Wallet ${address.slice(0, 6)}...${address.slice(-4)}`;
+        profile = await profileManager.createProfile(profileName, address);
       }
+
+      // Set as active profile
+      await profileManager.setActiveProfile(profile.id);
+      this.currentProfileId = profile.id;
+
+      // Set config manager active profile
+      await configManager.setActiveProfile(profile.id);
+
+      // Set database manager active profile for data isolation
+      await databaseManager.setActiveProfile(profile.id);
+
+      // Create wallet storage format with metadata
+      const walletStorage: WalletStorageFormat = {
+        type: 'arweave',
+        jwk: walletJson,
+        metadata: {
+          createdFrom,
+          seedPhrase: seedPhrase.trim(), // Store the seed phrase
+          createdAt: new Date().toISOString()
+        }
+      };
+
+      // Store encrypted wallet to profile-specific file using secure encryption
+      await writeEncryptedFile(this.getWalletStoragePath(), JSON.stringify(walletStorage), password);
+      console.log('Wallet stored securely in profile:', profile.id);
+
+      // Store both wallet formats
+      this.wallet = wallet;
+      this.walletJson = walletJson;
+
+      // Store password securely in encrypted memory for session only
+      await this.storeSessionPassword(password);
+
+      // Initialize ArDrive
+      this.arDrive = arDriveFactory({ 
+        wallet,
+        arweave: arweave,
+        turboSettings: {
+          turboUrl: new URL('https://upload.ardrive.io')
+        }
+      });
+
+      console.log('ArDrive initialized successfully');
+
+      // Initialize Drive Key Manager for private drive support
+      driveKeyManager.setWallet(walletJson);
+      console.log('Drive key manager initialized');
+
+      // Initialize Turbo
+      try {
+        await turboManager.initialize(walletJson);
+        console.log('Turbo manager initialized successfully');
+      } catch (turboError) {
+        console.error('Failed to initialize Turbo manager:', turboError);
+      }
+
+
+      return true;
     } catch (error) {
       console.error('Failed to import from seed phrase:', error);
       throw error;
@@ -235,101 +220,88 @@ export class SecureWalletManager {
         throw new Error('Invalid wallet format - missing required fields');
       }
       
-      // Create a temporary file with normalized path for ardrive-core-js
-      const tempDir = os.tmpdir();
-      const tempWalletPath = path.join(tempDir, `temp-wallet-${Date.now()}.json`);
-      
-      try {
-        // Write wallet to temp file
-        await fs.writeFile(tempWalletPath, walletData);
-        console.log('Temp wallet written to:', tempWalletPath);
-        
-        // Try to read wallet using ArDrive Core function with temp path
-        const wallet = readJWKFile(tempWalletPath);
-        console.log('Wallet loaded with readJWKFile');
-        
-        // Get wallet address for profile creation
-        const ArweaveLib = (await import('arweave')).default;
-        const arweave = ArweaveLib.init({});
-        const address = await arweave.wallets.ownerToAddress(walletJson.n);
-        
-        // Check if profile exists for this address
-        let profile = await profileManager.getProfileByAddress(address);
-        if (!profile) {
-          // Create new profile
-          const profileName = `Wallet ${address.slice(0, 6)}...${address.slice(-4)}`;
-          profile = await profileManager.createProfile(profileName, address);
-        }
-        
-        // Set as active profile
-        await profileManager.setActiveProfile(profile.id);
-        this.currentProfileId = profile.id;
-        
-        // Set config manager active profile
-        await configManager.setActiveProfile(profile.id);
-        
-        // Set database manager active profile for data isolation
-        await databaseManager.setActiveProfile(profile.id);
-        
-        // Create wallet storage format with metadata
-        const walletStorage: WalletStorageFormat = {
-          type: 'arweave',
-          jwk: walletJson,
-          metadata: {
-            createdFrom: 'jwk', // Imported from JWK file
-            createdAt: new Date().toISOString()
-            // No seed phrase available for JWK imports
-          }
-        };
-        
-        // Store encrypted wallet to profile-specific file using secure encryption
-        await writeEncryptedFile(this.getWalletStoragePath(), JSON.stringify(walletStorage), password);
-        console.log('Wallet stored securely in profile:', profile.id);
-        
-        // Store both wallet formats
-        this.wallet = wallet;
-        this.walletJson = walletJson;
-        
-        // Store password securely in encrypted memory for session only
-        await this.storeSessionPassword(password);
-        
-        // Initialize ArDrive with custom gateway configuration
-        const Arweave = (await import('arweave')).default;
-        const arweaveInstance = Arweave.init({
-          host: 'arweave.net',
-          port: 443,
-          protocol: 'https',
-          timeout: 120000,
-          logging: true
-        });
-        
-        this.arDrive = arDriveFactory({ 
-          wallet,
-          arweave: arweaveInstance,
-          turboSettings: {
-            turboUrl: new URL('https://upload.ardrive.io')
-          }
-        });
-        
-        console.log('ArDrive initialized successfully');
-        
-        // Initialize Drive Key Manager for private drive support
-        driveKeyManager.setWallet(walletJson);
-        console.log('Drive key manager initialized');
-        
-        // Initialize Turbo
-        try {
-          await turboManager.initialize(walletJson);
-          console.log('Turbo manager initialized successfully');
-        } catch (turboError) {
-          console.error('Failed to initialize Turbo manager:', turboError);
-        }
-        
-        return true;
-      } finally {
-        // Securely delete temp file
-        await secureDeleteFile(tempWalletPath);
+      // Construct the wallet object in memory from the decrypted JWK.
+      // SEC-5: the private key must never be written to disk (no temp file).
+      const wallet = new JWKWallet(walletJson);
+
+      // Get wallet address for profile creation
+      const ArweaveLib = (await import('arweave')).default;
+      const arweave = ArweaveLib.init({});
+      const address = await arweave.wallets.ownerToAddress(walletJson.n);
+
+      // Check if profile exists for this address
+      let profile = await profileManager.getProfileByAddress(address);
+      if (!profile) {
+        // Create new profile
+        const profileName = `Wallet ${address.slice(0, 6)}...${address.slice(-4)}`;
+        profile = await profileManager.createProfile(profileName, address);
       }
+
+      // Set as active profile
+      await profileManager.setActiveProfile(profile.id);
+      this.currentProfileId = profile.id;
+
+      // Set config manager active profile
+      await configManager.setActiveProfile(profile.id);
+
+      // Set database manager active profile for data isolation
+      await databaseManager.setActiveProfile(profile.id);
+
+      // Create wallet storage format with metadata
+      const walletStorage: WalletStorageFormat = {
+        type: 'arweave',
+        jwk: walletJson,
+        metadata: {
+          createdFrom: 'jwk', // Imported from JWK file
+          createdAt: new Date().toISOString()
+          // No seed phrase available for JWK imports
+        }
+      };
+
+      // Store encrypted wallet to profile-specific file using secure encryption
+      await writeEncryptedFile(this.getWalletStoragePath(), JSON.stringify(walletStorage), password);
+      console.log('Wallet stored securely in profile:', profile.id);
+
+      // Store both wallet formats
+      this.wallet = wallet;
+      this.walletJson = walletJson;
+
+      // Store password securely in encrypted memory for session only
+      await this.storeSessionPassword(password);
+
+      // Initialize ArDrive with custom gateway configuration
+      const Arweave = (await import('arweave')).default;
+      const arweaveInstance = Arweave.init({
+        host: 'arweave.net',
+        port: 443,
+        protocol: 'https',
+        timeout: 120000,
+        logging: true
+      });
+
+      this.arDrive = arDriveFactory({ 
+        wallet,
+        arweave: arweaveInstance,
+        turboSettings: {
+          turboUrl: new URL('https://upload.ardrive.io')
+        }
+      });
+
+      console.log('ArDrive initialized successfully');
+
+      // Initialize Drive Key Manager for private drive support
+      driveKeyManager.setWallet(walletJson);
+      console.log('Drive key manager initialized');
+
+      // Initialize Turbo
+      try {
+        await turboManager.initialize(walletJson);
+        console.log('Turbo manager initialized successfully');
+      } catch (turboError) {
+        console.error('Failed to initialize Turbo manager:', turboError);
+      }
+
+      return true;
     } catch (error) {
       console.error('Failed to import wallet:', error);
       throw error;
@@ -387,51 +359,42 @@ export class SecureWalletManager {
         throw new Error('Invalid wallet data format');
       }
       
-      // Create temporary file to use with readJWKFile
-      const tempDir = os.tmpdir();
-      const tempWalletPath = path.join(tempDir, `ardrive-wallet-${Date.now()}.json`);
-      await fs.writeFile(tempWalletPath, JSON.stringify(walletJson));
-      
-      try {
-        // Handle Arweave wallet loading
-        const wallet = readJWKFile(tempWalletPath);
-        
-        this.wallet = wallet;
-        this.walletJson = walletJson;
-        // Store password securely in encrypted memory for session only
-        await this.storeSessionPassword(password);
-        
-        // Initialize ArDrive with custom gateway configuration
-        const Arweave = (await import('arweave')).default;
-        const arweaveInstance = Arweave.init({
-          host: 'arweave.net',
-          port: 443,
-          protocol: 'https',
-          timeout: 120000,
-          logging: true
-        });
-        
-        this.arDrive = arDriveFactory({ 
-          wallet,
-          arweave: arweaveInstance,
-          turboSettings: {
-            turboUrl: new URL('https://upload.ardrive.io')
-          }
-        });
-        
-        // Initialize Turbo with the same wallet
-        try {
-          await turboManager.initialize(walletJson);
-          console.log('Turbo manager initialized successfully');
-        } catch (turboError) {
-          console.error('Failed to initialize Turbo manager:', turboError);
+      // Construct the wallet object in memory from the decrypted JWK.
+      // SEC-5: the private key must never be written to disk (no temp file).
+      const wallet = new JWKWallet(walletJson);
+
+      this.wallet = wallet;
+      this.walletJson = walletJson;
+      // Store password securely in encrypted memory for session only
+      await this.storeSessionPassword(password);
+
+      // Initialize ArDrive with custom gateway configuration
+      const Arweave = (await import('arweave')).default;
+      const arweaveInstance = Arweave.init({
+        host: 'arweave.net',
+        port: 443,
+        protocol: 'https',
+        timeout: 120000,
+        logging: true
+      });
+
+      this.arDrive = arDriveFactory({ 
+        wallet,
+        arweave: arweaveInstance,
+        turboSettings: {
+          turboUrl: new URL('https://upload.ardrive.io')
         }
-        
-        return true;
-      } finally {
-        // Securely delete temp file
-        await secureDeleteFile(tempWalletPath);
+      });
+
+      // Initialize Turbo with the same wallet
+      try {
+        await turboManager.initialize(walletJson);
+        console.log('Turbo manager initialized successfully');
+      } catch (turboError) {
+        console.error('Failed to initialize Turbo manager:', turboError);
       }
+
+      return true;
     } catch (error) {
       console.error('Failed to load wallet:', error);
       throw new Error('Failed to decrypt wallet');

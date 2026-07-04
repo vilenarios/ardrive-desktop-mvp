@@ -37,9 +37,9 @@ Note 2026-07-03: done — merged from `fix/SEC-3-sync-logout` (0ed4d21 + QA-find
 Fix (pair with UX-6): opt-in "Keep me signed in" at login → store; opt-out/logout → delete; delete on profile deletion; remove the deterministic-key fallback file (fail closed to "not remembered"); remove hardcoded-salt in-memory obfuscation.
 Acceptance: password reaches the keychain only after explicit opt-in; deleting a profile removes its keychain entry; no keychain-fallback.enc is ever created.
 
-### SEC-5 · P1 · Phase 3 · `in-progress`
+### SEC-5 · P1 · Phase 3 · `done`
 **Stop writing the decrypted JWK to a temp file.** Evidence: §4.3 (3 sites).
-Claimed 2026-07-04 (overnight loop, branch fix/SEC-5-jwk-tempfile, Opus implementer).
+Done 2026-07-04 (branch fix/SEC-5-jwk-tempfile, Opus security qa-gate PASS): all 3 sites (seed import, JWK-file import, login/loadWallet) now `new JWKWallet(walletJson)` in memory — verified core-js 4.0.0 `readJWKFile(path)` is exactly `new JWKWallet(JSON.parse(readFileSync(path)))`, so this is the same construction minus the disk round-trip. `grep readJWKFile|tmpdir → zero in src`; `secureDeleteFile` remains only for the encrypted `wallet.enc`; `git diff -w` shows no logic change beyond temp-file removal; in-memory key verified carried (private key matches); net removes a `console.log` of the temp path. Full suite 358 green, build ok; behavioral test with negative control.
 Fix: construct the wallet object from the decrypted JSON in memory (bypass `readJWKFile`'s path requirement).
 Acceptance: no wallet material is written under os.tmpdir() during import or login.
 

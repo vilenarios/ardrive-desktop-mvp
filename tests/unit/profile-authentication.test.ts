@@ -11,7 +11,7 @@ import { databaseManager } from '../../src/main/database-manager';
 import { turboManager } from '../../src/main/turbo-manager';
 import * as fs from 'fs/promises';
 import { keychainService } from '../../src/main/keychain-service';
-import { readJWKFile, arDriveFactory } from 'ardrive-core-js';
+import { arDriveFactory } from 'ardrive-core-js';
 import {
   writeEncryptedFile,
   readEncryptedFile,
@@ -81,13 +81,33 @@ vi.mock('../../src/main/crypto-utils', () => ({
   decryptData: vi.fn().mockResolvedValue('decrypted-password'),
 }));
 
-vi.mock('ardrive-core-js', () => ({
-  arDriveFactory: vi.fn(() => ({ mocked: 'arDrive' })),
-  readJWKFile: vi.fn(() => ({ kty: 'RSA', n: 'test' })),
-  ArweaveAddress: vi.fn((addr: string) => ({ address: addr })),
-  deriveDriveKey: vi.fn(),
-  EID: vi.fn((id: string) => ({ entityId: id })),
-}));
+vi.mock('ardrive-core-js', () => {
+  // SEC-5: wallets are now built in memory via `new JWKWallet(jwk)` instead of
+  // readJWKFile(path). The fake stores the jwk and returns it from
+  // getPrivateKey(), matching core-js's JWKWallet contract.
+  class FakeJWKWallet {
+    constructor(public jwk: any) {}
+    getPrivateKey() {
+      return this.jwk;
+    }
+    getPublicKey() {
+      return Promise.resolve(this.jwk?.n);
+    }
+    async getAddress() {
+      return 'FAKEADDRESS';
+    }
+    async sign() {
+      return new Uint8Array();
+    }
+  }
+  return {
+    arDriveFactory: vi.fn(() => ({ mocked: 'arDrive' })),
+    JWKWallet: FakeJWKWallet,
+    ArweaveAddress: vi.fn((addr: string) => ({ address: addr })),
+    deriveDriveKey: vi.fn(),
+    EID: vi.fn((id: string) => ({ entityId: id })),
+  };
+});
 
 vi.mock('fs/promises', () => ({
   access: vi.fn().mockRejectedValue(new Error('ENOENT')),
@@ -129,7 +149,6 @@ describe('Profile Authentication Flow', () => {
     vi.mocked(keychainService.setPassword).mockResolvedValue(undefined);
     vi.mocked(keychainService.deletePassword).mockResolvedValue(undefined as any);
 
-    vi.mocked(readJWKFile).mockReturnValue({ kty: 'RSA', n: 'test' } as any);
     vi.mocked(arDriveFactory).mockReturnValue({ mocked: 'arDrive' } as any);
 
     vi.mocked(fs.access).mockRejectedValue(new Error('ENOENT'));
