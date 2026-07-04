@@ -29,7 +29,8 @@ import {
   Wifi,
   WifiOff,
   Cloud,
-  Copy
+  Copy,
+  EyeOff
 } from 'lucide-react';
 
 interface StorageTabProps {
@@ -60,6 +61,9 @@ interface FileItem {
   dataTxId?: string;
   metadataTxId?: string;
   fileKey?: string;
+  // SYNC-5: hidden on Arweave (via local delete → ArFS hide). Not erased —
+  // permanent storage cannot delete; unhide restores it to view.
+  isHidden?: boolean;
 }
 
 interface SyncState {
@@ -142,7 +146,8 @@ export const StorageTab: React.FC<StorageTabProps> = ({
           ardriveUrl: item.ardriveUrl,
           dataTxId: item.dataTxId,
           metadataTxId: item.metadataTxId,
-          fileKey: item.fileKey
+          fileKey: item.fileKey,
+          isHidden: item.isHidden === true
         };
         itemMap.set(item.id, fileItem);
       });
@@ -660,6 +665,28 @@ export const StorageTab: React.FC<StorageTabProps> = ({
     // Implementation would handle actual downloads
   };
 
+  // SYNC-5: queue an ArFS unhide for a hidden (locally-deleted) entity. The item
+  // was HIDDEN on Arweave, not erased — this restores it to view. Routed through
+  // the approval queue (it writes a paid metadata revision) like hide.
+  const handleUnhide = async (item: FileItem) => {
+    if (!selectedDrive) return;
+    try {
+      const result = await window.electronAPI.sync.unhideEntity({
+        driveId: selectedDrive.id,
+        entityId: item.id,
+        entityType: item.type,
+        name: item.name
+      });
+      if (result?.success) {
+        console.log(`Unhide queued for ${item.name} — approve it in the upload queue to restore it on Arweave.`);
+      } else {
+        console.warn(`Could not queue unhide for ${item.name}:`, result?.error);
+      }
+    } catch (error) {
+      console.error(`Failed to queue unhide for ${item.name}:`, error);
+    }
+  };
+
   if (!selectedDrive) {
     return (
       <div className="storage-tab">
@@ -790,16 +817,37 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                     {item.type === 'file' && getStatusIcon(item)}
                   </div>
                   <div className="item-info">
-                    <div 
+                    <div
                       className="item-name file-name"
                       onClick={(e) => handleFileNameClick(item, e)}
-                      style={{ 
+                      style={{
                         cursor: 'pointer',
                         display: 'inline-block'
                       }}
                     >
                       {item.name}
                     </div>
+                    {item.isHidden && (
+                      <span
+                        title="Hidden on Arweave — removed locally. Permanent storage can't be deleted; the data still exists. Unhide to restore it to view."
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          marginLeft: '8px',
+                          padding: '1px 8px',
+                          borderRadius: '10px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: 'var(--text-secondary, #888)',
+                          background: 'var(--surface-hover, rgba(128,128,128,0.15))',
+                          verticalAlign: 'middle'
+                        }}
+                      >
+                        <EyeOff size={11} />
+                        Hidden
+                      </span>
+                    )}
                     {viewMode === 'grid' && (
                       <div className="item-details">
                         {item.size && <span>{formatFileSize(item.size)}</span>}
@@ -862,6 +910,20 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                         </button>
                         
                         <div className="action-menu" style={{ display: openMenuId === item.id ? 'block' : 'none' }}>
+                          {item.isHidden && (
+                            <button
+                              className="action-menu-item"
+                              title="Restore this item to view on Arweave (it was hidden, not erased)"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUnhide(item);
+                                setOpenMenuId(null);
+                              }}
+                            >
+                              <Eye size={14} />
+                              Unhide on Arweave
+                            </button>
+                          )}
                           {item.type === 'file' && item.dataTxId && (
                             <button 
                               className="action-menu-item"

@@ -11,6 +11,15 @@ export class MockArDrive {
   public createPublicFolder = vi.fn();
   public getPublicFolder = vi.fn();
   public getPublicFile = vi.fn();
+  // SYNC-5 hide/unhide (metadata revision) — mocked so tests NEVER spend.
+  public hidePublicFile = vi.fn();
+  public hidePrivateFile = vi.fn();
+  public hidePublicFolder = vi.fn();
+  public hidePrivateFolder = vi.fn();
+  public unhidePublicFile = vi.fn();
+  public unhidePrivateFile = vi.fn();
+  public unhidePublicFolder = vi.fn();
+  public unhidePrivateFolder = vi.fn();
 
   constructor() {
     // Set up default mock implementations
@@ -25,6 +34,15 @@ export class MockArDrive {
     this.createPublicFolder.mockResolvedValue({
       created: [{ entityId: 'test-folder-id' }]
     });
+    const hideResult = { created: [{ type: 'file', metadataTxId: { toString: () => 'hide-meta-tx' } }], fees: {} };
+    this.hidePublicFile.mockResolvedValue(hideResult);
+    this.hidePrivateFile.mockResolvedValue(hideResult);
+    this.hidePublicFolder.mockResolvedValue(hideResult);
+    this.hidePrivateFolder.mockResolvedValue(hideResult);
+    this.unhidePublicFile.mockResolvedValue(hideResult);
+    this.unhidePrivateFile.mockResolvedValue(hideResult);
+    this.unhidePublicFolder.mockResolvedValue(hideResult);
+    this.unhidePrivateFolder.mockResolvedValue(hideResult);
   }
 
   reset() {

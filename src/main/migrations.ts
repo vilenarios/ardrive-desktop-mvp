@@ -20,6 +20,10 @@
 //   3  — baseline: the full schema as shipped before this framework existed.
 //   4  — composite index for drive_metadata_cache status lookups
 //        (getFilesByStatus: WHERE mappingId = ? AND syncStatus = ?).
+//   5  — isHidden column on drive_metadata_cache (SYNC-5): reflects ArFS
+//        hidden state (local delete → hide) in the Permaweb view. Preserved
+//        across metadata re-syncs (the upsert's DO UPDATE SET omits it), and
+//        reconciled against core truth on a forced refresh.
 //
 // Rules for adding a migration:
 //   - NEVER edit an existing migration (databases in the wild have already
@@ -283,6 +287,14 @@ export const MIGRATIONS: readonly Migration[] = [
       'composite index for drive_metadata_cache status lookups (getFilesByStatus)',
     sql: `
           CREATE INDEX IF NOT EXISTS idx_metadata_mapping_sync_status ON drive_metadata_cache(mappingId, syncStatus);
+`,
+  },
+  {
+    version: 5,
+    description:
+      'isHidden column on drive_metadata_cache (SYNC-5 delete->ArFS hide)',
+    sql: `
+          ALTER TABLE drive_metadata_cache ADD COLUMN isHidden BOOLEAN DEFAULT 0;
 `,
   },
 ];
