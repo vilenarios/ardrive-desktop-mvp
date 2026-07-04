@@ -22,7 +22,7 @@ Beta scope = Phases 1–4 + the design foundation. Tracks A–E are explicitly *
 - **Milestone 4 — "Sustainable to iterate":** 🟡 INFRA-2/7 done; CI-gating (INFRA-3) and test-money (INFRA-9) in progress.
 - **Design foundation:** ✅ DESIGN-1/2/3 done (token/theme layer + onboarding restyle + polish); per-surface DESIGN-4..7 continue to GA.
 
-**Rough completion:** ~30 of ~61 beta-scoped items verified-done. The critical path is now **4 open P0s + the Milestone-2/3 P1 correctness & finish work**, and — the single biggest risk — **all real-money on-chain verification is blocked on the test wallet (INFRA-9).**
+**Rough completion:** ~31 of ~61 beta-scoped items verified-done. The critical path is now **4 open P0s + the Milestone-2/3 P1 correctness & finish work**, and — the single biggest risk — **all real-money on-chain verification is blocked on the test wallet (INFRA-9).**
 
 ---
 
@@ -50,7 +50,7 @@ Each milestone's ROADMAP exit criteria must be exercised, not just coded:
 
 Must be `done`-or-explicit-known-issue before shipping (a deferred one moves to KNOWN-ISSUES with a documented workaround):
 
-- [ ] **SYNC-13** — download-eviction feedback loop (in QA gate now).
+- [x] **SYNC-13** — download-eviction feedback loop — **done** (Opus gate PASS, 2026-07-03).
 - [ ] **SYNC-6** — 2 GiB upload cap surfaced (D-014) · **SYNC-10** — streaming hashing (prereq for 2 GiB) · **SYNC-9** — offline visibility · **SYNC-11** — watcher hygiene · **SYNC-16** — (see BACKLOG).
 - [ ] **PRIV-6** — private move/rename/hide paths · **PRIV-7** — unlock password validation · **PRIV-8** — fail-closed privacy.
 - [ ] **MONEY-9** — upload-queue serialization (in progress) · **MONEY-10** — upload-time cost revalidation · **MONEY-7** — payment-window hardening.
