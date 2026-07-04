@@ -649,6 +649,24 @@ class ArDriveApp {
       }
     });
 
+    // UX-20: Finalize a newly-created account only after the user confirms
+    // they've saved the recovery phrase. This is where the profile + encrypted
+    // wallet are actually persisted (deferred from wallet:create-new, which now
+    // only prepares the account in memory).
+    ipcMain.handle('wallet:complete-setup', async () => {
+      try {
+        console.log('Main process - wallet:complete-setup called');
+        const result = await this.walletManager.completeGeneratedWalletSetup();
+        return { success: true, data: result };
+      } catch (error) {
+        console.error('Main process - wallet:complete-setup error:', error instanceof Error ? error.message : error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to complete account setup'
+        };
+      }
+    });
+
 
     // Ethereum wallet operations (TODO: Implement when ardrive-core-js supports Ethereum)
     ipcMain.handle('wallet:import-ethereum-from-file', async (_, walletPath: string, password: string) => {

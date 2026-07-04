@@ -34,6 +34,12 @@ export class SecureWalletManager {
   private encryptedSessionPassword: Buffer | null = null; // Encrypted password in memory
   private sessionPasswordKey: Buffer | null = null; // Key for session password encryption
   private profileSwitchMutex: Promise<any> | null = null; // Prevents concurrent profile switches
+  // UX-20: A freshly-generated account that has been shown to the user for
+  // recovery-phrase confirmation but NOT yet persisted. Held in memory only
+  // until completeGeneratedWalletSetup() runs on confirmation; overwritten on
+  // retry and cleared on logout/profile-switch so a Back-and-retry can never
+  // leave an orphaned profile/wallet or a divergent persisted seed phrase.
+  private pendingGeneratedWallet: { seedPhrase: string; password: string; address: string } | null = null;
 
   constructor() {
     // Storage paths determined dynamically based on active profile
@@ -104,32 +110,94 @@ export class SecureWalletManager {
     return null;
   }
 
+  /**
+   * UX-20: Prepare a new account WITHOUT persisting anything.
+   *
+   * Generates a fresh 12-word recovery phrase and derives its Arweave
+   * address purely in memory so the phrase can be shown for confirmation.
+   * Nothing is written to disk and no profile is created here — persistence
+   * is deferred to completeGeneratedWalletSetup(), which runs only after the
+   * user confirms they have saved the recovery phrase.
+   *
+   * Calling this again (e.g. the user navigates Back and retries) discards the
+   * previous pending account, so a retry can never leave an orphaned
+   * profile/wallet or a divergent persisted seed phrase on disk.
+   */
   async generateNewWallet(password: string): Promise<{ seedPhrase: string; address: string }> {
     try {
-      
       // Generate a new 12-word seed phrase
       const seedPhrase = bip39.generateMnemonic(128); // 128 bits = 12 words
-      
-      // Use the import process with 'generated' flag
-      const success = await this.importFromSeedPhraseInternal(seedPhrase, password, 'generated');
-      if (!success) {
-        throw new Error('Failed to create wallet from generated seed phrase');
-      }
-      
-      // Get the wallet address
-      const walletInfo = await this.getWalletInfo();
-      if (!walletInfo) {
-        throw new Error('Failed to get wallet info after creation');
-      }
-      
-      return {
-        seedPhrase,
-        address: walletInfo.address
-      };
+
+      // Derive the address in memory only — no profile, no wallet file yet.
+      const address = await this.deriveAddressFromSeedPhrase(seedPhrase);
+
+      // Hold the pending account in memory; persist on confirmation. This
+      // overwrites any previous pending account (Back-and-retry), which is why
+      // retrying cannot leave an orphan or a divergent seed.
+      this.pendingGeneratedWallet = { seedPhrase, password, address };
+
+      return { seedPhrase, address };
     } catch (error) {
-      console.error('[WALLET-DEBUG] Failed to generate new wallet:', error);
+      console.error('[WalletManager] Failed to prepare new account:', error instanceof Error ? error.message : error);
       throw error;
     }
+  }
+
+  /**
+   * UX-20: Deterministically derive the Arweave address for a seed phrase
+   * without persisting anything. Used to preview the address alongside the
+   * recovery phrase before the account is committed.
+   */
+  private async deriveAddressFromSeedPhrase(seedPhrase: string): Promise<string> {
+    const { WalletDAO, SeedPhrase } = await import('ardrive-core-js');
+    const Arweave = (await import('arweave')).default;
+    const arweave = Arweave.init({
+      host: 'arweave.net',
+      port: 443,
+      protocol: 'https',
+      timeout: 120000
+    });
+
+    const walletDAO = new WalletDAO(arweave);
+    const seedPhraseObj = new SeedPhrase(seedPhrase.trim());
+    const jwkWallet = await walletDAO.generateJWKWallet(seedPhraseObj);
+    const walletJson = jwkWallet.getPrivateKey();
+
+    return arweave.wallets.ownerToAddress(walletJson.n);
+  }
+
+  /**
+   * UX-20: Persist the account prepared by generateNewWallet().
+   *
+   * Runs only after the user confirms they have saved their recovery phrase.
+   * Re-derives the wallet from the SAME pending seed phrase (BIP39 → JWK
+   * derivation is deterministic) and persists it — creating the profile and
+   * writing the encrypted wallet — via the shared seed-phrase persistence
+   * path, so the account that lands on disk always matches the recovery
+   * phrase that was shown. The pending secret is cleared only on success, so
+   * a transient failure can be retried with the same (already-written-down)
+   * phrase rather than forcing a brand-new one.
+   */
+  async completeGeneratedWalletSetup(): Promise<{ address: string }> {
+    const pending = this.pendingGeneratedWallet;
+    if (!pending) {
+      throw new Error('No pending account to finalize. Please start account creation again.');
+    }
+
+    const success = await this.importFromSeedPhraseInternal(pending.seedPhrase, pending.password, 'generated');
+    if (!success) {
+      throw new Error('Failed to finalize account creation');
+    }
+
+    // Persisted successfully — drop the in-memory pending secret.
+    this.pendingGeneratedWallet = null;
+
+    const walletInfo = await this.getWalletInfo();
+    if (!walletInfo) {
+      throw new Error('Failed to get wallet info after creation');
+    }
+
+    return { address: walletInfo.address };
   }
 
 
@@ -769,7 +837,11 @@ export class SecureWalletManager {
     this.arDrive = null;
     this.wallet = null;
     this.walletJson = null;
-    
+
+    // UX-20: discard any un-confirmed generated account (seed + password) so it
+    // can never be committed after a logout/profile switch.
+    this.pendingGeneratedWallet = null;
+
     // Clear drive keys
     driveKeyManager.clearAllKeys();
     

@@ -158,13 +158,17 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
     try {
       setLoading(true);
       setError(null);
-      
-      // Complete wallet creation
-      await window.electronAPI.wallet.completeSetup();
-      
+
+      // UX-20: persistence (profile + encrypted wallet) actually happens here,
+      // now that the user has confirmed they saved their recovery phrase.
+      const result = await window.electronAPI.wallet.completeSetup();
+      if (!result || result.success === false) {
+        throw new Error(result?.error || 'Failed to complete account setup');
+      }
+
       // Navigate immediately - no need for success message
       onWalletImported();
-      
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to complete account setup');
       setLoading(false);
