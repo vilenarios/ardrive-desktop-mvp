@@ -386,64 +386,43 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
     setContextMenuOpen(null);
   };
 
-  const handleShareFile = async (activity: ActivityItem) => {
+  // Raw-gateway links are only resolvable from the Arweave data transaction
+  // ID (dataTxId), never from the ArFS fileId (a UUID, not a gateway path).
+  // UX-10: files without a dataTxId (e.g. not yet confirmed) must offer no
+  // raw-gateway link rather than a dead one.
+  const getRawGatewayUrl = (activity: ActivityItem): string | undefined => {
     const item = activity.originalItem as FileUpload | FileDownload;
-    let shareUrl = '';
-    
-    if (activity.type === 'upload') {
-      const upload = item as FileUpload;
-      if (upload.fileId) {
-        shareUrl = `https://arweave.net/${upload.fileId}`;
-      } else if (upload.dataTxId) {
-        shareUrl = `https://arweave.net/${upload.dataTxId}`;
-      }
-    } else {
-      const download = item as FileDownload;
-      if (download.fileId) {
-        shareUrl = `https://arweave.net/${download.fileId}`;
-      } else if (download.dataTxId) {
-        shareUrl = `https://arweave.net/${download.dataTxId}`;
-      }
+    return item.dataTxId ? `https://arweave.net/${item.dataTxId}` : undefined;
+  };
+
+  const handleShareFile = async (activity: ActivityItem) => {
+    const shareUrl = getRawGatewayUrl(activity);
+    if (!shareUrl) {
+      setContextMenuOpen(null);
+      return;
     }
-    
-    if (shareUrl) {
-      try {
-        await navigator.clipboard.writeText(shareUrl);
-        // TODO: Add toast notification for copied link
-        console.log('Share URL copied to clipboard:', shareUrl);
-      } catch (error) {
-        console.error('Failed to copy share URL:', error);
-      }
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      // TODO: Add toast notification for copied link
+      console.log('Share URL copied to clipboard:', shareUrl);
+    } catch (error) {
+      console.error('Failed to copy share URL:', error);
     }
     setContextMenuOpen(null);
   };
 
   const handleViewOnline = async (activity: ActivityItem) => {
-    const item = activity.originalItem as FileUpload | FileDownload;
-    let viewUrl = '';
-    
-    if (activity.type === 'upload') {
-      const upload = item as FileUpload;
-      if (upload.dataTxId) {
-        viewUrl = `https://arweave.net/${upload.dataTxId}`;
-      } else if (upload.fileId) {
-        viewUrl = `https://arweave.net/${upload.fileId}`;
-      }
-    } else {
-      const download = item as FileDownload;
-      if (download.dataTxId) {
-        viewUrl = `https://arweave.net/${download.dataTxId}`;
-      } else if (download.fileId) {
-        viewUrl = `https://arweave.net/${download.fileId}`;
-      }
+    const viewUrl = getRawGatewayUrl(activity);
+    if (!viewUrl) {
+      setContextMenuOpen(null);
+      return;
     }
-    
-    if (viewUrl) {
-      try {
-        await window.electronAPI.shell.openExternal(viewUrl);
-      } catch (error) {
-        console.error('Failed to open URL:', error);
-      }
+
+    try {
+      await window.electronAPI.shell.openExternal(viewUrl);
+    } catch (error) {
+      console.error('Failed to open URL:', error);
     }
     setContextMenuOpen(null);
   };
@@ -807,14 +786,16 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                             Open
                           </button>
                           
-                          <button
-                            className="context-menu-item"
-                            onClick={() => handleShareFile(activity)}
-                          >
-                            <Copy size={14} />
-                            Copy Link
-                          </button>
-                          
+                          {getRawGatewayUrl(activity) && (
+                            <button
+                              className="context-menu-item"
+                              onClick={() => handleShareFile(activity)}
+                            >
+                              <Copy size={14} />
+                              Copy Link
+                            </button>
+                          )}
+
                           <button
                             className="context-menu-item"
                             onClick={() => {
@@ -825,14 +806,16 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                             <AlertCircle size={14} />
                             View Details
                           </button>
-                          
-                          <button
-                            className="context-menu-item"
-                            onClick={() => handleViewOnline(activity)}
-                          >
-                            <ExternalLink size={14} />
-                            View Online
-                          </button>
+
+                          {getRawGatewayUrl(activity) && (
+                            <button
+                              className="context-menu-item"
+                              onClick={() => handleViewOnline(activity)}
+                            >
+                              <ExternalLink size={14} />
+                              View Online
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
