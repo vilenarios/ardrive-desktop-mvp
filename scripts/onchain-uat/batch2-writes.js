@@ -38,12 +38,25 @@ const {
   PrivateDriveKeyData,
   ArweaveAddress,
   EID,
+  JWKWallet,
 } = core;
 
 const APP_FREE_LIMIT = 100 * 1024; // app's TURBO_FREE_SIZE_LIMIT
 const MAX_UPLOAD_BYTES = 40 * 1024; // our self-imposed hard cap, well under free tier
 
 function toNum(x) { try { return Number(x.toString()); } catch { return NaN; } }
+
+// turbo-gateway.com needs a moment to index/unbundle freshly-uploaded Turbo
+// data before it serves it (else transient 404/504). Settle + retry read-backs.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function retryRead(fn, label, tries = 5, baseMs = 4000) {
+  let e;
+  for (let i = 0; i < tries; i++) {
+    try { return await fn(); }
+    catch (err) { e = err; c.log(`   [retry-read] ${label} #${i + 1}/${tries}: ${String(err.message).slice(0, 70)}`); if (i + 1 < tries) await sleep(baseMs * Math.pow(1.5, i)); }
+  }
+  throw e;
+}
 
 async function readTurboWinc(turboManager) {
   // fresh wallet is likely unknown to Turbo -> treat errors/absence as 0
@@ -77,7 +90,7 @@ async function main() {
     jwk = await arweave.wallets.generate(); // memory only; never written/committed
     address = await arweave.wallets.jwkToAddress(jwk);
     arDrive = arDriveFactory({
-      wallet: jwk,
+      wallet: new JWKWallet(jwk), // core-js needs the Wallet wrapper (getPrivateKey), not a raw JWK
       arweave,
       turboSettings: { turboUrl: new URL('https://upload.ardrive.io') },
     });
@@ -162,9 +175,10 @@ async function main() {
       w3DataTxId = fileEntity.dataTxId && fileEntity.dataTxId.toString();
       c.log(`   uploaded fileId=${w3FileId} dataTxId=${w3DataTxId}`);
 
-      // download + decrypt
+      // download + decrypt (settle for turbo-gateway.com indexing, then retry)
       const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'infra9-w3dl-'));
-      await arDrive.downloadPrivateFile({ fileId: EID(w3FileId), driveKey: privDrive.driveKey, destFolderPath: dest, defaultFileName: localName });
+      await sleep(8000);
+      await retryRead(() => arDrive.downloadPrivateFile({ fileId: EID(w3FileId), driveKey: privDrive.driveKey, destFolderPath: dest, defaultFileName: localName }), 'W3 downloadPrivateFile');
       const dlBuf = fs.readFileSync(path.join(dest, fs.readdirSync(dest)[0]));
       const dlHash = c.sha256(dlBuf);
       fs.rmSync(dest, { recursive: true, force: true });
@@ -192,8 +206,9 @@ async function main() {
       const fileEntity = res.created.find((e) => e.type === 'file');
       const newFileId = fileEntity ? fileEntity.entityId.toString() : null;
       const newDataTxId = fileEntity && fileEntity.dataTxId ? fileEntity.dataTxId.toString() : null;
-      // confirm by re-fetching metadata
-      const meta = await arDrive.getPrivateFile({ fileId: EID(w3FileId), driveKey: privDrive.driveKey, owner });
+      // confirm by re-fetching metadata (settle + retry for indexing lag)
+      await sleep(8000);
+      const meta = await retryRead(() => arDrive.getPrivateFile({ fileId: EID(w3FileId), driveKey: privDrive.driveKey, owner }), 'W4 getPrivateFile');
       const fetchedDataTxId = meta.dataTxId.toString();
       const sameFile = (newFileId === null || newFileId === w3FileId);
       const newRevision = fetchedDataTxId !== w3DataTxId;
@@ -219,7 +234,8 @@ async function main() {
       const hideRes = await arDrive.hidePrivateFile({ fileId: EID(w3FileId), driveKey: privDrive.driveKey });
       const after = await readTurboWinc(turboManager);
       if (before !== after) throw new Error(`NET-SPEND on hide: ${before} -> ${after}`);
-      const meta = await arDrive.getPrivateFile({ fileId: EID(w3FileId), driveKey: privDrive.driveKey, owner });
+      await sleep(8000);
+      const meta = await retryRead(() => arDrive.getPrivateFile({ fileId: EID(w3FileId), driveKey: privDrive.driveKey, owner }), 'W5 getPrivateFile');
       const isHidden = meta.isHidden === true;
       const hideTx = hideRes.created && hideRes.created[0] && hideRes.created[0].metadataTxId ? hideRes.created[0].metadataTxId.toString() : null;
       results.W5 = { pass: isHidden, fileId: w3FileId, hideTxId: hideTx, isHiddenAfterFetch: isHidden, balanceUnchanged: before === after };
@@ -255,7 +271,8 @@ async function main() {
     const pubFileId = pubFileEntity.entityId.toString();
 
     const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'infra9-w6dl-'));
-    await arDrive.downloadPublicFile({ fileId: EID(pubFileId), destFolderPath: dest, defaultFileName: pubName });
+    await sleep(8000);
+    await retryRead(() => arDrive.downloadPublicFile({ fileId: EID(pubFileId), destFolderPath: dest, defaultFileName: pubName }), 'W6 downloadPublicFile');
     const dlBuf = fs.readFileSync(path.join(dest, fs.readdirSync(dest)[0]));
     const dlHash = c.sha256(dlBuf);
     fs.rmSync(dest, { recursive: true, force: true });
