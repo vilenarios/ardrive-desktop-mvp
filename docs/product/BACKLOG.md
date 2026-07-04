@@ -116,8 +116,8 @@ Fix: "Approve & Upload" calls approve-all once (no per-file follow-up loop that 
 Re-homed from MONEY-1 (2026-07-03, need sync-manager.ts access): :3392 synthetic `estimatedTurboCost: 0.000001` for metadata ops — store honest value; :1973 `|| undefined` zero-quote coercion. Plus staleness: top-up affordance doesn't refresh row quotes — blocked rows stay blocked until re-quote despite live main-side check.
 Acceptance: one approval action → one approval per file; skipped-for-balance files stay skipped with a visible reason.
 Done 2026-07-03 (c96d1a8, qa-gate FAIL→fix→PASS on Opus): approve-all runs once (no per-file loop); blocked/skipped rows show reasons; the top-up staleness re-fix routes wallet refresh through wallet.getInfo(true)'s RETURN VALUE (App.refreshWalletInfo, null-guarded) on Turbo-manager close + payment-completed — sidestepping the dead wallet-info-updated event channel (D1 clobber) until UX-4 rebuilds it. Production chain mutation-proven. Remnants → UX-4: the removeAllListeners clobber root fix + the missing-dep warning + double-fetch belt-and-suspenders.
-### MONEY-7 · P1 · Phase 3 · `todo`
-**Harden the payment window.** Evidence: §1.8.
+### MONEY-7 · P1 · Phase 3 · `in-progress`
+**Harden the payment window.** Evidence: §1.8. Claimed 2026-07-04 (overnight loop, branch fix/MONEY-7-payment-window, Opus).
 Fix: pin allowed hosts for `payment:open-window`; success detection via `will-redirect`/`did-navigate` against the exact success URL; `closed` handler emits a cancel event; `sandbox: true` + `setWindowOpenHandler`; remove dead focus-refresh (main.ts:244-266).
 Acceptance: only the checkout host can open; completing or closing the window always yields exactly one accurate event; balance refreshes on completion.
 
