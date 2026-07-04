@@ -935,8 +935,8 @@ label {
 
 /* Messages */
 .error-message {
-  background: #fef2f2;
-  color: #b91c1c;
+  background: var(--danger-surface);
+  color: var(--danger-fg);
   padding: var(--space-4);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-5);
@@ -945,8 +945,8 @@ label {
 }
 
 .success-message {
-  background: #f0fdf4;
-  color: #15803d;
+  background: var(--success-surface);
+  color: var(--success-fg);
   padding: var(--space-4);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-5);
@@ -2469,13 +2469,20 @@ label {
   border-radius: var(--radius);
   color: var(--gray-600);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              border-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
 }
 
 .icon-button:hover {
   background: var(--gray-100);
   border-color: var(--gray-400);
   color: var(--gray-900);
+}
+
+.icon-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .icon-button.danger:hover {
@@ -3160,12 +3167,14 @@ label {
   border: 1px solid var(--ardrive-border);
   border-radius: 12px; /* Style guide aligned radius */
   padding: var(--space-6);
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--elevation-2);
+  transition: box-shadow var(--motion-moderate) var(--ease-standard),
+              border-color var(--motion-moderate) var(--ease-standard),
+              transform var(--motion-moderate) var(--ease-standard);
 }
 
 .summary-card:hover {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--elevation-3);
   border-color: var(--ardrive-border-hover);
   transform: translateY(-2px);
 }
@@ -3285,6 +3294,156 @@ label {
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   color: var(--gray-700);
+}
+
+/* Overview tab — Rename Drive + Rename Cost Confirm modals (DESIGN-6).
+ * Reuse the shared .modal-overlay backdrop; these panel/content classes
+ * are additive modifiers on top of the shared .modal-content shell. */
+.overview-modal-panel {
+  width: 90%;
+  max-width: 400px;
+  padding: var(--space-6);
+}
+
+.overview-modal-panel-wide {
+  max-width: 500px;
+}
+
+.overview-modal-title {
+  margin: 0 0 var(--space-4) 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.overview-modal-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.overview-modal-input {
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 16px;
+  outline: none;
+  transition: border-color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.overview-modal-input:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.overview-modal-input:focus {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--brand-surface);
+}
+
+.overview-modal-input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.overview-modal-input.has-error {
+  border-color: var(--danger);
+}
+
+.overview-modal-input:disabled {
+  background: var(--input-bg-disabled);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.overview-modal-error {
+  color: var(--danger-fg);
+  font-size: 14px;
+  margin: var(--space-1) 0 0 0;
+}
+
+.overview-rename-summary {
+  background: var(--surface-inset);
+  padding: 16px;
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+}
+
+.overview-cost-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.overview-cost-card-title {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0 0 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+}
+
+.overview-cost-free-banner {
+  background: var(--success-surface);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+}
+
+.overview-cost-free-banner-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--success-fg);
+  font-weight: 500;
+}
+
+.overview-cost-free-banner-copy {
+  font-size: 14px;
+  color: var(--success-fg);
+  margin: 4px 0 0 0;
+}
+
+.overview-cost-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.overview-cost-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.overview-cost-row-label {
+  color: var(--text-secondary);
+}
+
+.overview-cost-row-value {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.overview-cost-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  background: var(--danger-surface);
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: var(--danger-fg);
 }
 
 /* File Statistics */
@@ -3838,7 +3997,7 @@ label {
 }
 
 .explorer-controls {
-  background: white;
+  background: var(--surface-raised);
   border: 1px solid var(--gray-200);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
@@ -3870,13 +4029,19 @@ label {
   cursor: pointer;
   font-size: 14px;
   color: var(--gray-600);
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
   white-space: nowrap;
 }
 
 .breadcrumb-item:hover {
   background: var(--gray-100);
   color: var(--gray-800);
+}
+
+.breadcrumb-item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .breadcrumb-separator {
@@ -3922,14 +4087,35 @@ label {
   color: var(--gray-500);
 }
 
+.search-box:focus-within {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--brand-surface);
+}
+
 .filter-select {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--gray-200);
   border-radius: var(--radius);
-  background: white;
-  font-size: 14px;
+  background: var(--input-bg);
   color: var(--gray-700);
   cursor: pointer;
+  transition: border-color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.filter-select:hover {
+  border-color: var(--border-strong);
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--brand-surface);
+}
+
+.filter-select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 
 .view-actions {
@@ -3956,11 +4142,23 @@ label {
   border-radius: var(--radius-sm);
   cursor: pointer;
   color: var(--gray-600);
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.view-button:hover:not(.active) {
+  background: var(--surface-inset);
+  color: var(--gray-800);
+}
+
+.view-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .view-button.active {
-  background: white;
+  background: var(--surface-raised);
   color: var(--ardrive-primary);
   box-shadow: var(--shadow-sm);
 }
@@ -3985,7 +4183,7 @@ label {
 }
 
 .file-explorer {
-  background: white;
+  background: var(--surface-raised);
   border: 1px solid var(--gray-200);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -4016,11 +4214,16 @@ label {
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--gray-100);
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard);
 }
 
 .file-item:hover {
-  background: var(--gray-50);
+  background: var(--surface-inset);
+}
+
+.file-item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .file-item.selected {
@@ -4035,7 +4238,7 @@ label {
 
 /* File name specific styles */
 .file-name {
-  transition: color 0.15s ease;
+  transition: color var(--motion-base) var(--ease-standard);
   cursor: pointer;
 }
 
@@ -4081,23 +4284,71 @@ label {
   color: var(--warning-700);
 }
 
-.file-icon.image {
+/* File Type Icons (canonical, DESIGN-6) — shared by StorageTab's file
+ * browser and ActivityTab's unified activity stream (`getFileIcon`). Both
+ * components render the same `file-icon <family>` className; ActivityTab
+ * used to pair it with an inline `style={{ color: '#hex' }}` per file
+ * extension (60+ distinct raw literals) which both violated the "zero raw
+ * color literal" rule and silently won over these class rules anyway
+ * (inline style beats a CSS class). Consolidated onto the existing status/
+ * neutral token families below — a handful of tokens standing in for what
+ * was previously a bespoke per-extension rainbow. See DESIGN-6 report for
+ * the full mapping (DEVIATION: fewer distinct hues than before, but zero
+ * raw literals and consistent between both tabs). */
+.file-icon.image,
+.file-icon.camera,
+.file-icon.design {
   color: var(--success-600);
 }
 
-.file-icon.video {
+.file-icon.video,
+.file-icon.film {
   color: var(--ardrive-primary);
 }
 
-.file-icon.audio {
+.file-icon.audio,
+.file-icon.headphones {
   color: var(--warning-600);
 }
 
-.file-icon.document {
+.file-icon.document,
+.file-icon.text,
+.file-icon.presentation,
+.file-icon.spreadsheet,
+.file-icon.javascript,
+.file-icon.web,
+.file-icon.css,
+.file-icon.json,
+.file-icon.database,
+.file-icon.env,
+.file-icon.config {
   color: var(--info-600);
 }
 
-.file-icon.archive {
+.file-icon.pdf {
+  color: var(--danger-600);
+}
+
+.file-icon.archive,
+.file-icon.package,
+.file-icon.mobile,
+.file-icon.binary,
+.file-icon.disk,
+.file-icon.font,
+.file-icon.bookmark,
+.file-icon.python,
+.file-icon.java,
+.file-icon.php,
+.file-icon.ruby,
+.file-icon.go,
+.file-icon.rust,
+.file-icon.swift,
+.file-icon.kotlin,
+.file-icon.c,
+.file-icon.cpp,
+.file-icon.csharp,
+.file-icon.shell,
+.file-icon.windows {
   color: var(--gray-700);
 }
 
@@ -4183,6 +4434,38 @@ label {
   gap: var(--space-1);
 }
 
+.grid-overlay-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+}
+
+.grid-preview-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-sm);
+  color: var(--icon-mid);
+  cursor: pointer;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
+}
+
+.grid-preview-button:hover {
+  background: var(--surface-inset);
+  color: var(--icon-high);
+}
+
+.grid-preview-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .status-indicator {
   display: flex;
   align-items: center;
@@ -4263,24 +4546,12 @@ label {
   color: var(--gray-500);
 }
 
-/* File Type Icons */
-.file-icon {
-  color: var(--gray-600);
-}
-
-.type-icon.images { color: #10b981; }
-.type-icon.videos { color: #f59e0b; }
-.type-icon.documents { color: #3b82f6; }
-.type-icon.audio { color: #8b5cf6; }
-.type-icon.archives { color: #6b7280; }
-.type-icon.other { color: var(--gray-500); }
-
-.file-icon.image { color: #10b981; }
-.file-icon.video { color: #f59e0b; }
-.file-icon.document { color: #3b82f6; }
-.file-icon.audio { color: #8b5cf6; }
-.file-icon.archive { color: #6b7280; }
-.file-icon.default { color: var(--gray-500); }
+/* File Type Icons — canonical rules live below at the "File Type Icons
+ * (canonical, DESIGN-6)" block; that block also covers ActivityTab's wider
+ * filetype className set. This duplicate hardcoded-hex block (was
+ * overriding the tokenized rules earlier in the cascade) has been removed
+ * as part of the DESIGN-6 raw-literal cleanup — see the canonical block
+ * for `.type-icon.*` and `.file-icon.*`. */
 
 /* Column Icons */
 .column-icon.upload {
@@ -4409,7 +4680,9 @@ label {
   border-radius: var(--radius);
   cursor: pointer;
   color: var(--gray-400);
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard),
+              opacity var(--motion-base) var(--ease-standard);
   opacity: 0;
 }
 
@@ -4423,6 +4696,12 @@ label {
   color: var(--gray-800);
 }
 
+.quick-action:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .action-menu-trigger {
   display: flex;
   align-items: center;
@@ -4434,7 +4713,9 @@ label {
   border-radius: var(--radius);
   cursor: pointer;
   color: var(--gray-400);
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard),
+              opacity var(--motion-base) var(--ease-standard);
   opacity: 0;
 }
 
@@ -4448,16 +4729,22 @@ label {
   color: var(--gray-800);
 }
 
+.action-menu-trigger:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .action-menu {
   position: absolute;
   right: 0;
   top: 100%;
   z-index: 100;
   min-width: 160px;
-  background: white;
-  border: 1px solid var(--gray-200);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--elevation-3);
   padding: var(--space-1);
   margin-top: 4px;
 }
@@ -4475,12 +4762,18 @@ label {
   font-size: var(--text-sm);
   color: var(--gray-700);
   text-align: left;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
 }
 
 .action-menu-item:hover {
-  background: var(--gray-50);
+  background: var(--surface-inset);
   color: var(--gray-900);
+}
+
+.action-menu-item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .action-menu-item:disabled {
@@ -4500,7 +4793,7 @@ label {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4509,9 +4802,9 @@ label {
 }
 
 .modal-content {
-  background: white;
+  background: var(--surface-overlay);
   border-radius: 12px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--elevation-4);
   max-width: 600px;
   width: 100%;
   max-height: 80vh;
@@ -4525,8 +4818,9 @@ label {
   align-items: center;
   justify-content: space-between;
   padding: var(--space-6);
-  border-bottom: 1px solid var(--gray-200);
-  background: var(--gray-50);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-inset);
+  color: var(--text-primary);
 }
 
 .modal-close {
@@ -4541,7 +4835,8 @@ label {
   cursor: pointer;
   font-size: 20px;
   color: var(--gray-500);
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
 }
 
 .modal-close:hover {
@@ -4549,10 +4844,16 @@ label {
   color: var(--gray-700);
 }
 
+.modal-close:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .modal-body {
   padding: var(--space-6);
   overflow-y: auto;
   flex: 1;
+  color: var(--text-primary);
 }
 
 .details-grid {
@@ -4568,7 +4869,7 @@ label {
   align-items: start;
   padding: var(--space-3);
   border-radius: 8px;
-  background: var(--gray-50);
+  background: var(--surface-inset);
 }
 
 .detail-label {
@@ -4594,18 +4895,76 @@ label {
   border-radius: 4px;
 }
 
+/* Status/type pill inside a detail row — §6.8 Badge/pill/chip */
+.detail-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.detail-badge-success {
+  background: var(--success-100);
+  color: var(--success-700);
+}
+
+.detail-badge-info {
+  background: var(--info-100);
+  color: var(--info-700);
+}
+
+.detail-badge-danger {
+  background: var(--danger-100);
+  color: var(--danger-700);
+}
+
+.detail-badge-neutral {
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.detail-progress-track {
+  width: 100px;
+  height: 6px;
+  background: var(--gray-200);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-left: var(--space-2);
+}
+
+.detail-progress-fill {
+  height: 100%;
+  transition: width var(--motion-slow) var(--ease-standard);
+}
+
+.detail-progress-fill.upload {
+  background: var(--success-500);
+}
+
+.detail-progress-fill.download {
+  background: var(--info-500);
+}
+
 .copy-button {
   background: none;
   border: none;
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 4px;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard);
   font-size: 12px;
 }
 
 .copy-button:hover {
   background: var(--gray-200);
+}
+
+.copy-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 
 .modal-actions {
@@ -4615,6 +4974,25 @@ label {
   margin-top: var(--space-6);
   padding-top: var(--space-4);
   border-top: 1px solid var(--gray-200);
+}
+
+/* "Hidden on Arweave" pill (StorageTab, SYNC-5) — §6.8 Badge/pill/chip,
+ * neutral variant. Previously an inline style that referenced a
+ * `--surface-hover` token which was never defined anywhere in the theme
+ * layer, with a hardcoded literal-color fallback baked in as a result —
+ * replaced with real, always-defined tokens. */
+.hidden-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface-inset);
+  vertical-align: middle;
 }
 
 @media (max-width: 768px) {
