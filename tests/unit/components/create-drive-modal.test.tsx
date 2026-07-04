@@ -42,7 +42,8 @@ describe('CreateDriveModal (PRIV-3 envelope + mapping flow)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockElectronAPI.driveMappings.add.mockResolvedValue(true);
+    // UX-3: drive-mappings:add now returns the IpcResult envelope
+    mockElectronAPI.driveMappings.add.mockResolvedValue({ success: true, data: true });
     // UX-3: drive:setActive returns the IpcResult envelope
     mockElectronAPI.drive.setActive.mockResolvedValue({ success: true });
   });

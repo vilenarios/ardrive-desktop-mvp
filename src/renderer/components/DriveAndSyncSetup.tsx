@@ -176,8 +176,12 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
       
       setSetupProgress('Creating local folder...');
       // The sync.setFolder should handle creating the subfolder
-      await window.electronAPI.sync.setFolder(driveFolderPath);
-      
+      // UX-3: handler resolves { success:false } on error rather than throwing.
+      const setFolderResult = await window.electronAPI.sync.setFolder(driveFolderPath);
+      if (!setFolderResult.success) {
+        throw new Error(setFolderResult.error || 'Failed to set up the sync folder');
+      }
+
       // Save drive metadata and config
       setSetupProgress('Saving configuration...');
       
@@ -196,13 +200,19 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
         }
       };
       
-      // Add the drive mapping via IPC
-      await window.electronAPI.driveMappings.add(driveMapping);
-      
+      // Add the drive mapping via IPC (UX-3: unwrap the envelope)
+      const addMappingResult = await window.electronAPI.driveMappings.add(driveMapping);
+      if (!addMappingResult.success) {
+        throw new Error(addMappingResult.error || 'Failed to save the drive mapping');
+      }
+
       // Initialize sync engine
       if (enableAutoSync) {
         setSetupProgress('Starting sync engine...');
-        await window.electronAPI.sync.start();
+        const startResult = await window.electronAPI.sync.start();
+        if (!startResult.success) {
+          throw new Error(startResult.error || 'Failed to start the sync engine');
+        }
       } else {
         setSetupProgress('Sync engine ready (manual start required)...');
       }

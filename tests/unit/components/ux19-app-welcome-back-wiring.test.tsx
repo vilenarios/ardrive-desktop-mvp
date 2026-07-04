@@ -76,13 +76,14 @@ describe('App -> WelcomeBackScreen drive-list wiring (UX-19)', () => {
       },
     });
     mockElectronAPI.arns.getProfile.mockResolvedValue(null);
-    mockElectronAPI.driveMappings.list.mockResolvedValue([]);
+    // UX-3: drive-mappings:list returns the IpcResult envelope
+    mockElectronAPI.driveMappings.list.mockResolvedValue({ success: true, data: [] });
   });
 
   it('a returning user with a locked private primary drive sees that drive, not a false empty-state', async () => {
     mockElectronAPI.drive.listWithStatus.mockResolvedValue([lockedPrivateDrive]);
-    mockElectronAPI.driveMappings.getPrimary.mockResolvedValue({ driveId: lockedPrivateDrive.id });
-    mockElectronAPI.drive.isUnlocked.mockResolvedValue(false); // locked
+    mockElectronAPI.driveMappings.getPrimary.mockResolvedValue({ success: true, data: { driveId: lockedPrivateDrive.id } });
+    mockElectronAPI.drive.isUnlocked.mockResolvedValue({ success: true, data: false }); // locked
 
     render(<App />);
 
@@ -96,8 +97,8 @@ describe('App -> WelcomeBackScreen drive-list wiring (UX-19)', () => {
     const secondPrivateDrive = { ...lockedPrivateDrive, id: 'drive-private-2', name: 'Second Private Drive' };
     mockElectronAPI.drive.listWithStatus.mockResolvedValue([lockedPrivateDrive, secondPrivateDrive]);
     // No primary mapping -> falls into the "only private drives available" branch
-    mockElectronAPI.driveMappings.getPrimary.mockResolvedValue(null);
-    mockElectronAPI.drive.isUnlocked.mockResolvedValue(false);
+    mockElectronAPI.driveMappings.getPrimary.mockResolvedValue({ success: true, data: null });
+    mockElectronAPI.drive.isUnlocked.mockResolvedValue({ success: true, data: false });
 
     render(<App />);
 

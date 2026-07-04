@@ -88,8 +88,11 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
         }
       };
       
-      // Add the drive mapping via IPC
-      await window.electronAPI.driveMappings.add(driveMapping);
+      // Add the drive mapping via IPC (UX-3: unwrap the envelope)
+      const addMappingResult = await window.electronAPI.driveMappings.add(driveMapping);
+      if (!addMappingResult.success) {
+        throw new Error(addMappingResult.error || 'Failed to add the drive');
+      }
 
       // Notify parent and close
       onDriveAdded(selectedDrive);

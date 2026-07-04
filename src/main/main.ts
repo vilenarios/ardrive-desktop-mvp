@@ -1769,32 +1769,23 @@ class ArDriveApp {
     }));
 
     // Sync operations
-    ipcMain.handle('sync:set-folder', async (_, driveId: string, folderPath: string) => {
-      try {
-        // Validate inputs
-        const validatedFolderPath = InputValidator.validateFilePath(folderPath, 'folderPath');
-        let validatedDriveId: string | undefined;
-        
-        // Handle the case where driveId is provided (from combined setup)
-        if (driveId) {
-          validatedDriveId = InputValidator.validateDriveId(driveId, 'driveId');
-          // Drive selection now handled by drive mappings
-        }
-        
-        // Sync folder now handled by drive mappings
-        this.syncManager.setSyncFolder(validatedFolderPath);
-        return true;
-      } catch (error) {
-        if (error instanceof ValidationError) {
-          console.error('Sync folder validation failed:', error.message);
-          throw error;
-        }
-        throw error;
+    ipcMain.handle('sync:set-folder', envelopeHandler(async (_, driveId: string, folderPath: string) => {
+      // Validate inputs
+      const validatedFolderPath = InputValidator.validateFilePath(folderPath, 'folderPath');
+
+      // Handle the case where driveId is provided (from combined setup)
+      if (driveId) {
+        InputValidator.validateDriveId(driveId, 'driveId');
+        // Drive selection now handled by drive mappings
       }
-    });
+
+      // Sync folder now handled by drive mappings
+      this.syncManager.setSyncFolder(validatedFolderPath);
+      return true;
+    }));
 
     // Get recent uploads for Activity tab
-    ipcMain.handle('sync:get-uploads', safeIpcHandler(async () => {
+    ipcMain.handle('sync:get-uploads', envelopeHandler(async () => {
       console.log('Getting recent uploads from database');
       const uploads = await databaseManager.getUploads();
       
@@ -1811,7 +1802,7 @@ class ArDriveApp {
       return recentUploads;
     }));
 
-    ipcMain.handle('sync:start', safeIpcHandler(async () => {
+    ipcMain.handle('sync:start', envelopeHandler(async () => {
       console.log('IPC: sync:start called');
       const config = await configManager.getConfig();
       console.log('Config for sync:', config);
@@ -1896,31 +1887,31 @@ class ArDriveApp {
       );
     }));
 
-    ipcMain.handle('sync:stop', safeIpcHandler(async () => {
+    ipcMain.handle('sync:stop', envelopeHandler(async () => {
       return await this.syncManager.stopSync();
     }));
 
-    ipcMain.handle('sync:status', safeIpcHandler(async () => {
+    ipcMain.handle('sync:status', envelopeHandler(async () => {
       return await this.syncManager.getStatus();
     }));
 
     // DEBUG: Sync state handlers
-    ipcMain.handle('sync:get-state', safeIpcHandler(async () => {
+    ipcMain.handle('sync:get-state', envelopeHandler(async () => {
       return this.syncManager.getCurrentSyncState();
     }));
 
-    ipcMain.handle('sync:force-monitoring', safeIpcHandler(async () => {
+    ipcMain.handle('sync:force-monitoring', envelopeHandler(async () => {
       console.log('🔧 Force starting file monitoring via IPC');
       await this.syncManager.forceStartFileMonitoring();
       return true;
     }));
 
-    ipcMain.handle('sync:getFolder', safeIpcHandler(async () => {
+    ipcMain.handle('sync:getFolder', envelopeHandler(async () => {
       const config = await configManager.getConfig();
       return config.syncFolder;
     }));
 
-    ipcMain.handle('sync:setFolder', safeIpcHandler(async (_, folderPath: string, options?: { updateActiveMapping?: boolean }) => {
+    ipcMain.handle('sync:setFolder', envelopeHandler(async (_, folderPath: string, options?: { updateActiveMapping?: boolean }) => {
       const validatedFolderPath = InputValidator.validateFilePath(folderPath, 'folderPath');
       // UX-2/SYNC-7: persist to config, then update the running SyncManager.
       // Settings passes updateActiveMapping: true to also re-point the ACTIVE
@@ -1946,36 +1937,26 @@ class ArDriveApp {
     });
 
     // File operations
-    ipcMain.handle('files:get-uploads', async () => {
+    ipcMain.handle('files:get-uploads', envelopeHandler(async () => {
       return await databaseManager.getUploads();
-    });
+    }));
 
-    ipcMain.handle('files:get-downloads', async () => {
+    ipcMain.handle('files:get-downloads', envelopeHandler(async () => {
       return await databaseManager.getDownloads();
-    });
+    }));
 
-    ipcMain.handle('files:redownload-all', async () => {
+    ipcMain.handle('files:redownload-all', envelopeHandler(async () => {
       console.log('Manual re-download requested');
-      try {
-        // Trigger a manual download of existing drive files
-        await this.syncManager.forceDownloadExistingFiles();
-        return { success: true };
-      } catch (error) {
-        console.error('Failed to re-download files:', error);
-        return { 
-          success: false, 
-          error: error instanceof Error ? error.message : 'Unknown error' 
-        };
-      }
-    });
+      // Trigger a manual download of existing drive files
+      await this.syncManager.forceDownloadExistingFiles();
+    }));
 
     // Sync preference operations
-    ipcMain.handle('sync:set-file-preference', async (_, fileId: string, preference: 'auto' | 'cloud_only') => {
-      try {
-        await databaseManager.updateFileSyncPreference(fileId, preference);
-        
-        // If setting to cloud_only, delete the local file and update sync status
-        if (preference === 'cloud_only') {
+    ipcMain.handle('sync:set-file-preference', envelopeHandler(async (_, fileId: string, preference: 'auto' | 'cloud_only') => {
+      await databaseManager.updateFileSyncPreference(fileId, preference);
+
+      // If setting to cloud_only, delete the local file and update sync status
+      if (preference === 'cloud_only') {
           // Get file metadata to find local path
           const mappings = await databaseManager.getDriveMappings();
           const activeMapping = mappings.find((m: any) => m.isActive);
@@ -2014,101 +1995,54 @@ class ArDriveApp {
           await databaseManager.updateFileSyncStatus(fileId, 'cloud_only');
           await databaseManager.updateDriveMetadataStatus(fileId, 'cloud_only', false);
         }
-        
-        // Emit file state change event
-        if (this.mainWindow) {
-          this.mainWindow.webContents.send('sync:file-state-changed', { 
-            fileId, 
-            syncPreference: preference,
-            syncStatus: preference === 'cloud_only' ? 'cloud_only' : undefined
-          });
-        }
-        
-        return { success: true };
-      } catch (error) {
-        console.error('Failed to set file sync preference:', error);
-        return { 
-          success: false, 
-          error: error instanceof Error ? error.message : 'Unknown error' 
-        };
-      }
-    });
 
-    ipcMain.handle('sync:queue-download', async (_, fileId: string, priority?: number) => {
-      try {
-        // Get file metadata
-        const mappings = await databaseManager.getDriveMappings();
-        const activeMapping = mappings.find(m => m.isActive);
-        if (!activeMapping) {
-          throw new Error('No active drive mapping found');
-        }
-
-        const allMetadata = await databaseManager.getDriveMetadata(activeMapping.id);
-        const fileData = allMetadata.find(item => item.fileId === fileId);
-        if (!fileData) {
-          throw new Error('File not found in metadata');
-        }
-
-        // Queue the download
-        await this.syncManager.queueDownload(fileData, priority || 0);
-        
-        return { success: true };
-      } catch (error) {
-        console.error('Failed to queue download:', error);
-        return { 
-          success: false, 
-          error: error instanceof Error ? error.message : 'Unknown error' 
-        };
+      // Emit file state change event
+      if (this.mainWindow) {
+        this.mainWindow.webContents.send('sync:file-state-changed', {
+          fileId,
+          syncPreference: preference,
+          syncStatus: preference === 'cloud_only' ? 'cloud_only' : undefined
+        });
       }
-    });
+    }));
 
-    ipcMain.handle('sync:cancel-download', async (_, fileId: string) => {
-      try {
-        await this.syncManager.cancelDownload(fileId);
-        
-        // Emit file state change event
-        if (this.mainWindow) {
-          this.mainWindow.webContents.send('sync:file-state-changed', { fileId, syncStatus: 'cloud_only' });
-        }
-        
-        return { success: true };
-      } catch (error) {
-        console.error('Failed to cancel download:', error);
-        return { 
-          success: false, 
-          error: error instanceof Error ? error.message : 'Unknown error' 
-        };
+    ipcMain.handle('sync:queue-download', envelopeHandler(async (_, fileId: string, priority?: number) => {
+      // Get file metadata
+      const mappings = await databaseManager.getDriveMappings();
+      const activeMapping = mappings.find(m => m.isActive);
+      if (!activeMapping) {
+        throw new Error('No active drive mapping found');
       }
-    });
 
-    ipcMain.handle('sync:get-queue-status', async () => {
-      try {
-        const status = await this.syncManager.getQueueStatus();
-        return { success: true, data: status };
-      } catch (error) {
-        console.error('Failed to get queue status:', error);
-        return { 
-          success: false, 
-          error: error instanceof Error ? error.message : 'Unknown error' 
-        };
+      const allMetadata = await databaseManager.getDriveMetadata(activeMapping.id);
+      const fileData = allMetadata.find(item => item.fileId === fileId);
+      if (!fileData) {
+        throw new Error('File not found in metadata');
       }
-    });
-    
-    ipcMain.handle('sync:get-queued-downloads', async (_, limit?: number) => {
-      try {
-        const queuedDownloads = await this.syncManager.getQueuedDownloads(limit);
-        return { success: true, data: queuedDownloads };
-      } catch (error) {
-        console.error('Failed to get queued downloads:', error);
-        return { 
-          success: false, 
-          error: error instanceof Error ? error.message : 'Unknown error' 
-        };
+
+      // Queue the download
+      await this.syncManager.queueDownload(fileData, priority || 0);
+    }));
+
+    ipcMain.handle('sync:cancel-download', envelopeHandler(async (_, fileId: string) => {
+      await this.syncManager.cancelDownload(fileId);
+
+      // Emit file state change event
+      if (this.mainWindow) {
+        this.mainWindow.webContents.send('sync:file-state-changed', { fileId, syncStatus: 'cloud_only' });
       }
-    });
+    }));
+
+    ipcMain.handle('sync:get-queue-status', envelopeHandler(async () => {
+      return await this.syncManager.getQueueStatus();
+    }));
+
+    ipcMain.handle('sync:get-queued-downloads', envelopeHandler(async (_, limit?: number) => {
+      return await this.syncManager.getQueuedDownloads(limit);
+    }));
 
     // Manual sync operation (different from background sync monitoring)
-    ipcMain.handle('sync:manual', safeIpcHandler(async () => {
+    ipcMain.handle('sync:manual', envelopeHandler(async () => {
       console.log('Manual sync requested from UI');
       try {
         // Let the sync operations emit their own progress events
@@ -2120,12 +2054,10 @@ class ArDriveApp {
           this.mainWindow.webContents.send('sync:completed');
           console.log('📤 Emitted sync:completed event to trigger Permaweb refresh');
         }
-
-        return { success: true, message: 'Manual sync completed' };
       } catch (error) {
         console.error('Manual sync failed:', error);
-        
-        // Emit error state
+
+        // Emit error state, then rethrow so the envelope reports { success: false }
         if (this.mainWindow) {
           this.mainWindow.webContents.send('sync:progress', {
             phase: 'complete',
@@ -2133,11 +2065,8 @@ class ArDriveApp {
             error: true
           });
         }
-        
-        return { 
-          success: false, 
-          error: error instanceof Error ? error.message : 'Manual sync failed' 
-        };
+
+        throw error instanceof Error ? error : new Error('Manual sync failed');
       }
     }));
 
@@ -2280,13 +2209,13 @@ class ArDriveApp {
     // Routed through the approval queue like hide (it also writes a paid
     // metadata revision), then executed by syncManager.executeMetadataOperation.
     // Returns the D-005 envelope explicitly (safeIpcHandler doesn't wrap yet).
-    ipcMain.handle('sync:unhide-entity', async (_, params: {
+    ipcMain.handle('sync:unhide-entity', envelopeHandler(async (_, params: {
       driveId: string;
       entityId: string;
       entityType: 'file' | 'folder';
       name?: string;
     }) => {
-      try {
+      {
         const validatedDriveId = InputValidator.validateDriveId(params?.driveId, 'driveId');
         const validatedEntityId = InputValidator.validateEntityId(params?.entityId, 'entityId');
         const entityType = params?.entityType === 'folder' ? 'folder' : 'file';
@@ -2298,7 +2227,7 @@ class ArDriveApp {
           (p.arfsFileId === validatedEntityId || p.arfsFolderId === validatedEntityId)
         );
         if (alreadyQueued) {
-          return { success: false, error: 'An unhide operation is already pending for this item.' };
+          throw new Error('An unhide operation is already pending for this item.');
         }
 
         const unhideOperation: Omit<PendingUpload, 'createdAt'> = {
@@ -2323,15 +2252,9 @@ class ArDriveApp {
         await databaseManager.addPendingUpload(unhideOperation);
         this.mainWindow?.webContents.send('sync:pending-uploads-updated');
 
-        return { success: true, data: { id: unhideOperation.id } };
-      } catch (error) {
-        console.error('Failed to queue unhide operation:', error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to queue unhide operation'
-        };
+        return { id: unhideOperation.id };
       }
-    });
+    }));
 
     ipcMain.handle('uploads:approve-all', async () => {
       const pendingUploads = await databaseManager.getPendingUploads();
@@ -3082,7 +3005,7 @@ class ArDriveApp {
     });
 
     // Drive mappings handlers
-    ipcMain.handle('drive-mappings:add', safeIpcHandler(async (_, driveMapping: any) => {
+    ipcMain.handle('drive-mappings:add', envelopeHandler(async (_, driveMapping: any) => {
       console.log('Adding drive mapping:', driveMapping);
       
       // PRIV-3: a mapping without its local folder leaves sync dead on
@@ -3096,25 +3019,25 @@ class ArDriveApp {
       return true;
     }));
 
-    ipcMain.handle('drive-mappings:list', safeIpcHandler(async () => {
+    ipcMain.handle('drive-mappings:list', envelopeHandler(async () => {
       return await databaseManager.getDriveMappings();
     }));
 
-    ipcMain.handle('drive-mappings:update', safeIpcHandler(async (_, mappingId: string, updates: any) => {
+    ipcMain.handle('drive-mappings:update', envelopeHandler(async (_, mappingId: string, updates: any) => {
       await databaseManager.updateDriveMapping(mappingId, updates);
       return true;
     }));
 
-    ipcMain.handle('drive-mappings:remove', safeIpcHandler(async (_, mappingId: string) => {
+    ipcMain.handle('drive-mappings:remove', envelopeHandler(async (_, mappingId: string) => {
       await databaseManager.removeDriveMapping(mappingId);
       return true;
     }));
 
-    ipcMain.handle('drive-mappings:get-by-id', safeIpcHandler(async (_, mappingId: string) => {
+    ipcMain.handle('drive-mappings:get-by-id', envelopeHandler(async (_, mappingId: string) => {
       return await databaseManager.getDriveMappingById(mappingId);
     }));
 
-    ipcMain.handle('drive-mappings:get-primary', safeIpcHandler(async () => {
+    ipcMain.handle('drive-mappings:get-primary', envelopeHandler(async () => {
       const mappings = await databaseManager.getDriveMappings();
       return mappings.find(m => m.isActive) || mappings[0] || null;
     }));
