@@ -555,9 +555,14 @@ export class DownloadManager {
       await fs.mkdir(dir, { recursive: true });
 
       // CRITICAL: Add file to recently downloaded BEFORE downloading
-      // This prevents the file watcher from picking it up
-      this.fileStateManager.markAsDownloaded(localFilePath);
-      
+      // This prevents the file watcher from picking it up. SYNC-13: tracked
+      // as an "expected download" keyed by path + expected size, cleared
+      // explicitly on finalize (see clearDownload below) rather than after a
+      // fixed timeout - large/slow downloads can take far longer than the
+      // old 30s window, which let them fall through as false "new local
+      // file" adds and re-upload (a feedback loop that spends real money).
+      this.fileStateManager.markAsDownloaded(localFilePath, fileSize);
+
       // Check if this file is already being downloaded
       if (this.fileStateManager.isDownloading(localFilePath)) {
         console.log(`File is already being downloaded: ${localFilePath}`);

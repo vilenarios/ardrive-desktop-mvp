@@ -781,6 +781,86 @@ describe('SyncManager', () => {
     });
   });
 
+  describe('Slow-download eviction feedback loop (SYNC-13)', () => {
+    // FileStateManager used to auto-evict "recently downloaded" tracking on
+    // a FIXED 30-second timer, regardless of whether the download had
+    // actually finished. A download that takes longer than 30s (large file
+    // / slow gateway) would fall out of protection while still landing on
+    // disk; the watcher's `add` event for it would then reach handleNewFile
+    // and get queued as a brand-new local file - re-uploading a file that
+    // was JUST downloaded (a feedback loop that spends real money). See
+    // AUDIT-2026-07-02.md §2.14 / BACKLOG.md SYNC-13.
+    //
+    // These exercise the REAL SyncManager + REAL FileStateManager (not
+    // mocked) through the exact call site handleNewFile uses
+    // (isRecentlyDownloaded, sync-manager.ts ~2103), proving the fix at the
+    // actual integration point, not just FileStateManager in isolation.
+    const filePath = `${testSyncPath}/big-file.bin`;
+    const FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GiB (SYNC-6 cap)
+
+    beforeEach(async () => {
+      syncManager['driveId'] = testDriveId;
+      syncManager['rootFolderId'] = testRootFolderId;
+      syncManager['costCalculator'] = {
+        isFileTooBig: vi.fn(() => false),
+        isFreeWithTurbo: vi.fn(() => true),
+        calculateUploadCosts: vi.fn(async () => ({
+          estimatedCost: 0,
+          estimatedTurboCost: 100,
+          recommendedMethod: 'turbo',
+          hasSufficientTurboBalance: true,
+        })),
+        formatCostInAR: vi.fn(() => '0.000000 AR'),
+      } as any;
+
+      const fs = await import('fs/promises');
+      vi.mocked(fs.access).mockResolvedValue(undefined);
+      vi.mocked(fs.stat).mockResolvedValue({ size: FILE_SIZE, isFile: () => true, isDirectory: () => false } as any);
+      vi.mocked(fs.readFile).mockResolvedValue(Buffer.alloc(0) as any);
+    });
+
+    it('a watcher add firing well past the OLD 30s window - download still in flight - does NOT queue a re-upload', async () => {
+      vi.useFakeTimers();
+      try {
+        // Simulates DownloadManager.downloadFile's start-of-download call.
+        syncManager['fileStateManager'].markAsDownloaded(filePath, FILE_SIZE);
+
+        // The old implementation auto-evicted here via a fixed setTimeout.
+        // The download is slow and is STILL in flight - no clearDownload
+        // (finalize) call has happened.
+        await vi.advanceTimersByTimeAsync(35000);
+
+        // The watcher's (possibly delayed) `add` event reaches handleNewFile
+        // while the download is still landing on disk.
+        await syncManager['handleNewFile'](filePath, 'create');
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(mockDatabaseManager.addPendingUpload).not.toHaveBeenCalled();
+    });
+
+    it('once the download FINALIZES, a genuine local edit at the same path IS still queued (no over-suppression)', async () => {
+      syncManager['fileStateManager'].markAsDownloaded(filePath, FILE_SIZE);
+      // Finalize: the real caller does this from a try/finally once the
+      // download promise settles, success or failure.
+      syncManager['fileStateManager'].clearDownload(filePath);
+
+      // A genuinely different local edit shows up at the same path
+      // afterward - different size/content than what was downloaded.
+      const EDITED = Buffer.from('a genuinely different local edit');
+      const fs = await import('fs/promises');
+      vi.mocked(fs.stat).mockResolvedValue({ size: EDITED.length, isFile: () => true, isDirectory: () => false } as any);
+      vi.mocked(fs.readFile).mockResolvedValue(EDITED as any);
+
+      await syncManager['handleNewFile'](filePath, 'create');
+
+      expect(mockDatabaseManager.addPendingUpload).toHaveBeenCalledWith(
+        expect.objectContaining({ localPath: filePath, status: 'awaiting_approval' })
+      );
+    });
+  });
+
   describe('Upsert-skip honesty (SYNC-1 qa-gate finding)', () => {
     it('an empty core result records a skip, never a completed with undefined tx ids', async () => {
       const upload = {

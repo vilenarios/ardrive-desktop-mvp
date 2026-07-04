@@ -328,4 +328,38 @@ describe('DownloadManager download-status truth (SYNC-2)', () => {
     const failedForSecond = failedWrites().filter((call: any[]) => call[0] === FILE_ID_2);
     expect(failedForSecond).toHaveLength(0);
   });
+
+  describe('expected-download tracking wiring (SYNC-13)', () => {
+    // These prove DownloadManager's own call sites - not just FileStateManager
+    // in isolation - correctly signal download start (with the expected size)
+    // and finalize, so the fixed-timer eviction bug can't reappear here even
+    // if FileStateManager's internals change later.
+
+    it('marks the path as an expected download with the ArFS metadata size BEFORE fetching', async () => {
+      await (downloadManager as any).startConcurrentDownload(FILE_ID, makeFileRow({ size: 2048 }));
+
+      expect(mockFileStateManager.markAsDownloaded).toHaveBeenCalledWith(EXPECTED_LOCAL_PATH, 2048);
+
+      // Marked before the network call, not after - so a watcher event firing
+      // any time during the download is protected.
+      const markOrder = mockFileStateManager.markAsDownloaded.mock.invocationCallOrder[0];
+      const streamOrder = mockStreamingDownload.mock.invocationCallOrder[0];
+      expect(markOrder).toBeLessThan(streamOrder);
+    });
+
+    it('clears expected-download tracking on a SUCCESSFUL finalize (not a fixed timer)', async () => {
+      await (downloadManager as any).startConcurrentDownload(FILE_ID, makeFileRow());
+
+      expect(mockFileStateManager.clearDownload).toHaveBeenCalledWith(EXPECTED_LOCAL_PATH);
+    });
+
+    it('clears expected-download tracking on a FAILED finalize too (path is not left protected forever)', async () => {
+      (downloadManager as any).maxRetries = 1;
+      mockStreamingDownload.mockRejectedValue(new Error('Request failed with status code 404'));
+
+      await (downloadManager as any).startConcurrentDownload(FILE_ID, makeFileRow());
+
+      expect(mockFileStateManager.clearDownload).toHaveBeenCalledWith(EXPECTED_LOCAL_PATH);
+    });
+  });
 });

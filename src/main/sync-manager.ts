@@ -2099,8 +2099,11 @@ export class SyncManager {
         console.log(`✏️ Edited file detected (known path, new content) — queueing as a new revision: ${filePath}`);
       }
 
-      // Double check if this file was recently downloaded
-      if (this.fileStateManager.isRecentlyDownloaded(filePath)) {
+      // Double check if this file was recently downloaded. SYNC-13: pass the
+      // actual on-disk size (already read above) so a coincidental unrelated
+      // write to this exact path while a download is in flight - different
+      // size than what the download expects - is NOT suppressed.
+      if (this.fileStateManager.isRecentlyDownloaded(filePath, stats.size)) {
         console.log(`✓ File was recently downloaded, skipping: ${filePath}`);
         return;
       }
