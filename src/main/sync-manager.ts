@@ -16,6 +16,7 @@ import { FolderOperationDetector, OperationDetection } from './sync/FolderOperat
 import { FileOperationDetector, FileOperationDetection } from './sync/FileOperationDetector';
 import { driveKeyManager } from './drive-key-manager';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
+import { getGatewayUrl } from './gateway';
 
 interface SyncProgress {
   phase?: string;
@@ -744,7 +745,7 @@ export class SyncManager {
       console.log('GraphQL query variables:', variables);
       
       // Make the GraphQL request
-      const response = await fetch('https://arweave.net/graphql', {
+      const response = await fetch(`${getGatewayUrl()}/graphql`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -824,8 +825,10 @@ export class SyncManager {
       });
       
       // Download file data directly from Arweave
-      console.log(`Fetching data from https://arweave.net/${dataTxId}`);
-      const response = await fetch(`https://arweave.net/${dataTxId}`);
+      // SYNC-17: gateway host is configurable (defaults to turbo-gateway.com).
+      const gatewayUrl = getGatewayUrl();
+      console.log(`Fetching data from ${gatewayUrl}/${dataTxId}`);
+      const response = await fetch(`${gatewayUrl}/${dataTxId}`);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);

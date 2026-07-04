@@ -195,6 +195,9 @@ const api = {
       ipcRenderer.invoke('config:clear-folder'),
     setTheme: (theme: 'light' | 'dark' | 'system'): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('config:set-theme', theme),
+    // SYNC-17: override the Arweave gateway host (defaults to turbo-gateway.com).
+    setGateway: (host: string): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('config:set-gateway', host),
   },
 
   // Dialog operations (UX-3: migrated to the IpcResult envelope)

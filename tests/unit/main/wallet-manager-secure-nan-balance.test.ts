@@ -47,7 +47,7 @@ vi.mock('../../../src/main/turbo-manager', () => ({
 vi.mock('../../../src/main/profile-manager', () => ({
   profileManager: { getProfileStoragePath: vi.fn(() => '/tmp/fake-user-data/wallet.enc') }
 }));
-vi.mock('../../../src/main/config-manager', () => ({ configManager: {} }));
+vi.mock('../../../src/main/config-manager', () => ({ configManager: { getGatewayHost: vi.fn() } }));
 vi.mock('../../../src/main/database-manager', () => ({ databaseManager: {} }));
 vi.mock('../../../src/main/keychain-service', () => ({ keychainService: {} }));
 vi.mock('../../../src/main/crypto-utils', () => ({

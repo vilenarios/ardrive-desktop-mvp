@@ -109,7 +109,7 @@ vi.mock('../../../src/main/profile-manager', () => ({
   },
 }));
 vi.mock('../../../src/main/config-manager', () => ({
-  configManager: { setActiveProfile: vi.fn() },
+  configManager: { setActiveProfile: vi.fn(), getGatewayHost: vi.fn() },
 }));
 vi.mock('../../../src/main/database-manager', () => ({
   databaseManager: { setActiveProfile: vi.fn(), close: vi.fn() },

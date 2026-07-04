@@ -2564,6 +2564,14 @@ class ArDriveApp {
       await configManager.setThemePreference(validated);
     }));
 
+    // SYNC-17: override the Arweave gateway host (device/app-level global config).
+    // Defaults to turbo-gateway.com when unset (see src/main/gateway.ts). Lets a
+    // user whose default gateway is rate-limited (429) point the app elsewhere.
+    ipcMain.handle('config:set-gateway', envelopeHandler(async (_, host: unknown) => {
+      const validated = InputValidator.validateGatewayHost(host);
+      await configManager.setGatewayHost(validated);
+    }));
+
     ipcMain.handle('config:clear-drive', envelopeHandler(async () => {
       // Clear sync folder
       await configManager.setSyncFolder('');

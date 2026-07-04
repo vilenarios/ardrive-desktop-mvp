@@ -33,6 +33,9 @@ vi.mock('../../../src/main/drive-key-manager', () => ({
 
 vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: vi.fn(() => []) },
+  // SYNC-17: DownloadManager now transitively imports config-manager (for the
+  // configurable gateway host), which reads app.getPath at construction.
+  app: { getPath: vi.fn(() => '/mock/user-data') },
 }));
 
 vi.mock('fs/promises', () => ({
@@ -187,8 +190,10 @@ describe('DownloadManager private downloads (PRIV-1)', () => {
 
     await manager['performFileDownload'](fileData, localFilePath, SYNC_PATH, 'dl-1', 'placeholder-hash');
 
+    // SYNC-17: the direct streaming URL now comes from the configurable gateway
+    // (default turbo-gateway.com), not the old hardcoded arweave.net.
     expect(mockStreamingDownload).toHaveBeenCalledWith(
-      `https://arweave.net/${fileData.dataTxId}`,
+      `https://turbo-gateway.com/${fileData.dataTxId}`,
       localFilePath,
       'dl-1',
       expect.any(Object)

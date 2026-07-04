@@ -8,6 +8,7 @@ import { IFileStateManager, ISyncProgressTracker } from './interfaces';
 import { StreamingDownloader } from './StreamingDownloader';
 import { BrowserWindow } from 'electron';
 import { driveKeyManager } from '../drive-key-manager';
+import { getGatewayUrl } from '../gateway';
 
 export class DownloadManager {
   private isDownloading = false;
@@ -705,8 +706,11 @@ export class DownloadManager {
       } else if (isPrivateDownload) {
         hash = await this.downloadPrivateFileDecrypted(fileData, localFilePath, downloadId);
       } else {
-        // Use streaming download for better reliability and progress tracking
-        const gatewayUrl = 'https://arweave.net';
+        // Use streaming download for better reliability and progress tracking.
+        // SYNC-17: gateway host is configurable (defaults to turbo-gateway.com).
+        // StreamingDownloader follows the sandbox 302 (axios maxRedirects) and
+        // retries 5× with backoff, so a flapping 404/504 is not a hard failure.
+        const gatewayUrl = getGatewayUrl();
         const downloadUrl = `${gatewayUrl}/${fileData.dataTxId}`;
         
         console.log(`Downloading file from: ${downloadUrl}`);
@@ -1147,8 +1151,13 @@ export class DownloadManager {
 
   private async downloadManifestFile(fileData: any, localFilePath: string, downloadId: string): Promise<{ hash: string }> {
     try {
-      // For manifests, we need to download from the raw endpoint
-      const gatewayUrl = 'https://arweave.net';
+      // For manifests, we need to download from the raw endpoint.
+      // SYNC-17: gateway host is configurable (defaults to turbo-gateway.com).
+      // NOTE: turbo-gateway.com's /raw/ endpoint currently returns 504 (only the
+      // sandbox-redirected GET /<txid> serves data) — public-manifest downloads
+      // via /raw/ may need a gateway that serves /raw/. Tracked as a SYNC-17
+      // follow-up; manifests are public-only and a narrow path.
+      const gatewayUrl = getGatewayUrl();
       const rawUrl = `${gatewayUrl}/raw/${fileData.dataTxId}`;
       
       console.log(`Downloading manifest from raw URL: ${rawUrl}`);
