@@ -292,8 +292,8 @@ Done 2026-07-03 (0908cf5 + 698316f, qa-gate PASS static, cross-session verdict a
 Acceptance: changing the folder from Settings persists and re-targets sync (respecting SYNC-7's source of truth).
 Done 2026-07-03 (2dec4c6 + 2a54c1b, qa-gate FAIL→fix→PASS static): renderer fix + the QA-caught silent no-op in updateDriveMapping (missing localFolderPath SQL branch) fixed at the DB layer; real-SQLite integration tests replicate sync:start's gate end-to-end; mapping update is opt-in (Settings only) so onboarding flows can't clobber other drives. Negative control: 5 fix-dependent tests fail on revert.
 
-### UX-3 · P0 · Phase 3 · `todo`
-**One IPC response envelope.** Evidence: §5.3, §3.3, §3.6 (raw-vs-`{success,data}` roulette breaks CreateDriveModal private path, DriveSelector unlock, Dashboard.handleDriveCreated).
+### UX-3 · P0 · Phase 3 · `in-progress`
+**One IPC response envelope.** Evidence: §5.3, §3.3, §3.6 (raw-vs-`{success,data}` roulette breaks CreateDriveModal private path, DriveSelector unlock, Dashboard.handleDriveCreated). Claimed 2026-07-04 (overnight loop, branch fix/UX-3-ipc-envelope, Opus). SCOPE NOTE: safeIpcHandler currently only try/catches (does NOT envelope); 93 handlers, ~170 raw-reading renderer call sites — being migrated namespace-by-namespace, type-enforced, stopping at a GREEN mergeable increment (drive namespace + known-broken sites first). May land in phases.
 Fix: standardize every handler on `{success, data?, error?}` (extend `safeIpcHandler` to all 91), regenerate preload types, sweep all renderer call sites.
 Acceptance: typecheck enforces the envelope; the three known-broken call sites pass UAT; no `.find()`/`.id` on wrapper objects remains.
 Also (PRIV-2 qa-gate findings 2026-07-03): the specific unlock error plumbed through `drive:unlock` is displayed nowhere — PrivateDriveUnlockModal hardcodes 'Invalid password' on any false return, and App.tsx/DriveSelector reduce the envelope to a boolean, so the network-vs-password distinction never reaches the user; `drive:unlock` also uses `drive` instead of D-005's `data` field.
