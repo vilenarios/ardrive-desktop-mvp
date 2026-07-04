@@ -189,7 +189,7 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
         width: '100%',
         maxWidth: '600px',
         padding: 'var(--space-8)',
-        background: 'white',
+        background: 'var(--surface-raised)',
         borderRadius: 'var(--radius-lg)',
         boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
       }}>
@@ -235,7 +235,7 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
                     padding: 'var(--space-4)',
                     border: '2px solid var(--gray-200)',
                     borderRadius: 'var(--radius-md)',
-                    backgroundColor: 'white',
+                    backgroundColor: 'var(--surface-raised)',
                     transition: 'all 0.2s ease'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
@@ -325,7 +325,7 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
                           }}
                           style={{
                             backgroundColor: deleteConfirm === profile.id ? 'var(--error-500)' : undefined,
-                            color: deleteConfirm === profile.id ? 'white' : undefined,
+                            color: deleteConfirm === profile.id ? 'var(--text-on-brand)' : undefined,
                             borderColor: deleteConfirm === profile.id ? 'var(--error-500)' : undefined
                           }}
                         >
@@ -464,7 +464,7 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
               padding: 'var(--space-4)',
               border: '2px dashed var(--gray-300)',
               borderRadius: 'var(--radius-md)',
-              backgroundColor: 'white',
+              backgroundColor: 'var(--surface-raised)',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               width: '100%',
@@ -476,7 +476,7 @@ const ProfileManagement: React.FC<ProfileManagementProps> = ({
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.borderColor = 'var(--gray-300)';
-              e.currentTarget.style.backgroundColor = 'white';
+              e.currentTarget.style.backgroundColor = 'var(--surface-raised)';
             }}
           >
             <Plus size={24} style={{ color: 'var(--ardrive-primary)' }} />

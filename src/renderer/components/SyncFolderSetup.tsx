@@ -116,7 +116,7 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
         width: '100%',
         maxWidth: '600px',
         padding: 'var(--space-8)',
-        background: 'white',
+        background: 'var(--surface-raised)',
         borderRadius: 'var(--radius-lg)',
         boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
       }}>
@@ -321,11 +321,11 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
             >
               {loading ? (
                 <>
-                  <div style={{ 
-                    width: '16px', 
-                    height: '16px', 
-                    border: '2px solid rgba(255,255,255,0.3)',
-                    borderTop: '2px solid white',
+                  <div style={{
+                    width: '16px',
+                    height: '16px',
+                    border: '2px solid var(--spinner-track-on-brand)',
+                    borderTop: '2px solid var(--text-on-brand)',
                     borderRadius: '50%',
                     animation: 'spin 1s linear infinite',
                     marginRight: 'var(--space-2)'
