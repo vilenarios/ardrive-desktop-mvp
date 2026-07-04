@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Wallet, Shield, ArrowRight, FileText, Key, Hexagon, Copy, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { Wallet, Shield, AlertTriangle, ArrowRight, FileText, FileJson, KeyRound, Copy, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { InfoButton } from './common/InfoButton';
 import { PasswordForm } from './common/PasswordForm';
 import { SeedPhraseDisplay } from './common/SeedPhraseDisplay';
@@ -10,6 +10,13 @@ import { useTheme } from '../contexts/ThemeContext';
 interface WalletSetupProps {
   onWalletImported: () => void;
 }
+
+// COPY-11: Create and Import used to show two different explanations of what
+// this password does/doesn't cover ("never leaves your computer" only
+// appeared on the Create flow) — a non-crypto user reading both would
+// reasonably wonder if they behave differently. One shared string for both.
+const PASSWORD_TOOLTIP =
+  "This password encrypts your wallet file. You'll need it every time you sign in, and it will never leave your computer.";
 
 const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
   const { theme } = useTheme();
@@ -28,6 +35,11 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [copiedPath, setCopiedPath] = useState(false);
   const [showSeedPhraseText, setShowSeedPhraseText] = useState(false);
+  // TRUST-3: the "must contain exactly 12 words" error used to render on
+  // literally every keystroke (red border from the first character typed).
+  // Only surface the inline error once the user has actually left the field
+  // or attempted to submit — while typing, show a neutral word count instead.
+  const [seedPhraseTouched, setSeedPhraseTouched] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Confirmation state
@@ -63,6 +75,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
     setImportMethod('file');
     setWalletPath(null);
     setSeedPhrase('');
+    setSeedPhraseTouched(false);
     setPassword('');
     setConfirmPassword('');
     setError(null);
@@ -220,6 +233,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
         // Import account from recovery phrase
         const seedValidation = validateSeedPhrase(seedPhrase);
         if (!seedValidation.isValid) {
+          setSeedPhraseTouched(true); // surface the inline field error too, on submit
           setError(seedValidation.error!);
           return;
         }
@@ -292,11 +306,19 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
         {/* Step 1: Choose Action */}
         {step === 1 && (
           <div className="step-content">
-            <h2 style={{ marginBottom: 'var(--space-6)' }}>Welcome to ArDrive Desktop</h2>
-            <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)', marginBottom: 'var(--space-8)', textAlign: 'center' }}>
+            <h1 style={{ marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)' }}>
+              Welcome to ArDrive Desktop
+              <InfoButton tooltip="Your ArDrive account is powered by a cryptographic wallet, not a company login. There's no 'forgot password' email reset. Your wallet plus your recovery phrase together are your account." />
+            </h1>
+            {/* A <div>, not a <p>: InfoButton renders a block-level wrapper,
+                and a <div> inside a <p> gets implicitly (and invisibly)
+                closed by the HTML parser -- this row needs the same visual
+                treatment as body text without that structural trap. */}
+            <div style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)', marginBottom: 'var(--space-8)', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)' }}>
               Store your files permanently on the decentralized web
-            </p>
-            
+              <InfoButton tooltip="Once uploaded to Arweave, files can't be edited or deleted by you or anyone else, including ArDrive. That's the point: your files outlive any single company or server." />
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
               <button
                 className="button large"
@@ -356,7 +378,15 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
               textAlign: 'center'
             }}>
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                Need help? Check out our <a href="#" style={{ color: 'var(--brand)', textDecoration: 'none' }}>getting started guide</a>
+                Need help? Check out our{' '}
+                <a
+                  href="https://docs.ardrive.io"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: 'var(--brand)', textDecoration: 'none' }}
+                >
+                  getting started guide
+                </a>
               </p>
             </div>
           </div>
@@ -365,7 +395,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
         {/* Step 2: Create Account - Set Password */}
         {step === 2 && walletAction === 'create' && (
           <div className="step-content">
-            <h2 style={{ marginBottom: 'var(--space-3)' }}>Secure Your Account</h2>
+            <h1 style={{ marginBottom: 'var(--space-3)' }}>Secure Your Account</h1>
             <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)', marginBottom: 'var(--space-6)' }}>
               Choose a strong password to encrypt your account
             </p>
@@ -375,9 +405,12 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
               confirmPassword={confirmPassword}
               onPasswordChange={setPassword}
               onConfirmPasswordChange={setConfirmPassword}
-              passwordTooltip="This password encrypts your wallet file. You'll need it every time you sign in, and it will never leave your computer."
+              passwordTooltip={PASSWORD_TOOLTIP}
               showStrength={true}
-              autoFocus={true}
+              // POLISH-1: autoFocus used to land the very first thing a new
+              // user sees on a solid red outline (--focus-ring shares the
+              // danger hue) before they've typed anything or made a mistake.
+              autoFocus={false}
             />
 
             <div style={{
@@ -394,7 +427,8 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                     Important Security Notice
                   </h4>
                   <p style={{ fontSize: '13px', color: 'var(--warning-fg)', lineHeight: '1.5' }}>
-                    There is no way to recover this password if you forget it. Make sure to store it somewhere safe.
+                    If you forget this password, your recovery phrase (shown next) can restore access with a new
+                    password — but there&apos;s no way to reset just the password itself. Keep both safe.
                   </p>
                 </div>
               </div>
@@ -452,7 +486,10 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
           <div className="step-content" style={{ 
             animation: 'fadeIn 0.3s ease-in'
           }}>
-            <h2 style={{ marginBottom: 'var(--space-2)' }}>Save Your Recovery Phrase</h2>
+            <h1 style={{ marginBottom: 'var(--space-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)' }}>
+              Save Your Recovery Phrase
+              <InfoButton tooltip="A recovery phrase (sometimes called a seed phrase) is a list of 12 or 24 words that can restore full access to your wallet. Anyone who has it can access your files. Never share it or type it into a website." />
+            </h1>
             <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
               Write down these 12 words in order. You&apos;ll need them to recover your account.
             </p>
@@ -473,7 +510,11 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
               border: '1px solid var(--danger)'
             }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
-                <Shield size={18} style={{ color: 'var(--danger-fg)', flexShrink: 0, marginTop: '1px' }} />
+                {/* POLISH-5: was the same Shield glyph used by the milder
+                    "Important Security Notice" advisory boxes elsewhere on
+                    this screen — AlertTriangle distinguishes "irreversible,
+                    critical" from "important, advisory" at a glance. */}
+                <AlertTriangle size={18} style={{ color: 'var(--danger-fg)', flexShrink: 0, marginTop: '1px' }} />
                 <div>
                   <h4 style={{ fontSize: '13px', fontWeight: '600', marginBottom: '2px', color: 'var(--danger-fg)' }}>
                     Critical: Save This Phrase
@@ -555,7 +596,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
         {/* Step 2: Import Account */}
         {step === 2 && walletAction === 'import' && (
           <div className="step-content">
-            <h2 style={{ marginBottom: 'var(--space-2)' }}>Import Your Account</h2>
+            <h1 style={{ marginBottom: 'var(--space-2)' }}>Import Your Account</h1>
             <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
               Choose how you&apos;d like to import your existing Arweave wallet
             </p>
@@ -568,7 +609,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                 onClick={() => setImportMethod('file')}
                 style={{ flex: 1 }}
               >
-                <Key size={16} />
+                <FileJson size={16} />
                 Wallet File
               </button>
               <button
@@ -577,7 +618,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                 onClick={() => setImportMethod('seedphrase')}
                 style={{ flex: 1 }}
               >
-                <Hexagon size={16} />
+                <KeyRound size={16} />
                 Recovery Phrase
               </button>
             </div>
@@ -660,15 +701,30 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
             )}
 
             {/* Seed Phrase Import */}
-            {importMethod === 'seedphrase' && (
+            {importMethod === 'seedphrase' && (() => {
+              // TRUST-3: two bugs lived here. (1) The inline error hardcoded
+              // "exactly 12 words" even though ClientInputValidator.validateSeedPhrase
+              // (input-validator.ts) has always accepted 12 *or* 24 — a valid
+              // 24-word phrase was told it was wrong. (2) The error (and the
+              // textarea's red .invalid border) fired on every keystroke, so
+              // the single most sensitive field in the app rendered red for
+              // ~95% of normal typing. Fix: reuse the validator's own message
+              // instead of a hand-written string, and only show it once the
+              // field has been left (blur) or submit was attempted --
+              // otherwise show a neutral word count.
+              const seedValidation = validateSeedPhrase(seedPhrase);
+              const seedWordCount = seedPhrase.trim() ? seedPhrase.trim().split(/\s+/).length : 0;
+              const showSeedError = seedPhraseTouched && seedPhrase.length > 0 && !seedValidation.isValid;
+
+              return (
               <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
-                <label style={{ marginBottom: 'var(--space-2)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <label htmlFor="recovery-phrase-input" style={{ marginBottom: 'var(--space-2)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                   Enter Recovery Phrase
-                  <InfoButton 
-                    tooltip="Enter your 12-word recovery phrase, separated by spaces"
+                  <InfoButton
+                    tooltip="A recovery phrase (also called a seed phrase) is 12 or 24 words that fully control your wallet. Keep it secret. ArDrive will never ask you for it outside this screen."
                   />
                 </label>
-                
+
                 {/* Enhanced Seed Phrase Input */}
                 <div style={{ position: 'relative' }}>
                   {/* Privacy Toggle */}
@@ -691,6 +747,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                   </button>
 
                   <textarea
+                    id="recovery-phrase-input"
                     value={seedPhrase}
                     onChange={(e) => {
                       setSeedPhrase(e.target.value);
@@ -703,16 +760,18 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                       e.target.style.height = 'auto';
                       e.target.style.height = Math.max(120, e.target.scrollHeight) + 'px';
                     }}
-                    placeholder="Enter your 12-word recovery phrase separated by spaces"
+                    onBlur={() => setSeedPhraseTouched(true)}
+                    placeholder="Enter your 12 or 24-word recovery phrase, separated by spaces"
+                    aria-invalid={showSeedError}
                     className={
                       'seed-phrase-textarea' +
                       (showSeedPhraseText ? ' revealed' : '') +
-                      (seedPhrase && !validateSeedPhrase(seedPhrase).isValid ? ' invalid' : '')
+                      (showSeedError ? ' invalid' : '')
                     }
                   />
                 </div>
 
-                {seedPhrase && !validateSeedPhrase(seedPhrase).isValid && (
+                {showSeedError ? (
                   <div style={{
                     fontSize: '13px',
                     color: 'var(--danger-fg)',
@@ -722,7 +781,15 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                     gap: 'var(--space-1)'
                   }}>
                     <Shield size={14} />
-                    Your recovery phrase must contain exactly 12 words
+                    {seedValidation.error}
+                  </div>
+                ) : seedPhrase.length > 0 && (
+                  <div style={{
+                    fontSize: '13px',
+                    color: 'var(--text-tertiary)',
+                    marginTop: 'var(--space-2)'
+                  }}>
+                    {seedWordCount} word{seedWordCount === 1 ? '' : 's'} entered (12 or 24 expected)
                   </div>
                 )}
 
@@ -736,7 +803,8 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                   Your recovery phrase is case-sensitive and should be entered exactly as it was provided to you.
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* Password Fields */}
             <div style={{ marginTop: 'var(--space-4)' }}>
@@ -745,13 +813,13 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                 confirmPassword={confirmPassword}
                 onPasswordChange={setPassword}
                 onConfirmPasswordChange={setConfirmPassword}
-                passwordTooltip="Choose a password to encrypt your wallet on this device"
+                passwordTooltip={PASSWORD_TOOLTIP}
                 showStrength={true}
                 autoFocus={false}
               />
             </div>
 
-            {/* Security Warning - Same as Create Account */}
+            {/* Security Warning */}
             <div style={{
               backgroundColor: 'var(--warning-surface)',
               padding: 'var(--space-4)',
@@ -766,7 +834,8 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                     Important Security Notice
                   </h4>
                   <p style={{ fontSize: '13px', color: 'var(--warning-fg)', lineHeight: '1.5' }}>
-                    There is no way to recover this password if you forget it. Make sure to store it somewhere safe.
+                    If you forget this password, you can restore access anytime using your wallet file or recovery
+                    phrase to set a new one — but there&apos;s no way to reset just the password itself. Keep them safe.
                   </p>
                 </div>
               </div>
@@ -808,6 +877,21 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                 )}
               </button>
             </div>
+
+            {/* POLISH-10: Create Account had this reassurance during its
+                (similarly crypto-derivation-bound) loading state; Import had
+                none, despite the button already showing a spinner. */}
+            {loading && (
+              <div style={{
+                marginTop: 'var(--space-3)',
+                textAlign: 'center',
+                fontSize: '13px',
+                color: 'var(--text-secondary)',
+                animation: 'fadeIn 0.5s ease-in'
+              }}>
+                This may take a moment while we import and encrypt your wallet...
+              </div>
+            )}
           </div>
         )}
 

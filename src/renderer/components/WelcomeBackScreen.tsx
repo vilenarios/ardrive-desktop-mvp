@@ -3,6 +3,25 @@ import { HardDrive, Plus, FolderOpen, Calendar, Database, ArrowRight, ChevronRig
 import { DriveInfo, DriveInfoWithStatus, Profile } from '../../types';
 import { ProfileSkeleton } from './common/ProfileSkeleton';
 import { DriveListSkeleton } from './common/DriveSkeleton';
+import { InfoButton } from './common/InfoButton';
+
+// A11Y-1: `display: 'none'` on the radio inputs below removed them from both
+// the tab order and the accessibility tree entirely — a keyboard-only user
+// could never reach or select a drive on this screen (the .drive-select-card
+// :focus-within rule in modal.css proves keyboard support was intended, just
+// never reachable). This is the standard visually-hidden recipe: invisible
+// on screen, but still focusable/tabbable and readable by assistive tech.
+const visuallyHiddenStyle: React.CSSProperties = {
+  position: 'absolute',
+  width: '1px',
+  height: '1px',
+  padding: 0,
+  margin: '-1px',
+  overflow: 'hidden',
+  clip: 'rect(0, 0, 0, 0)',
+  whiteSpace: 'nowrap',
+  border: 0
+};
 
 interface WelcomeBackScreenProps {
   currentProfile?: Profile | null;
@@ -211,9 +230,13 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
               </div>
             )}
 
-            <h2 style={{ marginBottom: 'var(--space-3)', fontSize: '32px', fontWeight: '600', animation: 'fadeIn 0.5s ease-in', color: 'var(--text-primary)' }}>
+            {/* A11Y-5: onboarding had no <h1> anywhere — screen readers using
+                heading navigation never landed on a top-level heading in
+                this flow at all. This is the sole primary heading visible
+                when this screen is mounted, so it's the correct <h1>. */}
+            <h1 style={{ marginBottom: 'var(--space-3)', fontSize: '32px', fontWeight: '600', animation: 'fadeIn 0.5s ease-in', color: 'var(--text-primary)' }}>
               Welcome Back{currentProfile && (currentProfile.arnsName || currentProfile.name) ? `, ${currentProfile.arnsName || currentProfile.name}` : ''}!
-            </h2>
+            </h1>
             <p style={{ fontSize: '18px', color: 'var(--text-secondary)', lineHeight: '1.6', animation: 'fadeIn 0.5s ease-in' }}>
               {drivesLoading
                 ? 'Loading your drives...'
@@ -240,9 +263,13 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
               fontSize: '16px',
               fontWeight: '600',
               marginBottom: 'var(--space-4)',
-              color: 'var(--text-secondary)'
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)'
             }}>
               Choose a drive to sync:
+              <InfoButton tooltip="Public drives are visible to anyone with the link, forever. Don't use one for anything sensitive. Private drives are encrypted with your password before they ever leave your device; ArDrive never sees or stores it." />
             </h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -257,7 +284,7 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
                   value={drive.id}
                   checked={selectedDriveId === drive.id}
                   onChange={() => setSelectedDriveId(drive.id)}
-                  style={{ display: 'none' }}
+                  style={visuallyHiddenStyle}
                 />
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
@@ -290,19 +317,35 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
                       }}>
                         {drive.name}
                         {drive.privacy === 'private' && drive.emojiFingerprint && (
-                          <span style={{
-                            fontSize: '14px',
-                            opacity: 0.8
-                          }}>
+                          // POLISH-14 + coverage-table "Drive fingerprint" row:
+                          // the emoji sequence had no explanation anywhere and
+                          // no text fallback if the glyphs render as tofu boxes
+                          // (observed in this repo's own Linux screenshot
+                          // environment). Add both in one pass.
+                          <span
+                            title="Drive fingerprint. Should look identical every time you unlock this drive."
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontSize: '14px',
+                              opacity: 0.8
+                            }}
+                          >
                             {drive.emojiFingerprint}
+                            <span style={{ fontSize: 'var(--text-caption)', color: 'var(--text-tertiary)' }}>
+                              (fingerprint)
+                            </span>
+                            <InfoButton tooltip="This emoji sequence is a visual fingerprint of your drive's encryption key. It should look identical every time you unlock this drive. If it changes, stop and don't enter your password." />
                           </span>
                         )}
                       </h4>
                       <span style={{
-                        fontSize: '12px',
-                        padding: '2px 8px',
+                        fontSize: 'var(--text-caption)',
+                        fontWeight: 600,
+                        padding: '2px 10px',
                         backgroundColor: drive.privacy === 'private' ? 'var(--warning-surface)' : 'var(--info-surface)',
-                        borderRadius: 'var(--radius-sm)',
+                        borderRadius: 'var(--radius-pill)',
                         color: drive.privacy === 'private' ? 'var(--warning-fg)' : 'var(--info-fg)'
                       }}>
                         {drive.privacy === 'private' ? 'Private' : 'Public'}
@@ -455,14 +498,17 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
           )}
         </div>
 
-        {/* Help text */}
+        {/* COPY-13: "Skip Setup" didn't say what it skips to — a returning
+            user couldn't tell if skipping meant an empty dashboard, no
+            drive configured, etc. This line answers that directly for
+            either choice (skip or continue). */}
         <p style={{
           marginTop: 'var(--space-4)',
           fontSize: '13px',
           color: 'var(--text-tertiary)',
           textAlign: 'center'
         }}>
-          You can add more drives or change your selection later from the dashboard.
+          Skip for now and land on your dashboard — you can add or switch drives anytime from there.
         </p>
       </div>
 
