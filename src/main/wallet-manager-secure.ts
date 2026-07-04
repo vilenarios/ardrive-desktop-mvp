@@ -46,6 +46,64 @@ export class SecureWalletManager {
     return profileManager.getProfileStoragePath(this.currentProfileId, 'wallet.enc');
   }
 
+  /**
+   * MONEY-13: arweave.js's fetch-based Api never checks the HTTP status code
+   * (see node_modules/arweave/node/api.js `request()`), so on a gateway 429
+   * `wallets.getBalance()` resolves successfully with the raw rate-limit
+   * response body (HTML) instead of throwing. `arweave.ar.winstonToAr()` then
+   * silently turns that non-numeric body into the string "NaN" via
+   * BigNumber, with no exception for a caller to catch.
+   *
+   * Winston balances are always a base-10 integer string, so validate the
+   * shape before ever handing it to winstonToAr.
+   */
+  private isNumericWinstonString(value: unknown): value is string {
+    return typeof value === 'string' && /^\d+$/.test(value);
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Fetch the wallet balance, validating the response is a numeric winston
+   * string before it's trusted. Retries a bounded number of times with
+   * backoff on invalid (e.g. rate-limited) responses, since those are
+   * typically transient. Returns null (never NaN, never a fabricated '0')
+   * if a valid balance could not be obtained.
+   */
+  private async fetchValidatedWinstonBalance(
+    arweave: Arweave,
+    address: string,
+    maxAttempts = 3
+  ): Promise<string | null> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      let winstonBalance: unknown;
+      try {
+        winstonBalance = await arweave.wallets.getBalance(address);
+      } catch (error) {
+        console.error(`[WalletManager] getBalance threw on attempt ${attempt}/${maxAttempts}:`, error);
+        winstonBalance = undefined;
+      }
+
+      if (this.isNumericWinstonString(winstonBalance)) {
+        return winstonBalance;
+      }
+
+      console.error(
+        `[WalletManager] Non-numeric balance response on attempt ${attempt}/${maxAttempts} ` +
+        `(likely a gateway rate-limit/error page masquerading as a balance):`,
+        typeof winstonBalance === 'string' ? winstonBalance.slice(0, 120) : winstonBalance
+      );
+
+      if (attempt < maxAttempts) {
+        await this.delay(300 * Math.pow(2, attempt - 1)); // 300ms, 600ms, ...
+      }
+    }
+
+    return null;
+  }
+
   async generateNewWallet(password: string): Promise<{ seedPhrase: string; address: string }> {
     try {
       
@@ -425,16 +483,28 @@ export class SecureWalletManager {
       // Use ownerToAddress with the wallet's public key 'n' parameter
       const address = await arweave.wallets.ownerToAddress(this.walletJson.n);
       
-      // Get actual balance from Arweave network
+      // Get actual balance from Arweave network. MONEY-13: never let a
+      // non-numeric response (e.g. a swallowed 429) reach winstonToAr, and
+      // never report an unavailable balance as '0' (0 would be a lie about
+      // funds available) or 'NaN'. balanceUnavailable signals the renderer
+      // to show a transient unavailable/retry state instead.
       let balance = '0';
+      let balanceUnavailable = false;
       try {
-        const winstonBalance = await arweave.wallets.getBalance(address);
-        // Convert from winston (smallest unit) to AR
-        balance = arweave.ar.winstonToAr(winstonBalance);
-        console.log('Wallet balance:', balance, 'AR');
+        const winstonBalance = await this.fetchValidatedWinstonBalance(arweave, address);
+        if (winstonBalance !== null) {
+          // Convert from winston (smallest unit) to AR
+          balance = arweave.ar.winstonToAr(winstonBalance);
+          console.log('Wallet balance:', balance, 'AR');
+        } else {
+          balanceUnavailable = true;
+          balance = '';
+          console.error('Failed to get wallet balance: no valid numeric response after retries');
+        }
       } catch (balanceError) {
         console.error('Failed to get wallet balance:', balanceError);
-        // Keep balance as '0' if we can't fetch it
+        balanceUnavailable = true;
+        balance = '';
       }
       
       // Get Turbo Credits balance if available
@@ -457,7 +527,8 @@ export class SecureWalletManager {
         balance: balance,
         walletType: 'arweave',
         turboBalance,
-        turboWinc
+        turboWinc,
+        balanceUnavailable
       };
     } catch (error) {
       console.error('Failed to get wallet info:', error);

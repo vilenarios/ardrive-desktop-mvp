@@ -112,7 +112,11 @@ const TurboPurchaseTab: React.FC<TurboPurchaseTabProps> = ({
         <div className="tcm-convert-section">
           <div className="tcm-convert-balance">
             <span>Available AR Balance:</span>
-            <strong>{walletBalance} AR</strong>
+            {/* MONEY-13: walletBalance can be '' (fetch unavailable, e.g. a
+                gateway 429) or a stale non-numeric value - never render "NaN" */}
+            <strong>
+              {walletBalance === '' || isNaN(parseFloat(walletBalance)) ? 'Unavailable' : `${walletBalance} AR`}
+            </strong>
           </div>
           
           {/* Conversion Info Warning */}

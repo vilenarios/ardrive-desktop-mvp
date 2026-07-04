@@ -639,8 +639,14 @@ const UploadApprovalQueue: React.FC<UploadApprovalQueueProps> = ({
             gap: 'var(--space-3)'
           }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              AR Balance: <strong>{parseFloat(walletInfo.balance).toFixed(6)}</strong>
-              <InfoButton 
+              {/* MONEY-13: balance can be '' (fetch unavailable, e.g. a
+                  gateway 429) - never let that reach parseFloat and render "NaN" */}
+              AR Balance: <strong>{
+                (walletInfo.balance === '' || isNaN(parseFloat(walletInfo.balance)))
+                  ? 'Unavailable'
+                  : parseFloat(walletInfo.balance).toFixed(6)
+              }</strong>
+              <InfoButton
                 tooltip="Used for on-chain (L1) uploads. Required if Turbo credits are unavailable. Files under 100KB upload instantly and for free via Turbo." 
               />
             </span>

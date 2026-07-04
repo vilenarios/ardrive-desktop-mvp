@@ -122,6 +122,10 @@ export interface WalletInfo {
   walletType: 'arweave' | 'ethereum';
   turboBalance?: string;      // Turbo Credits balance in AR equivalent
   turboWinc?: string;         // Turbo Credits balance in winc
+  // MONEY-13: true when the AR balance could not be retrieved as a valid
+  // numeric value (e.g. a gateway 429 returning a non-numeric body).
+  // `balance` is '' in this case - never a fabricated '0' and never 'NaN'.
+  balanceUnavailable?: boolean;
 }
 
 export interface PendingUpload {
