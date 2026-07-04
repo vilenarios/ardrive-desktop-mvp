@@ -835,20 +835,8 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                     </div>
                     {item.isHidden && (
                       <span
+                        className="hidden-badge"
                         title="Hidden on Arweave — removed locally. Permanent storage can't be deleted; the data still exists. Unhide to restore it to view."
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          marginLeft: '8px',
-                          padding: '1px 8px',
-                          borderRadius: '10px',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          color: 'var(--text-secondary, #888)',
-                          background: 'var(--surface-hover, rgba(128,128,128,0.15))',
-                          verticalAlign: 'middle'
-                        }}
                       >
                         <EyeOff size={11} />
                         Hidden
@@ -1047,38 +1035,23 @@ export const StorageTab: React.FC<StorageTabProps> = ({
 
                 {viewMode === 'grid' && item.type === 'file' && (
                   <div className="grid-overlay">
-                    <div style={{
-                      position: 'absolute',
-                      top: '8px',
-                      right: '8px',
-                      display: 'flex',
-                      gap: '4px'
-                    }}>
+                    <div className="grid-overlay-actions">
                       {item.dataTxId && (
-                        <button 
-                          className="action-button"
+                        <button
+                          className="grid-preview-button"
                           title="Preview on Arweave"
                           onClick={async (e) => {
                             e.stopPropagation();
                             e.preventDefault();
                             await window.electronAPI.shell.openExternal(`https://arweave.net/${item.dataTxId}`);
                           }}
-                          style={{
-                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                            padding: '6px',
-                            borderRadius: '4px',
-                            border: '1px solid var(--gray-300)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
                         >
                           <Eye size={14} />
                         </button>
                       )}
                       {item.ardriveUrl && (
-                        <button 
-                          className="action-button"
+                        <button
+                          className="grid-preview-button"
                           title="View on ArDrive"
                           onClick={async (e) => {
                             e.stopPropagation();
@@ -1086,15 +1059,6 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                             if (item.ardriveUrl) {
                               await window.electronAPI.shell.openExternal(item.ardriveUrl);
                             }
-                          }}
-                          style={{
-                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                            padding: '6px',
-                            borderRadius: '4px',
-                            border: '1px solid var(--gray-300)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
                           }}
                         >
                           <ExternalLink size={14} />

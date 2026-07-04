@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <!-- DESIGN-6 static render — loads the REAL app stylesheet. styles.css
+       @imports theme.css (tokens), the legacy bridge :root, and every
+       component css including the DESIGN-6-touched styles.css rules
+       (.summary-card, .overview-modal-*, .modal-overlay/.modal-content,
+       .icon-button) and styles/dashboard-tabs.css. CSS @import resolves
+       relative to styles.css's own URL, so all its imports load correctly.
+       Markup below mirrors the real OverviewTab.tsx JSX + classNames
+       post-DESIGN-6 (see src/renderer/components/dashboard/OverviewTab.tsx). -->
+  <link rel="stylesheet" href="../../src/renderer/styles.css" />
+  <link rel="stylesheet" href="design6-tabnav-harness.css" />
+  <style>
+    html, body { height: 100%; }
+    body { margin: 0; background: var(--gray-50); }
+    .ic, .ic-sm, .ic-lg {
+      stroke: currentColor; stroke-width: 2; fill: none;
+      stroke-linecap: round; stroke-linejoin: round; flex: none;
+    }
+    .ic { width: 16px; height: 16px; }
+    .ic-sm { width: 14px; height: 14px; }
+    .ic-lg { width: 48px; height: 48px; }
+    /* Harness-only: keep the bonus modal crop hidden until the capture
+       script reveals it for the "-modal" screenshot. */
+    .design6-modal-demo { display: none; }
+    .design6-modal-demo.is-visible { display: flex; }
+  </style>
+</head>
+<body>
+  <!-- Real TabNavigation markup (TabNavigation.tsx) — Overview active. Not a
+       DESIGN-6 surface (that's DESIGN-4's shell), included only so the tab
+       content is seen in its real context. -->
+  <div class="tab-navigation-wrapper dashboard-tabs">
+    <div class="tab-navigation">
+      <div class="tab-list" role="tablist">
+        <button class="tab-button active"><span class="tab-label">Overview</span></button>
+        <button class="tab-button"><span class="tab-label">Upload Queue</span></button>
+        <button class="tab-button"><span class="tab-label">Download Queue</span></button>
+        <button class="tab-button"><span class="tab-label">Activity</span></button>
+        <button class="tab-button"><span class="tab-label">Permaweb</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-content">
+    <div class="tab-content-inner">
+      <div class="overview-tab-wrapper">
+        <div class="overview-tab">
+          <div style="margin-bottom: var(--space-6);">
+            <h2 style="font-size:24px;font-weight:600;margin:0 0 var(--space-2) 0;">Dashboard Overview</h2>
+            <p style="color: var(--text-secondary); font-size:16px; margin:0;">
+              Welcome to your drive! Here's what's happening with your permanent storage.
+            </p>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); margin-bottom: var(--space-6);">
+            <!-- Drive Information -->
+            <div class="summary-card">
+              <div class="card-header">
+                <div class="header-left">
+                  <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  <h3>Drive Information</h3>
+                </div>
+              </div>
+              <div class="drive-metadata">
+                <div class="metadata-row">
+                  <span class="metadata-label">Drive Name</span>
+                  <span class="metadata-value">My Private Drive</span>
+                </div>
+                <div class="metadata-row">
+                  <span class="metadata-label">Privacy</span>
+                  <span class="metadata-value">🔒 Private</span>
+                </div>
+                <div class="metadata-row">
+                  <span class="metadata-label">Created</span>
+                  <span class="metadata-value">Jun 12, 2026</span>
+                </div>
+                <div class="metadata-row">
+                  <span class="metadata-label">Size</span>
+                  <span class="metadata-value">248.6 MB</span>
+                </div>
+                <div class="metadata-row">
+                  <span class="metadata-label">Contains</span>
+                  <span class="metadata-value">14 folders, 132 files</span>
+                </div>
+                <div class="metadata-row">
+                  <span class="metadata-label">Drive ID</span>
+                  <div class="metadata-value drive-id">
+                    <span>a1b2c3d4-e5f6-4a3b-9c8d-1234567890ab</span>
+                    <button class="icon-button" title="Copy Drive ID">
+                      <svg class="ic-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="summary-card">
+              <div class="card-header">
+                <div class="header-left">
+                  <svg class="ic" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  <h3>Quick Actions</h3>
+                </div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap: var(--space-3);">
+                <button class="button large" style="display:flex;align-items:center;gap:var(--space-2);justify-content:center;">
+                  <svg class="ic" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                  Open Sync Folder
+                </button>
+                <button class="button outline large" style="display:flex;align-items:center;gap:var(--space-2);justify-content:center;">
+                  <svg class="ic" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  Rename Drive
+                </button>
+                <button class="button outline large" style="display:flex;align-items:center;gap:var(--space-2);justify-content:center;">
+                  <svg class="ic" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  View Drive Online
+                </button>
+                <button class="button outline large" style="display:flex;align-items:center;gap:var(--space-2);justify-content:center;">
+                  <svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Export Metadata
+                </button>
+                <button class="button outline large" style="display:flex;align-items:center;gap:var(--space-2);justify-content:center;">
+                  <svg class="ic" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  Create Manifest
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bonus evidence (not one of the required 6 shots): Rename Cost Confirm
+       modal — the biggest raw-hex-to-token cleanup in this item (it carried
+       10+ hardcoded literal colors for its backgrounds/text/borders). Hidden
+       by default; the capture script reveals it only for the "-modal"
+       screenshot pair. -->
+  <div class="modal-overlay design6-modal-demo">
+    <div class="modal-content overview-modal-panel overview-modal-panel-wide">
+      <h2 class="overview-modal-title">Confirm Drive Rename</h2>
+      <div class="overview-rename-summary">
+        <p style="margin:0; color: var(--text-primary);">Renaming <strong>"My Private Drive"</strong> to <strong>"My Renamed Drive"</strong></p>
+      </div>
+      <div class="overview-cost-card">
+        <h3 class="overview-cost-card-title">
+          <svg class="ic" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          Transaction Cost
+        </h3>
+        <div class="overview-cost-free-banner">
+          <div class="overview-cost-free-banner-heading">
+            <svg class="ic-sm" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            FREE with Turbo Credits
+          </div>
+          <p class="overview-cost-free-banner-copy">This operation is under 100KB and qualifies for free upload via Turbo.</p>
+        </div>
+        <div class="overview-cost-rows">
+          <div class="overview-cost-row">
+            <span class="overview-cost-row-label">AR Token Cost:</span>
+            <span class="overview-cost-row-value">~0.000001 AR</span>
+          </div>
+          <div class="overview-cost-row">
+            <span class="overview-cost-row-label">Your AR Balance:</span>
+            <span class="overview-cost-row-value" style="color: var(--success);">0.014200 AR</span>
+          </div>
+          <div class="overview-cost-row">
+            <span class="overview-cost-row-label">Turbo Balance:</span>
+            <span class="overview-cost-row-value" style="color: var(--success);">1.204500 Credits</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; gap:12px; justify-content:flex-end;">
+        <button class="button secondary">Cancel</button>
+        <button class="button primary" style="display:flex;align-items:center;gap:8px;">
+          <svg class="ic-sm" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/></svg>
+          Confirm Rename
+        </button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -76,22 +76,27 @@ const ToastNotification: React.FC<ToastNotificationProps> = ({ toast, onClose })
       </button>
 
       <style>{`
+        /* F7: base was a literal white fill; every toast always carries one
+         * of the .toast-{success,error,warning,info} type classes below
+         * which override it, but the fallback itself was still a raw
+         * literal and would render wrong if that ever changed. */
         .toast-notification {
           display: flex;
           align-items: flex-start;
           gap: var(--space-3);
           padding: var(--space-4);
           border-radius: var(--radius-lg);
-          box-shadow: var(--shadow-lg);
-          background: white;
+          box-shadow: var(--elevation-3);
+          background: var(--surface-raised);
           border: 1px solid var(--gray-200);
           max-width: 400px;
-          animation: slideIn 0.3s ease-out;
-          transition: all 0.3s ease-out;
+          animation: slideIn var(--motion-moderate) var(--ease-out);
+          transition: opacity var(--motion-moderate) var(--ease-standard),
+                      transform var(--motion-moderate) var(--ease-standard);
         }
 
         .toast-notification.exiting {
-          animation: slideOut 0.3s ease-out;
+          animation: slideOut var(--motion-moderate) var(--ease-in);
           opacity: 0;
           transform: translateX(100%);
         }
@@ -128,19 +133,19 @@ const ToastNotification: React.FC<ToastNotificationProps> = ({ toast, onClose })
         }
 
         .toast-success .toast-icon {
-          color: var(--success-600);
+          color: var(--success);
         }
 
         .toast-error .toast-icon {
-          color: var(--danger-600);
+          color: var(--danger-fg);
         }
 
         .toast-warning .toast-icon {
-          color: var(--warning-600);
+          color: var(--warning);
         }
 
         .toast-info .toast-icon {
-          color: var(--info-600);
+          color: var(--info-fg);
         }
 
         .toast-content {
@@ -173,7 +178,8 @@ const ToastNotification: React.FC<ToastNotificationProps> = ({ toast, onClose })
           display: flex;
           align-items: center;
           justify-content: center;
-          transition: all 0.2s ease;
+          transition: color var(--motion-base) var(--ease-standard),
+                      background-color var(--motion-base) var(--ease-standard);
         }
 
         .toast-close:hover {
@@ -181,24 +187,33 @@ const ToastNotification: React.FC<ToastNotificationProps> = ({ toast, onClose })
           color: var(--gray-700);
         }
 
+        .toast-close:active {
+          transform: scale(0.95);
+        }
+
+        .toast-close:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 2px var(--focus-ring);
+        }
+
         .toast-success {
-          border-color: var(--success-200);
-          background: var(--success-50);
+          border-color: var(--success);
+          background: var(--success-surface);
         }
 
         .toast-error {
-          border-color: var(--danger-200);
-          background: var(--danger-50);
+          border-color: var(--danger);
+          background: var(--danger-surface);
         }
 
         .toast-warning {
-          border-color: var(--warning-200);
-          background: var(--warning-50);
+          border-color: var(--warning);
+          background: var(--warning-surface);
         }
 
         .toast-info {
-          border-color: var(--info-200);
-          background: var(--info-50);
+          border-color: var(--info);
+          background: var(--info-surface);
         }
       `}</style>
     </div>

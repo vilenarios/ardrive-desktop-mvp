@@ -1,0 +1,62 @@
+/* Harness-only stylesheet — NOT part of the app, not part of this item's
+ * diff. TabNavigation.tsx renders its CSS via an embedded <style> JSX tag
+ * (component-scoped CSS-in-JS), so it never reaches src/renderer/styles.css
+ * and can't be picked up by just linking that file from a static (non-React)
+ * HTML page. Adapted from src/renderer/components/common/TabNavigation.tsx
+ * (still hardcoded/unconverted there — DESIGN-4 territory, out of scope for
+ * DESIGN-6) so the harness's tab bar reads like real chrome instead of
+ * unstyled buttons. One deliberate deviation from that source: the active
+ * tab's literal `background: white` was swapped for a token here purely so
+ * the DARK screenshots don't show a stray white tab in an otherwise dark
+ * shell — that fix is NOT applied to the real component (out of scope). */
+.tab-navigation-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-6);
+  background: var(--gray-50);
+}
+.tab-navigation {
+  background: var(--ardrive-surface);
+  border: 1px solid var(--ardrive-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+.tab-list {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+}
+.tab-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--ardrive-text-secondary);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  position: relative;
+  margin-bottom: -1px;
+  min-height: 48px;
+}
+.tab-button:hover:not(.active) {
+  color: var(--ardrive-text-primary);
+  background: var(--gray-50);
+  border-bottom-color: var(--ardrive-border-hover);
+}
+.tab-button.active {
+  color: var(--ardrive-primary);
+  background: var(--ardrive-surface);
+  border-bottom-color: var(--ardrive-primary);
+  z-index: 5;
+}
+.tab-label {
+  flex: 1;
+}

@@ -11,7 +11,10 @@
 @import './styles/user-menu.css';
 @import './styles/settings.css';
 @import './styles/dashboard-tabs.css';
+@import './styles/dashboard-shell.css';
+@import './styles/drive-selector.css';
 @import './styles/upload-queue-modern.css';
+@import './styles/modal.css';
 
 /*
  * BRIDGE LAYER (DESIGN-2): every legacy custom property below is kept for
@@ -879,6 +882,16 @@ label {
   cursor: not-allowed;
 }
 
+/* Error/invalid state (DESIGN-7: drive-name/password validation in the drive
+ * modals) — mirrors .seed-phrase-textarea.invalid's pattern. */
+.form-group input.is-invalid {
+  border-color: var(--danger);
+}
+
+.form-group input.is-invalid:focus {
+  box-shadow: 0 0 0 3px var(--danger-surface);
+}
+
 /* Status Indicators */
 .status-indicator {
   display: inline-block;
@@ -931,10 +944,15 @@ label {
   font-size: 14px;
 }
 
-/* Messages */
+/* Messages
+ * NOTE: `.error-message` is redeclared twice more below (search other
+ * occurrences) with different property subsets; those later same-specificity
+ * rules already win the color/background cascade, so this block's raw hex
+ * was inert dead code — replaced with tokens for hygiene, not a visual
+ * change (DESIGN-7). */
 .error-message {
-  background: #fef2f2;
-  color: #b91c1c;
+  background: var(--danger-surface);
+  color: var(--danger-fg);
   padding: var(--space-4);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-5);
@@ -943,8 +961,8 @@ label {
 }
 
 .success-message {
-  background: #f0fdf4;
-  color: #15803d;
+  background: var(--success-surface);
+  color: var(--success-fg);
   padding: var(--space-4);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-5);
@@ -1753,68 +1771,19 @@ label {
   flex-direction: column;
 }
 
-/* Top Navigation Bar */
-.top-navbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-3) var(--space-6);
-  background: white;
-  border-bottom: 1px solid var(--gray-200);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.navbar-brand {
-  display: flex;
-  align-items: center;
-}
-
-.navbar-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-}
-
-/* User Profile Section */
-.user-profile {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  background: var(--gray-50);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--gray-200);
-}
-
+/* NOTE (DESIGN-4): this section used to hold an entire unused "top navbar /
+ * user profile / drive header" implementation — Dashboard.tsx has rendered
+ * its own header (see .dashboard-header below) for a while now and none of
+ * those selectors were referenced anywhere. Removed the dead rules while
+ * restyling this block; .user-avatar and .user-name survive because
+ * UserMenu.tsx (DESIGN-7 scope, untouched here) still renders them. */
 .user-avatar {
   width: 36px;
   height: 36px;
   border-radius: 50%;
   object-fit: cover;
-  border: 2px solid white;
+  border: 2px solid var(--surface-raised);
   box-shadow: var(--shadow-sm);
-}
-
-.user-avatar-placeholder {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--gray-600);
-  border: 2px solid var(--gray-200);
-}
-
-.user-info {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 150px;
 }
 
 .user-name {
@@ -1827,157 +1796,6 @@ label {
   white-space: nowrap;
 }
 
-.user-address {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--gray-700);
-  font-family: monospace;
-}
-
-.user-balances {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 13px;
-}
-
-.balance-ar {
-  font-weight: 600;
-  color: var(--gray-800);
-}
-
-.balance-divider {
-  color: var(--gray-400);
-  font-size: 11px;
-}
-
-.turbo-balance-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--ardrive-warning);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.2s ease;
-}
-
-.turbo-balance-btn:hover {
-  opacity: 0.8;
-}
-
-/* ArNS CTA */
-.arns-cta {
-  margin-left: var(--space-2);
-  padding-left: var(--space-3);
-  border-left: 1px solid var(--gray-200);
-}
-
-.get-arns-btn {
-  padding: var(--space-2) var(--space-3);
-  background: var(--ardrive-primary);
-  color: white;
-  border: none;
-  border-radius: var(--radius);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-
-.get-arns-btn:hover {
-  background: var(--ardrive-primary-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
-}
-
-.navbar-buttons {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.navbar-btn {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--gray-300);
-  background: white;
-  border-radius: var(--radius);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  color: var(--gray-700);
-}
-
-.navbar-btn:hover {
-  background: var(--gray-50);
-  border-color: var(--gray-400);
-}
-
-.navbar-btn.logout {
-  color: var(--ardrive-danger);
-  border-color: var(--ardrive-danger-light);
-}
-
-.navbar-btn.logout:hover {
-  background: var(--ardrive-danger-light);
-  border-color: var(--ardrive-danger);
-}
-
-/* Drive Header */
-.drive-header {
-  padding: var(--space-5) var(--space-6);
-  background: var(--gray-50);
-  border-bottom: 1px solid var(--gray-200);
-  margin-bottom: var(--space-6);
-}
-
-.drive-info {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.drive-icon {
-  width: 48px;
-  height: 48px;
-  background: white;
-  border: 2px solid var(--gray-200);
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ardrive-primary);
-}
-
-.drive-text h1 {
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0 0 var(--space-1) 0;
-  color: var(--gray-900);
-}
-
-.drive-status {
-  font-size: 14px;
-  color: var(--gray-600);
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.sync-indicator {
-  color: var(--ardrive-secondary);
-  font-weight: 500;
-}
-
-
 /* Dashboard Content */
 .dashboard-content {
   padding: var(--space-6);
@@ -1989,16 +1807,10 @@ label {
   margin-bottom: 0; /* Remove gap - tabs now connect to content */
 }
 
-.tab-content {
-  background: var(--ardrive-surface);
-  border: 1px solid var(--ardrive-border);
-  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-lg);
-  min-height: 600px;
-  width: 100%;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  margin-top: -1px; /* Connect to tab navigation */
-  /* Padding moved to dashboard-tabs.css for consistency */
-}
+/* .tab-content / .tab-content-inner: see styles/dashboard-tabs.css — this
+ * used to be redefined here too (a dead-duplicate that happened to win the
+ * cascade over the imported file's own rule); consolidated to one
+ * definition as part of the DESIGN-4 tab-shell restyle. */
 
 /* Status Overview */
 .status-overview {
@@ -2673,13 +2485,20 @@ label {
   border-radius: var(--radius);
   color: var(--gray-600);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              border-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
 }
 
 .icon-button:hover {
   background: var(--gray-100);
   border-color: var(--gray-400);
   color: var(--gray-900);
+}
+
+.icon-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .icon-button.danger:hover {
@@ -3364,12 +3183,14 @@ label {
   border: 1px solid var(--ardrive-border);
   border-radius: 12px; /* Style guide aligned radius */
   padding: var(--space-6);
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--elevation-2);
+  transition: box-shadow var(--motion-moderate) var(--ease-standard),
+              border-color var(--motion-moderate) var(--ease-standard),
+              transform var(--motion-moderate) var(--ease-standard);
 }
 
 .summary-card:hover {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--elevation-3);
   border-color: var(--ardrive-border-hover);
   transform: translateY(-2px);
 }
@@ -3489,6 +3310,156 @@ label {
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   color: var(--gray-700);
+}
+
+/* Overview tab — Rename Drive + Rename Cost Confirm modals (DESIGN-6).
+ * Reuse the shared .modal-overlay backdrop; these panel/content classes
+ * are additive modifiers on top of the shared .modal-content shell. */
+.overview-modal-panel {
+  width: 90%;
+  max-width: 400px;
+  padding: var(--space-6);
+}
+
+.overview-modal-panel-wide {
+  max-width: 500px;
+}
+
+.overview-modal-title {
+  margin: 0 0 var(--space-4) 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.overview-modal-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.overview-modal-input {
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 16px;
+  outline: none;
+  transition: border-color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.overview-modal-input:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.overview-modal-input:focus {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--brand-surface);
+}
+
+.overview-modal-input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.overview-modal-input.has-error {
+  border-color: var(--danger);
+}
+
+.overview-modal-input:disabled {
+  background: var(--input-bg-disabled);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.overview-modal-error {
+  color: var(--danger-fg);
+  font-size: 14px;
+  margin: var(--space-1) 0 0 0;
+}
+
+.overview-rename-summary {
+  background: var(--surface-inset);
+  padding: 16px;
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+}
+
+.overview-cost-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.overview-cost-card-title {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0 0 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+}
+
+.overview-cost-free-banner {
+  background: var(--success-surface);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+}
+
+.overview-cost-free-banner-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--success-fg);
+  font-weight: 500;
+}
+
+.overview-cost-free-banner-copy {
+  font-size: 14px;
+  color: var(--success-fg);
+  margin: 4px 0 0 0;
+}
+
+.overview-cost-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.overview-cost-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.overview-cost-row-label {
+  color: var(--text-secondary);
+}
+
+.overview-cost-row-value {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.overview-cost-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  background: var(--danger-surface);
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: var(--danger-fg);
 }
 
 /* File Statistics */
@@ -4042,7 +4013,7 @@ label {
 }
 
 .explorer-controls {
-  background: white;
+  background: var(--surface-raised);
   border: 1px solid var(--gray-200);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
@@ -4074,13 +4045,19 @@ label {
   cursor: pointer;
   font-size: 14px;
   color: var(--gray-600);
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
   white-space: nowrap;
 }
 
 .breadcrumb-item:hover {
   background: var(--gray-100);
   color: var(--gray-800);
+}
+
+.breadcrumb-item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .breadcrumb-separator {
@@ -4126,14 +4103,35 @@ label {
   color: var(--gray-500);
 }
 
+.search-box:focus-within {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--brand-surface);
+}
+
 .filter-select {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--gray-200);
   border-radius: var(--radius);
-  background: white;
-  font-size: 14px;
+  background: var(--input-bg);
   color: var(--gray-700);
   cursor: pointer;
+  transition: border-color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.filter-select:hover {
+  border-color: var(--border-strong);
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--brand-surface);
+}
+
+.filter-select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 
 .view-actions {
@@ -4160,11 +4158,23 @@ label {
   border-radius: var(--radius-sm);
   cursor: pointer;
   color: var(--gray-600);
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.view-button:hover:not(.active) {
+  background: var(--surface-inset);
+  color: var(--gray-800);
+}
+
+.view-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .view-button.active {
-  background: white;
+  background: var(--surface-raised);
   color: var(--ardrive-primary);
   box-shadow: var(--shadow-sm);
 }
@@ -4189,7 +4199,7 @@ label {
 }
 
 .file-explorer {
-  background: white;
+  background: var(--surface-raised);
   border: 1px solid var(--gray-200);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -4220,11 +4230,16 @@ label {
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--gray-100);
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard);
 }
 
 .file-item:hover {
-  background: var(--gray-50);
+  background: var(--surface-inset);
+}
+
+.file-item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .file-item.selected {
@@ -4239,7 +4254,7 @@ label {
 
 /* File name specific styles */
 .file-name {
-  transition: color 0.15s ease;
+  transition: color var(--motion-base) var(--ease-standard);
   cursor: pointer;
 }
 
@@ -4285,23 +4300,71 @@ label {
   color: var(--warning-700);
 }
 
-.file-icon.image {
+/* File Type Icons (canonical, DESIGN-6) — shared by StorageTab's file
+ * browser and ActivityTab's unified activity stream (`getFileIcon`). Both
+ * components render the same `file-icon <family>` className; ActivityTab
+ * used to pair it with an inline `style={{ color: '#hex' }}` per file
+ * extension (60+ distinct raw literals) which both violated the "zero raw
+ * color literal" rule and silently won over these class rules anyway
+ * (inline style beats a CSS class). Consolidated onto the existing status/
+ * neutral token families below — a handful of tokens standing in for what
+ * was previously a bespoke per-extension rainbow. See DESIGN-6 report for
+ * the full mapping (DEVIATION: fewer distinct hues than before, but zero
+ * raw literals and consistent between both tabs). */
+.file-icon.image,
+.file-icon.camera,
+.file-icon.design {
   color: var(--success-600);
 }
 
-.file-icon.video {
+.file-icon.video,
+.file-icon.film {
   color: var(--ardrive-primary);
 }
 
-.file-icon.audio {
+.file-icon.audio,
+.file-icon.headphones {
   color: var(--warning-600);
 }
 
-.file-icon.document {
+.file-icon.document,
+.file-icon.text,
+.file-icon.presentation,
+.file-icon.spreadsheet,
+.file-icon.javascript,
+.file-icon.web,
+.file-icon.css,
+.file-icon.json,
+.file-icon.database,
+.file-icon.env,
+.file-icon.config {
   color: var(--info-600);
 }
 
-.file-icon.archive {
+.file-icon.pdf {
+  color: var(--danger-600);
+}
+
+.file-icon.archive,
+.file-icon.package,
+.file-icon.mobile,
+.file-icon.binary,
+.file-icon.disk,
+.file-icon.font,
+.file-icon.bookmark,
+.file-icon.python,
+.file-icon.java,
+.file-icon.php,
+.file-icon.ruby,
+.file-icon.go,
+.file-icon.rust,
+.file-icon.swift,
+.file-icon.kotlin,
+.file-icon.c,
+.file-icon.cpp,
+.file-icon.csharp,
+.file-icon.shell,
+.file-icon.windows {
   color: var(--gray-700);
 }
 
@@ -4387,6 +4450,38 @@ label {
   gap: var(--space-1);
 }
 
+.grid-overlay-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+}
+
+.grid-preview-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-sm);
+  color: var(--icon-mid);
+  cursor: pointer;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
+}
+
+.grid-preview-button:hover {
+  background: var(--surface-inset);
+  color: var(--icon-high);
+}
+
+.grid-preview-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .status-indicator {
   display: flex;
   align-items: center;
@@ -4467,24 +4562,12 @@ label {
   color: var(--gray-500);
 }
 
-/* File Type Icons */
-.file-icon {
-  color: var(--gray-600);
-}
-
-.type-icon.images { color: #10b981; }
-.type-icon.videos { color: #f59e0b; }
-.type-icon.documents { color: #3b82f6; }
-.type-icon.audio { color: #8b5cf6; }
-.type-icon.archives { color: #6b7280; }
-.type-icon.other { color: var(--gray-500); }
-
-.file-icon.image { color: #10b981; }
-.file-icon.video { color: #f59e0b; }
-.file-icon.document { color: #3b82f6; }
-.file-icon.audio { color: #8b5cf6; }
-.file-icon.archive { color: #6b7280; }
-.file-icon.default { color: var(--gray-500); }
+/* File Type Icons — canonical rules live below at the "File Type Icons
+ * (canonical, DESIGN-6)" block; that block also covers ActivityTab's wider
+ * filetype className set. This duplicate hardcoded-hex block (was
+ * overriding the tokenized rules earlier in the cascade) has been removed
+ * as part of the DESIGN-6 raw-literal cleanup — see the canonical block
+ * for `.type-icon.*` and `.file-icon.*`. */
 
 /* Column Icons */
 .column-icon.upload {
@@ -4613,7 +4696,9 @@ label {
   border-radius: var(--radius);
   cursor: pointer;
   color: var(--gray-400);
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard),
+              opacity var(--motion-base) var(--ease-standard);
   opacity: 0;
 }
 
@@ -4627,6 +4712,12 @@ label {
   color: var(--gray-800);
 }
 
+.quick-action:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .action-menu-trigger {
   display: flex;
   align-items: center;
@@ -4638,7 +4729,9 @@ label {
   border-radius: var(--radius);
   cursor: pointer;
   color: var(--gray-400);
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard),
+              opacity var(--motion-base) var(--ease-standard);
   opacity: 0;
 }
 
@@ -4652,16 +4745,22 @@ label {
   color: var(--gray-800);
 }
 
+.action-menu-trigger:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .action-menu {
   position: absolute;
   right: 0;
   top: 100%;
   z-index: 100;
   min-width: 160px;
-  background: white;
-  border: 1px solid var(--gray-200);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--elevation-3);
   padding: var(--space-1);
   margin-top: 4px;
 }
@@ -4679,12 +4778,18 @@ label {
   font-size: var(--text-sm);
   color: var(--gray-700);
   text-align: left;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
 }
 
 .action-menu-item:hover {
-  background: var(--gray-50);
+  background: var(--surface-inset);
   color: var(--gray-900);
+}
+
+.action-menu-item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .action-menu-item:disabled {
@@ -4697,14 +4802,19 @@ label {
   color: var(--gray-400);
 }
 
-/* File Details Modal */
+/* File Details Modal — shared chrome, also used by PrivateDriveUnlockModal,
+ * FileMetadataModal, WalletExport, StorageTab and ActivityTab's detail
+ * dialogs. Was hardcoded to a literal white panel over a literal black
+ * scrim, so it rendered as a near-invisible white-on-white sheet in dark
+ * mode (F7) for every one of those surfaces. Token-only fix — same
+ * appearance in light, correct now in dark. */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4713,9 +4823,10 @@ label {
 }
 
 .modal-content {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elevation-4);
   max-width: 600px;
   width: 100%;
   max-height: 80vh;
@@ -4724,13 +4835,32 @@ label {
   flex-direction: column;
 }
 
+/* Opt-in signature accent-top bar (§6.3/§6.4/§6.10) for consumers that want
+ * the full ArDrive modal treatment without changing the base look of every
+ * other .modal-content consumer. */
+.modal-content.has-accent-bar {
+  position: relative;
+}
+
+.modal-content.has-accent-bar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: var(--accent);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+}
+
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: var(--space-6);
-  border-bottom: 1px solid var(--gray-200);
-  background: var(--gray-50);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-inset);
+  color: var(--text-primary);
 }
 
 .modal-close {
@@ -4745,7 +4875,8 @@ label {
   cursor: pointer;
   font-size: 20px;
   color: var(--gray-500);
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
 }
 
 .modal-close:hover {
@@ -4753,10 +4884,16 @@ label {
   color: var(--gray-700);
 }
 
+.modal-close:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .modal-body {
   padding: var(--space-6);
   overflow-y: auto;
   flex: 1;
+  color: var(--text-primary);
 }
 
 .details-grid {
@@ -4772,7 +4909,7 @@ label {
   align-items: start;
   padding: var(--space-3);
   border-radius: 8px;
-  background: var(--gray-50);
+  background: var(--surface-inset);
 }
 
 .detail-label {
@@ -4798,18 +4935,76 @@ label {
   border-radius: 4px;
 }
 
+/* Status/type pill inside a detail row — §6.8 Badge/pill/chip */
+.detail-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.detail-badge-success {
+  background: var(--success-100);
+  color: var(--success-700);
+}
+
+.detail-badge-info {
+  background: var(--info-100);
+  color: var(--info-700);
+}
+
+.detail-badge-danger {
+  background: var(--danger-100);
+  color: var(--danger-700);
+}
+
+.detail-badge-neutral {
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.detail-progress-track {
+  width: 100px;
+  height: 6px;
+  background: var(--gray-200);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-left: var(--space-2);
+}
+
+.detail-progress-fill {
+  height: 100%;
+  transition: width var(--motion-slow) var(--ease-standard);
+}
+
+.detail-progress-fill.upload {
+  background: var(--success-500);
+}
+
+.detail-progress-fill.download {
+  background: var(--info-500);
+}
+
 .copy-button {
   background: none;
   border: none;
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 4px;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard);
   font-size: 12px;
 }
 
 .copy-button:hover {
   background: var(--gray-200);
+}
+
+.copy-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 
 .modal-actions {
@@ -4819,6 +5014,25 @@ label {
   margin-top: var(--space-6);
   padding-top: var(--space-4);
   border-top: 1px solid var(--gray-200);
+}
+
+/* "Hidden on Arweave" pill (StorageTab, SYNC-5) — §6.8 Badge/pill/chip,
+ * neutral variant. Previously an inline style that referenced a
+ * `--surface-hover` token which was never defined anywhere in the theme
+ * layer, with a hardcoded literal-color fallback baked in as a result —
+ * replaced with real, always-defined tokens. */
+.hidden-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface-inset);
+  vertical-align: middle;
 }
 
 @media (max-width: 768px) {
@@ -5015,17 +5229,31 @@ label {
   color: var(--gray-500);
 }
 
+/* Icon roundel above the empty-state heading (Dashboard.tsx's empty upload
+ * queue) — was an ad-hoc inline-styled div; ported onto tokens (DESIGN-4). */
+.empty-queue-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto var(--space-6);
+  background: var(--brand-surface);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand);
+}
+
 .empty-queue h3 {
   margin: 0 0 var(--space-3) 0;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
-  color: var(--gray-700);
+  color: var(--gray-900);
 }
 
 .empty-queue p {
-  margin: 0;
-  font-size: 14px;
-  color: var(--gray-500);
+  margin: 0 auto var(--space-6);
+  font-size: 15px;
+  color: var(--gray-600);
   max-width: 400px;
 }
 
@@ -5040,167 +5268,22 @@ label {
   color: var(--gray-900);
 }
 
-/* User Menu Dropdown Styles */
-.user-menu {
-  position: relative;
-}
-
-.user-menu-trigger {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: white;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--gray-700);
-  transition: all 0.2s ease;
-}
-
-.user-menu-trigger:hover {
-  background: var(--gray-50);
-  border-color: var(--gray-300);
-}
-
-.user-menu-trigger .user-avatar {
-  width: 24px;
-  height: 24px;
-  background: var(--gray-200);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--gray-600);
-  position: relative;
-  overflow: hidden;
-}
-
-.user-menu-trigger .user-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-
-.user-menu-trigger .user-name {
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.user-menu-trigger .chevron {
-  transition: transform 0.2s ease;
-  color: var(--gray-500);
-}
-
-.user-menu-trigger .chevron.rotated {
-  transform: rotate(180deg);
-}
-
-.user-menu-dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: var(--space-2);
-  min-width: 280px;
-  background: white;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  z-index: 1000;
-  overflow: hidden;
-  animation: dropdown-fade-in 0.2s ease;
-}
-
-@keyframes dropdown-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.menu-section {
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--gray-100);
-}
-
-.menu-section:last-child {
-  border-bottom: none;
-}
-
-.profile-info {
-  padding: var(--space-4);
-}
-
-.profile-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
-
-.profile-avatar {
-  width: 48px;
-  height: 48px;
-  background: var(--gray-100);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--gray-600);
-  position: relative;
-  overflow: hidden;
-}
-
-.profile-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-
-.profile-details {
-  flex: 1;
-  min-width: 0;
-}
-
-.profile-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--gray-900);
-  margin-bottom: var(--space-1);
-}
-
-.profile-arns {
-  font-size: 13px;
-  color: var(--ardrive-primary);
-  font-weight: 500;
-}
-
-.profile-address {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--gray-50);
-  border-radius: var(--radius);
-  font-family: monospace;
-  font-size: 13px;
-  color: var(--gray-700);
-}
-
+/* User Menu Dropdown Styles
+ * F7 finding (DESIGN-7): this whole section duplicated styles/user-menu.css
+ * under the SAME selectors (.user-menu-trigger, .user-menu-dropdown,
+ * .menu-section, .profile-info/.profile-header/.profile-avatar/
+ * .profile-details, .profile-address) — dead leftover from before that file
+ * was split out. Because styles.css's own body loads AFTER its @imports
+ * (including user-menu.css), this later, un-migrated copy was WINNING the
+ * cascade and shadowing every token fix in user-menu.css: `background:
+ * white` on both the trigger pill and the dropdown panel, so the always-
+ * visible header trigger and its dropdown rendered as literal white in dark
+ * mode regardless of what user-menu.css said. Removed as dead/superseded
+ * (verified no other component references these exact class names — the
+ * only other user of `.profile-info`/`.profile-avatar`/`.profile-details`,
+ * ProfileSwitcher.tsx, carries its own scoped <style> block that already
+ * wins the cascade independently). `.copy-button` below is kept in place —
+ * it's also used by StorageTab/ActivityTab (out of this item's scope). */
 .copy-button {
   padding: var(--space-1);
   background: none;
@@ -5217,55 +5300,6 @@ label {
 .copy-button:hover {
   background: var(--gray-200);
   color: var(--gray-700);
-}
-
-.balance-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-3) var(--space-4);
-  font-size: 14px;
-}
-
-.balance-label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--gray-600);
-}
-
-.balance-value {
-  font-weight: 600;
-  color: var(--gray-900);
-}
-
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  padding: var(--space-3) var(--space-4);
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--gray-700);
-  text-align: left;
-  transition: all 0.2s ease;
-}
-
-.menu-item:hover {
-  background: var(--gray-50);
-  color: var(--gray-900);
-}
-
-.menu-item.logout {
-  color: var(--error-600);
-}
-
-.menu-item.logout:hover {
-  background: var(--error-50);
-  color: var(--error-700);
 }
 
 /* Animations */

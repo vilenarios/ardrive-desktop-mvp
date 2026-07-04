@@ -6,30 +6,34 @@
   font-family: var(--font-system);
 }
 
-/* Profile Bar/Trigger */
+/* Profile Bar/Trigger
+ * F7: was a literal white pill — always visible in the dashboard header, so
+ * this was one of the most prominent dark-mode breaks in the app. */
 .user-menu-trigger {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background: white;
+  background: var(--surface-raised);
   border: 1px solid var(--gray-300);
   border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              border-color var(--motion-base) var(--ease-standard),
+              box-shadow var(--motion-base) var(--ease-standard);
   min-width: 12.5rem; /* 200px */
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--elevation-1);
   font-size: 0.875rem;
 }
 
 .user-menu-trigger:hover {
-  background: var(--gray-50);
+  background: var(--surface-inset);
   border-color: var(--gray-400);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--elevation-2);
 }
 
-.user-menu-trigger:focus {
-  outline: 2px solid var(--ardrive-primary);
+.user-menu-trigger:focus-visible {
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -74,19 +78,25 @@
   transform: rotate(180deg);
 }
 
-/* Dropdown Menu */
+/* Dropdown Menu — F7: literal white panel, invisible-on-dark. */
 .user-menu-dropdown {
   position: absolute;
   top: calc(100% + var(--space-2));
   right: 0;
-  background: white;
+  background: var(--surface-overlay);
   border: 1px solid var(--gray-200);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--elevation-4);
   z-index: 1000;
   overflow: hidden;
   min-width: 20rem; /* 320px */
   max-width: 25rem; /* 400px */
+  animation: menuDropdownIn var(--motion-moderate) var(--ease-out);
+}
+
+@keyframes menuDropdownIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* Menu Sections */
@@ -230,6 +240,11 @@
   color: var(--ardrive-primary);
 }
 
+.copy-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
 /* Balance Styles */
 .balance-item {
   display: flex;
@@ -283,6 +298,11 @@
   color: var(--ardrive-primary);
 }
 
+.refresh-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
 .refresh-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -297,7 +317,17 @@
   to { transform: rotate(360deg); }
 }
 
-/* Simplified Tooltip Styles */
+/* Simplified Tooltip Styles
+ * F7 + collision fix: this used to be named `.tooltip-content` — the exact
+ * same class name InfoButton.tsx uses (info-button.css). Being a global,
+ * un-namespaced selector, whichever stylesheet imported later in styles.css
+ * won the cascade for BOTH components, so info-button.css's own DESIGN-3
+ * dark-mode fix (background/color forced !important) was fighting this
+ * file's later, non-!important `position`/`padding`/etc, and this tooltip's
+ * own background (`--gray-900`, which bridges to near-white `--text-primary`
+ * in dark mode) with literal white text was unreadable in dark mode.
+ * Renamed to `.menu-tooltip-content` (unique to this component) and put on
+ * theme-reactive surface/text tokens instead. */
 .balance-tooltip,
 .export-tooltip {
   position: relative;
@@ -306,38 +336,41 @@
   margin-left: var(--space-2);
 }
 
-.balance-tooltip:hover .tooltip-content,
-.export-tooltip:hover .tooltip-content {
+.balance-tooltip:hover .menu-tooltip-content,
+.export-tooltip:hover .menu-tooltip-content {
   opacity: 1;
   visibility: visible;
 }
 
-.tooltip-content {
+.menu-tooltip-content {
   position: absolute;
   bottom: calc(100% + var(--space-1));
   left: 50%;
   transform: translateX(-50%);
-  background: var(--gray-900);
-  color: white;
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  box-shadow: var(--elevation-3);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   font-size: 0.75rem;
   white-space: nowrap;
   opacity: 0;
   visibility: hidden;
-  transition: all 0.2s ease;
+  transition: opacity var(--motion-base) var(--ease-standard),
+              visibility var(--motion-base) var(--ease-standard);
   z-index: 1001;
   pointer-events: none;
 }
 
-.tooltip-content::after {
+.menu-tooltip-content::after {
   content: '';
   position: absolute;
   top: 100%;
   left: 50%;
   transform: translateX(-50%);
   border: 0.25rem solid transparent;
-  border-top-color: var(--gray-900);
+  border-top-color: var(--surface-overlay);
 }
 
 /* Menu Item Styles */
@@ -367,6 +400,11 @@
   color: var(--gray-900);
 }
 
+.menu-item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+
 .menu-item.wallet-export {
   position: relative;
 }
@@ -389,14 +427,15 @@
   color: var(--ardrive-danger);
 }
 
-/* Modal Styles */
+/* Modal Styles — F7: literal black scrim + literal white panel, invisible
+ * on dark. */
 .logout-modal-backdrop {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -405,9 +444,10 @@
 }
 
 .logout-modal {
-  background: white;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-xl);
+  box-shadow: var(--elevation-4);
   width: 90%;
   max-width: 25rem; /* 400px */
   overflow: hidden;
@@ -446,6 +486,11 @@
   color: var(--gray-700);
 }
 
+.close-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
 .logout-modal-body {
   padding: var(--space-6);
 }
@@ -473,18 +518,24 @@
 
 .cancel-button {
   padding: var(--space-2) var(--space-4);
-  background: white;
+  background: var(--surface-raised);
   border: 1px solid var(--gray-300);
   border-radius: var(--radius-md);
   font-size: 0.875rem;
   color: var(--gray-700);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              border-color var(--motion-base) var(--ease-standard);
 }
 
 .cancel-button:hover {
-  background: var(--gray-50);
+  background: var(--surface-inset);
   border-color: var(--gray-400);
+}
+
+.cancel-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .logout-confirm-button {
@@ -493,17 +544,28 @@
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   background: var(--ardrive-danger);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   border-radius: var(--radius-md);
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color var(--motion-base) var(--ease-standard),
+              transform var(--motion-base) var(--ease-standard);
 }
 
 .logout-confirm-button:hover {
   background: var(--danger-700);
+  transform: translateY(-1px);
+}
+
+.logout-confirm-button:active {
+  transform: translateY(0);
+}
+
+.logout-confirm-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 /* Responsive Design */

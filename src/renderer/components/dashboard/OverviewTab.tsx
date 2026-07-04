@@ -325,7 +325,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         <h2 style={{ fontSize: '24px', fontWeight: '600', margin: 0, marginBottom: 'var(--space-2)' }}>
           Dashboard Overview
         </h2>
-        <p style={{ color: 'var(--gray-600)', fontSize: '16px', margin: 0 }}>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '16px', margin: 0 }}>
           Welcome to your drive! Here&apos;s what&apos;s happening with your permanent storage.
         </p>
       </div>
@@ -510,43 +510,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
       {/* Rename Drive Modal */}
       {showRenameModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: 'var(--radius-lg)',
-            padding: 'var(--space-6)',
-            width: '90%',
-            maxWidth: '400px',
-            boxShadow: '0 4px 24px rgba(0, 0, 0, 0.15)'
-          }}>
-            <h2 style={{ 
-              margin: 0, 
-              marginBottom: 'var(--space-4)',
-              fontSize: '20px',
-              fontWeight: '600'
-            }}>
+        <div className="modal-overlay">
+          <div className="modal-content overview-modal-panel">
+            <h2 className="overview-modal-title">
               Rename Drive
             </h2>
-            
+
             <div style={{ marginBottom: 'var(--space-4)' }}>
-              <label style={{
-                display: 'block',
-                marginBottom: 'var(--space-2)',
-                fontSize: '14px',
-                fontWeight: '500',
-                color: 'var(--gray-700)'
-              }}>
+              <label className="overview-modal-label">
                 Drive Name
               </label>
               <input
@@ -556,27 +527,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   setNewDriveName(e.target.value);
                   setRenameError(null);
                 }}
-                style={{
-                  width: '100%',
-                  padding: 'var(--space-3)',
-                  border: `1px solid ${renameError ? 'var(--red-500)' : 'var(--gray-300)'}`,
-                  borderRadius: 'var(--radius)',
-                  fontSize: '16px',
-                  outline: 'none',
-                  transition: 'border-color 0.2s'
-                }}
-                onFocus={(e) => e.target.style.borderColor = 'var(--ardrive-primary-500)'}
-                onBlur={(e) => e.target.style.borderColor = renameError ? 'var(--red-500)' : 'var(--gray-300)'}
+                className={`overview-modal-input${renameError ? ' has-error' : ''}`}
                 disabled={isRenaming}
                 autoFocus
               />
               {renameError && (
-                <p style={{
-                  color: 'var(--red-600)',
-                  fontSize: '14px',
-                  marginTop: 'var(--space-1)',
-                  margin: 'var(--space-1) 0 0 0'
-                }}>
+                <p className="overview-modal-error">
                   {renameError}
                 </p>
               )}
@@ -598,9 +554,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 className="button"
                 onClick={handleRenameClick}
                 disabled={isRenaming || !newDriveName.trim()}
-                style={{
-                  opacity: isRenaming || !newDriveName.trim() ? 0.6 : 1
-                }}
               >
                 {isRenaming ? 'Renaming...' : 'Rename'}
               </button>
@@ -611,128 +564,57 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
       {/* Rename Cost Confirmation Modal */}
       {showRenameCostConfirm && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            padding: '24px',
-            maxWidth: '500px',
-            width: '90%',
-            boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)'
-          }}>
-            <h2 style={{
-              fontSize: '20px',
-              fontWeight: '600',
-              marginBottom: '16px'
-            }}>
+        <div className="modal-overlay">
+          <div className="modal-content overview-modal-panel overview-modal-panel-wide">
+            <h2 className="overview-modal-title">
               Confirm Drive Rename
             </h2>
-            
-            <div style={{
-              backgroundColor: '#f9fafb',
-              padding: '16px',
-              borderRadius: '6px',
-              marginBottom: '16px'
-            }}>
-              <p style={{ marginBottom: '8px', color: '#374151' }}>
+
+            <div className="overview-rename-summary">
+              <p style={{ margin: 0, color: 'var(--text-primary)' }}>
                 Renaming <strong>&quot;{selectedDrive.name}&quot;</strong> to <strong>&quot;{newDriveName}&quot;</strong>
               </p>
             </div>
 
             {/* Cost Information */}
-            <div style={{
-              border: '1px solid #e5e7eb',
-              borderRadius: '6px',
-              padding: '16px',
-              marginBottom: '16px'
-            }}>
-              <h3 style={{
-                fontSize: '16px',
-                fontWeight: '500',
-                marginBottom: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
+            <div className="overview-cost-card">
+              <h3 className="overview-cost-card-title">
                 <CreditCard size={18} />
                 Transaction Cost
               </h3>
-              
+
               {isArDriveOperationFree('RENAME_DRIVE') ? (
-                <div style={{
-                  backgroundColor: '#d1fae5',
-                  padding: '12px',
-                  borderRadius: '4px',
-                  marginBottom: '12px'
-                }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    color: '#065f46',
-                    fontWeight: '500'
-                  }}>
+                <div className="overview-cost-free-banner">
+                  <div className="overview-cost-free-banner-heading">
                     <Zap size={16} />
                     FREE with Turbo Credits
                   </div>
-                  <p style={{
-                    fontSize: '14px',
-                    color: '#047857',
-                    marginTop: '4px'
-                  }}>
+                  <p className="overview-cost-free-banner-copy">
                     This operation is under 100KB and qualifies for free upload via Turbo.
                   </p>
                 </div>
               ) : null}
-              
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-                fontSize: '14px'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
-                  <span style={{ color: '#6b7280' }}>AR Token Cost:</span>
-                  <span style={{ fontWeight: '500' }}>~0.000001 AR</span>
+
+              <div className="overview-cost-rows">
+                <div className="overview-cost-row">
+                  <span className="overview-cost-row-label">AR Token Cost:</span>
+                  <span className="overview-cost-row-value">~0.000001 AR</span>
                 </div>
-                
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
-                  <span style={{ color: '#6b7280' }}>Your AR Balance:</span>
-                  <span style={{ 
-                    fontWeight: '500',
-                    color: walletBalances.ar < 0.000001 ? '#dc2626' : '#059669'
-                  }}>
+
+                <div className="overview-cost-row">
+                  <span className="overview-cost-row-label">Your AR Balance:</span>
+                  <span
+                    className="overview-cost-row-value"
+                    style={{ color: walletBalances.ar < 0.000001 ? 'var(--danger)' : 'var(--success)' }}
+                  >
                     {walletBalances.ar.toFixed(6)} AR
                   </span>
                 </div>
-                
+
                 {walletBalances.turbo !== null && (
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <span style={{ color: '#6b7280' }}>Turbo Balance:</span>
-                    <span style={{ fontWeight: '500', color: '#059669' }}>
+                  <div className="overview-cost-row">
+                    <span className="overview-cost-row-label">Turbo Balance:</span>
+                    <span className="overview-cost-row-value" style={{ color: 'var(--success)' }}>
                       {walletBalances.turbo.toFixed(6)} Credits
                     </span>
                   </div>
@@ -742,17 +624,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
             {/* Warning if insufficient balance */}
             {walletBalances.ar < 0.000001 && !isArDriveOperationFree('RENAME_DRIVE') && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: '8px',
-                padding: '12px',
-                backgroundColor: '#fef2f2',
-                borderRadius: '4px',
-                marginBottom: '16px'
-              }}>
-                <AlertCircle size={16} style={{ color: '#dc2626', marginTop: '2px' }} />
-                <p style={{ fontSize: '14px', color: '#dc2626' }}>
+              <div className="overview-cost-warning">
+                <AlertCircle size={16} style={{ color: 'var(--danger)', marginTop: '2px', flexShrink: 0 }} />
+                <p style={{ margin: 0 }}>
                   Insufficient AR balance. You need at least 0.000001 AR to rename the drive.
                 </p>
               </div>

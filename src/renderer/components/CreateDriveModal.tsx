@@ -34,14 +34,14 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
       setDriveNameError('Drive name must be under 32 characters');
       return false;
     }
-    
+
     // Check for valid characters (letters, numbers, spaces, dashes, underscores)
     const validPattern = /^[a-zA-Z0-9\s\-_]*$/;
     if (!validPattern.test(name)) {
       setDriveNameError('Drive name can only contain letters, numbers, spaces, dashes, and underscores');
       return false;
     }
-    
+
     // Clear error if valid
     setDriveNameError(null);
     return true;
@@ -144,7 +144,7 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
           uploadPriority: 0
         }
       };
-      
+
       // Add the drive mapping via IPC (UX-3: unwrap the envelope)
       const addMappingResult = await window.electronAPI.driveMappings.add(driveMapping);
       if (!addMappingResult.success) {
@@ -172,59 +172,19 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 9999
-    }}>
-      <div style={{
-        backgroundColor: 'white',
-        borderRadius: 'var(--radius-lg)',
-        padding: 'var(--space-6)',
-        maxWidth: '500px',
-        width: '90%',
-        maxHeight: '80vh',
-        overflow: 'auto',
-        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
-      }}>
+    <div className="drive-modal-overlay">
+      <div className="drive-modal-panel size-md">
         {/* Header */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 'var(--space-6)'
-        }}>
-          <h2 style={{
-            fontSize: '20px',
-            fontWeight: '600',
-            margin: 0,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-2)'
-          }}>
+        <div className="drive-modal-header">
+          <h2 className="drive-modal-title">
             <HardDrive size={24} />
             Create New Drive
           </h2>
           <button
+            className="drive-modal-close"
             onClick={onClose}
             disabled={isCreating}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 'var(--space-1)',
-              color: 'var(--gray-600)',
-              transition: 'color 0.2s ease'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--gray-900)'}
-            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--gray-600)'}
+            aria-label="Close"
           >
             <X size={20} />
           </button>
@@ -232,107 +192,47 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
 
         {/* Error Message */}
         {error && (
-          <div style={{
-            padding: 'var(--space-3)',
-            backgroundColor: 'var(--error-50)',
-            border: '1px solid var(--error-200)',
-            borderRadius: 'var(--radius-md)',
-            marginBottom: 'var(--space-4)',
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 'var(--space-2)'
-          }}>
-            <AlertCircle size={20} style={{ color: 'var(--error-600)', flexShrink: 0 }} />
-            <span style={{ fontSize: '14px', color: 'var(--error-700)' }}>{error}</span>
+          <div className="modal-banner is-error">
+            <AlertCircle size={20} />
+            <span>{error}</span>
           </div>
         )}
 
         {/* Drive Name Input */}
-        <div style={{ marginBottom: 'var(--space-6)' }}>
-          <label style={{
-            display: 'block',
-            fontSize: '14px',
-            fontWeight: '500',
-            marginBottom: 'var(--space-2)',
-            color: 'var(--gray-700)'
-          }}>
-            Drive Name
-          </label>
+        <div className="form-group" style={{ marginBottom: 'var(--space-6)' }}>
+          <label>Drive Name</label>
           <input
             type="text"
+            className={driveNameError ? 'is-invalid' : ''}
             value={driveName}
             onChange={handleDriveNameChange}
             placeholder="Enter drive name (e.g., Personal Files, Work Documents)"
-            style={{
-              width: '100%',
-              padding: 'var(--space-3)',
-              border: `1px solid ${driveNameError ? 'var(--error-500)' : 'var(--gray-300)'}`,
-              borderRadius: 'var(--radius-md)',
-              fontSize: '14px',
-              transition: 'border-color 0.2s ease'
-            }}
-            onFocus={(e) => {
-              if (!driveNameError) {
-                e.currentTarget.style.borderColor = 'var(--ardrive-primary)';
-              }
-            }}
-            onBlur={(e) => {
-              if (!driveNameError) {
-                e.currentTarget.style.borderColor = 'var(--gray-300)';
-              }
-            }}
           />
-          <div style={{
-            marginTop: 'var(--space-1)',
-            minHeight: '20px'
-          }}>
-            {driveNameError ? (
-              <span style={{ fontSize: '12px', color: 'var(--error-600)' }}>{driveNameError}</span>
-            ) : (
-              <span style={{ fontSize: '12px', color: 'var(--gray-500)' }}>
-                {driveName.length}/32 characters
-              </span>
-            )}
-          </div>
+          <small style={driveNameError ? { color: 'var(--danger-fg)' } : undefined}>
+            {driveNameError || `${driveName.length}/32 characters`}
+          </small>
         </div>
 
         {/* Drive Privacy Selection */}
-        <div style={{ marginBottom: 'var(--space-6)' }}>
-          <label style={{
-            display: 'block',
-            fontSize: '14px',
-            fontWeight: '500',
-            marginBottom: 'var(--space-3)',
-            color: 'var(--gray-700)'
-          }}>
-            Drive Privacy
-          </label>
-          
-          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+        <div className="form-group" style={{ marginBottom: 'var(--space-6)' }}>
+          <label>Drive Privacy</label>
+
+          <div className="drive-privacy-options">
             <button
+              className={`drive-privacy-option ${drivePrivacy === 'private' ? 'is-selected' : ''}`}
               onClick={() => {
                 setDrivePrivacy('private');
                 setPasswordError(null);
               }}
               disabled={isCreating}
-              style={{
-                flex: 1,
-                padding: 'var(--space-4)',
-                border: `2px solid ${drivePrivacy === 'private' ? 'var(--ardrive-primary)' : 'var(--gray-300)'}`,
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: drivePrivacy === 'private' ? 'var(--ardrive-primary-50)' : 'white',
-                cursor: isCreating ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s ease'
-              }}
             >
-              <Lock size={20} style={{ margin: '0 auto var(--space-2)' }} />
-              <div style={{ fontWeight: '500', marginBottom: 'var(--space-1)' }}>Private</div>
-              <div style={{ fontSize: '12px', color: 'var(--gray-600)' }}>
-                End-to-end encrypted
-              </div>
+              <Lock size={20} />
+              <div className="drive-privacy-option-title">Private</div>
+              <div className="drive-privacy-option-desc">End-to-end encrypted</div>
             </button>
 
             <button
+              className={`drive-privacy-option ${drivePrivacy === 'public' ? 'is-selected' : ''}`}
               onClick={() => {
                 setDrivePrivacy('public');
                 setPassword('');
@@ -340,21 +240,10 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
                 setPasswordError(null);
               }}
               disabled={isCreating}
-              style={{
-                flex: 1,
-                padding: 'var(--space-4)',
-                border: `2px solid ${drivePrivacy === 'public' ? 'var(--ardrive-primary)' : 'var(--gray-300)'}`,
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: drivePrivacy === 'public' ? 'var(--ardrive-primary-50)' : 'white',
-                cursor: isCreating ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s ease'
-              }}
             >
-              <Globe size={20} style={{ margin: '0 auto var(--space-2)' }} />
-              <div style={{ fontWeight: '500', marginBottom: 'var(--space-1)' }}>Public</div>
-              <div style={{ fontSize: '12px', color: 'var(--gray-600)' }}>
-                Anyone can view
-              </div>
+              <Globe size={20} />
+              <div className="drive-privacy-option-title">Public</div>
+              <div className="drive-privacy-option-desc">Anyone can view</div>
             </button>
           </div>
         </div>
@@ -363,54 +252,22 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
         {drivePrivacy === 'private' && (
           <div style={{ marginBottom: 'var(--space-6)' }}>
             {/* Important Security Notice */}
-            <div style={{
-              padding: 'var(--space-4)',
-              backgroundColor: 'var(--warning-50)',
-              borderRadius: 'var(--radius-md)',
-              marginBottom: 'var(--space-4)',
-              border: '1px solid var(--warning-200)'
-            }}>
-              <div style={{
-                display: 'flex',
-                gap: 'var(--space-3)',
-                alignItems: 'flex-start'
-              }}>
-                <ShieldAlert size={20} style={{ color: 'var(--warning-600)', flexShrink: 0, marginTop: '2px' }} />
-                <div>
-                  <div style={{
-                    fontWeight: '600',
-                    fontSize: '14px',
-                    color: 'var(--warning-800)',
-                    marginBottom: 'var(--space-1)'
-                  }}>
-                    Important: This password is permanent
-                  </div>
-                  <div style={{
-                    fontSize: '13px',
-                    color: 'var(--warning-700)',
-                    lineHeight: '1.4'
-                  }}>
-                    Your drive password cannot be changed or recovered. If you forget this password, 
-                    you will permanently lose access to all files in this drive. Please store it safely.
-                  </div>
-                </div>
+            <div className="security-warning">
+              <ShieldAlert size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                <strong>Important: This password is permanent</strong>
+                Your drive password cannot be changed or recovered. If you forget this password,
+                you will permanently lose access to all files in this drive. Please store it safely.
               </div>
             </div>
 
             {/* Password Input */}
-            <div style={{ marginBottom: 'var(--space-4)' }}>
-              <label style={{
-                display: 'block',
-                fontSize: '14px',
-                fontWeight: '500',
-                marginBottom: 'var(--space-2)',
-                color: 'var(--gray-700)'
-              }}>
-                Drive Password
-              </label>
+            <div className="form-group">
+              <label>Drive Password</label>
               <div style={{ position: 'relative' }}>
                 <input
                   type={showPassword ? 'text' : 'password'}
+                  className={passwordError ? 'is-invalid' : ''}
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value);
@@ -418,43 +275,14 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
                   }}
                   placeholder="Enter a strong password"
                   disabled={isCreating}
-                  style={{
-                    width: '100%',
-                    padding: 'var(--space-3)',
-                    paddingRight: '48px',
-                    border: `1px solid ${passwordError ? 'var(--error-300)' : 'var(--gray-300)'}`,
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: '14px',
-                    outline: 'none',
-                    transition: 'border-color 0.2s ease'
-                  }}
-                  onFocus={(e) => {
-                    if (!passwordError) {
-                      e.target.style.borderColor = 'var(--ardrive-primary)';
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (!passwordError) {
-                      e.target.style.borderColor = 'var(--gray-300)';
-                    }
-                  }}
+                  style={{ paddingRight: '48px' }}
                 />
                 <button
                   type="button"
+                  className="password-toggle-eye"
                   onClick={() => setShowPassword(!showPassword)}
                   disabled={isCreating}
-                  style={{
-                    position: 'absolute',
-                    right: '12px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    cursor: isCreating ? 'not-allowed' : 'pointer',
-                    color: 'var(--gray-500)',
-                    padding: '4px',
-                    borderRadius: '4px'
-                  }}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -462,19 +290,12 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
             </div>
 
             {/* Confirm Password Input */}
-            <div>
-              <label style={{
-                display: 'block',
-                fontSize: '14px',
-                fontWeight: '500',
-                marginBottom: 'var(--space-2)',
-                color: 'var(--gray-700)'
-              }}>
-                Confirm Password
-              </label>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>Confirm Password</label>
               <div style={{ position: 'relative' }}>
                 <input
                   type={showConfirmPassword ? 'text' : 'password'}
+                  className={passwordError ? 'is-invalid' : ''}
                   value={confirmPassword}
                   onChange={(e) => {
                     setConfirmPassword(e.target.value);
@@ -482,70 +303,30 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
                   }}
                   placeholder="Re-enter your password"
                   disabled={isCreating}
-                  style={{
-                    width: '100%',
-                    padding: 'var(--space-3)',
-                    paddingRight: '48px',
-                    border: `1px solid ${passwordError ? 'var(--error-300)' : 'var(--gray-300)'}`,
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: '14px',
-                    outline: 'none',
-                    transition: 'border-color 0.2s ease'
-                  }}
-                  onFocus={(e) => {
-                    if (!passwordError) {
-                      e.target.style.borderColor = 'var(--ardrive-primary)';
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (!passwordError) {
-                      e.target.style.borderColor = 'var(--gray-300)';
-                    }
-                  }}
+                  style={{ paddingRight: '48px' }}
                 />
                 <button
                   type="button"
+                  className="password-toggle-eye"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   disabled={isCreating}
-                  style={{
-                    position: 'absolute',
-                    right: '12px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    cursor: isCreating ? 'not-allowed' : 'pointer',
-                    color: 'var(--gray-500)',
-                    padding: '4px',
-                    borderRadius: '4px'
-                  }}
+                  aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                 >
                   {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
               {passwordError && (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-2)',
-                  marginTop: 'var(--space-2)',
-                  fontSize: '13px',
-                  color: 'var(--error-600)'
-                }}>
+                <small style={{ color: 'var(--danger-fg)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                   <AlertCircle size={14} />
                   {passwordError}
-                </div>
+                </small>
               )}
             </div>
           </div>
         )}
 
         {/* Action Buttons */}
-        <div style={{
-          display: 'flex',
-          gap: 'var(--space-3)',
-          marginTop: 'var(--space-4)'
-        }}>
+        <div className="drive-modal-footer">
           <button
             className="button outline"
             onClick={onClose}

@@ -14,14 +14,14 @@ interface WelcomeBackScreenProps {
   onProfileLoaded?: (profile: Profile) => void;
 }
 
-const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({ 
+const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
   currentProfile,
   initialDrives,
-  onDriveSelected, 
-  onCreateNewDrive, 
+  onDriveSelected,
+  onCreateNewDrive,
   onSkipSetup,
   onBack,
-  onProfileLoaded 
+  onProfileLoaded
 }) => {
   const [drives, setDrives] = useState<DriveInfoWithStatus[]>([]);
   const [selectedDriveId, setSelectedDriveId] = useState<string | null>(null);
@@ -55,14 +55,14 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
   const loadDrives = async () => {
     try {
       setDrivesLoading(true);
-      
+
       let driveList: DriveInfoWithStatus[] = [];
-      
+
       // Try to use listWithStatus for emoji fingerprints
       try {
         const result = await window.electronAPI.drive.listWithStatus();
         console.log('Loaded drives with status in WelcomeBackScreen:', result);
-        
+
         // Handle wrapped response from IPC handler
         if (result && result.success && result.data) {
           driveList = result.data;
@@ -84,10 +84,10 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
           console.error('Fallback also failed:', fallbackErr);
         }
       }
-      
+
       // Show ALL drives (both public and private)
       setDrives(driveList || []);
-      
+
       // Pre-select the most recent drive if there's only one
       if (driveList.length === 1) {
         setSelectedDriveId(driveList[0].id);
@@ -109,10 +109,10 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
       if (isNaN(date.getTime())) {
         return 'Invalid date';
       }
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric', 
-        year: 'numeric' 
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
       });
     } catch (error) {
       console.error('Date formatting error:', error, 'timestamp:', timestamp);
@@ -154,41 +154,41 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
       alignItems: 'center',
       justifyContent: 'center',
       padding: 'var(--space-6)',
-      background: 'var(--gray-50)'
+      background: 'var(--surface)'
     }}>
       <div style={{
         width: '100%',
         maxWidth: '720px',
         padding: 'var(--space-8)',
-        background: 'white',
+        background: 'var(--surface-raised)',
         borderRadius: 'var(--radius-lg)',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
+        boxShadow: 'var(--elevation-3)'
       }}>
         {/* Header with Progressive Loading */}
         {profileLoading ? (
           <ProfileSkeleton />
         ) : (
           <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
-                      
+
             {/* User Avatar */}
             {currentProfile && (
-              <div style={{ 
-                width: '64px', 
-                height: '64px', 
-                margin: '0 auto var(--space-4)', 
-                background: 'var(--gray-100)', 
-                borderRadius: '50%', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center', 
-                position: 'relative', 
+              <div style={{
+                width: '64px',
+                height: '64px',
+                margin: '0 auto var(--space-4)',
+                background: 'var(--surface-inset)',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative',
                 overflow: 'hidden',
-                border: '3px solid var(--gray-200)',
+                border: '3px solid var(--border)',
                 animation: 'fadeIn 0.5s ease-in'
               }}>
                 {currentProfile.avatarUrl ? (
-                  <img 
-                    src={currentProfile.avatarUrl} 
+                  <img
+                    src={currentProfile.avatarUrl}
                     alt={currentProfile.arnsName || currentProfile.name || 'User'}
                     style={{
                       width: '100%',
@@ -207,17 +207,17 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
                     }}
                   />
                 ) : null}
-                <User size={32} style={currentProfile.avatarUrl ? { display: 'none' } : { color: 'var(--gray-600)' }} />
+                <User size={32} style={currentProfile.avatarUrl ? { display: 'none' } : { color: 'var(--icon-mid)' }} />
               </div>
             )}
-            
-            <h2 style={{ marginBottom: 'var(--space-3)', fontSize: '32px', fontWeight: '600', animation: 'fadeIn 0.5s ease-in' }}>
+
+            <h2 style={{ marginBottom: 'var(--space-3)', fontSize: '32px', fontWeight: '600', animation: 'fadeIn 0.5s ease-in', color: 'var(--text-primary)' }}>
               Welcome Back{currentProfile && (currentProfile.arnsName || currentProfile.name) ? `, ${currentProfile.arnsName || currentProfile.name}` : ''}!
             </h2>
-            <p style={{ fontSize: '18px', color: 'var(--gray-600)', lineHeight: '1.6', animation: 'fadeIn 0.5s ease-in' }}>
-              {drivesLoading 
+            <p style={{ fontSize: '18px', color: 'var(--text-secondary)', lineHeight: '1.6', animation: 'fadeIn 0.5s ease-in' }}>
+              {drivesLoading
                 ? 'Loading your drives...'
-                : drives.length > 0 
+                : drives.length > 0
                   ? `Great news! You already have ${drives.length} Drive${drives.length !== 1 ? 's' : ''} ready to sync.`
                   : 'No drives found. Create a new drive to get started.'
               }
@@ -236,11 +236,11 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
           <DriveListSkeleton count={2} />
         ) : drives.length > 0 ? (
           <div style={{ marginBottom: 'var(--space-6)' }}>
-            <h3 style={{ 
-              fontSize: '16px', 
-              fontWeight: '600', 
+            <h3 style={{
+              fontSize: '16px',
+              fontWeight: '600',
               marginBottom: 'var(--space-4)',
-              color: 'var(--gray-700)'
+              color: 'var(--text-secondary)'
             }}>
               Choose a drive to sync:
             </h3>
@@ -249,28 +249,7 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
             {drives.map((drive) => (
               <label
                 key={drive.id}
-                style={{
-                  display: 'block',
-                  padding: 'var(--space-4)',
-                  border: `2px solid ${selectedDriveId === drive.id ? 'var(--ardrive-primary)' : 'var(--gray-200)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  backgroundColor: selectedDriveId === drive.id ? 'var(--ardrive-primary-50)' : 'white',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  position: 'relative'
-                }}
-                onMouseEnter={(e) => {
-                  if (selectedDriveId !== drive.id) {
-                    e.currentTarget.style.borderColor = 'var(--gray-300)';
-                    e.currentTarget.style.backgroundColor = 'var(--gray-50)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (selectedDriveId !== drive.id) {
-                    e.currentTarget.style.borderColor = 'var(--gray-200)';
-                    e.currentTarget.style.backgroundColor = 'white';
-                  }
-                }}
+                className={`drive-select-card ${selectedDriveId === drive.id ? 'is-selected' : ''}`}
               >
                 <input
                   type="radio"
@@ -280,31 +259,31 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
                   onChange={() => setSelectedDriveId(drive.id)}
                   style={{ display: 'none' }}
                 />
-                
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
                   {drive.privacy === 'private' ? (
-                    <Lock size={24} style={{ 
-                      color: selectedDriveId === drive.id ? 'var(--ardrive-primary)' : 'var(--gray-500)',
+                    <Lock size={24} style={{
+                      color: selectedDriveId === drive.id ? 'var(--brand)' : 'var(--icon-mid)',
                       flexShrink: 0
                     }} />
                   ) : (
-                    <Globe size={24} style={{ 
-                      color: selectedDriveId === drive.id ? 'var(--ardrive-primary)' : 'var(--gray-500)',
+                    <Globe size={24} style={{
+                      color: selectedDriveId === drive.id ? 'var(--brand)' : 'var(--icon-mid)',
                       flexShrink: 0
                     }} />
                   )}
-                  
+
                   <div style={{ flex: 1 }}>
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
                       justifyContent: 'space-between',
                       marginBottom: 'var(--space-2)'
                     }}>
-                      <h4 style={{ 
-                        fontSize: '16px', 
+                      <h4 style={{
+                        fontSize: '16px',
                         fontWeight: '600',
-                        color: 'var(--gray-900)',
+                        color: 'var(--text-primary)',
                         display: 'flex',
                         alignItems: 'center',
                         gap: 'var(--space-2)'
@@ -322,19 +301,19 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
                       <span style={{
                         fontSize: '12px',
                         padding: '2px 8px',
-                        backgroundColor: drive.privacy === 'private' ? 'var(--warning-50)' : 'var(--info-50)',
+                        backgroundColor: drive.privacy === 'private' ? 'var(--warning-surface)' : 'var(--info-surface)',
                         borderRadius: 'var(--radius-sm)',
-                        color: drive.privacy === 'private' ? 'var(--warning-700)' : 'var(--info-700)'
+                        color: drive.privacy === 'private' ? 'var(--warning-fg)' : 'var(--info-fg)'
                       }}>
                         {drive.privacy === 'private' ? 'Private' : 'Public'}
                       </span>
                     </div>
-                    
-                    <div style={{ 
-                      display: 'flex', 
+
+                    <div style={{
+                      display: 'flex',
                       gap: 'var(--space-4)',
                       fontSize: '14px',
-                      color: 'var(--gray-600)'
+                      color: 'var(--text-secondary)'
                     }}>
                       {drive.dateCreated && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
@@ -352,50 +331,18 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
                   </div>
 
                   {selectedDriveId === drive.id && (
-                    <ChevronRight size={20} style={{ color: 'var(--ardrive-primary)' }} />
+                    <ChevronRight size={20} style={{ color: 'var(--brand)' }} />
                   )}
                 </div>
               </label>
             ))}
 
             {/* Create New Drive Option */}
-            <button
-              onClick={onCreateNewDrive}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-3)',
-                padding: 'var(--space-4)',
-                border: '2px dashed var(--gray-300)',
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                width: '100%',
-                textAlign: 'left'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--ardrive-primary)';
-                e.currentTarget.style.backgroundColor = 'var(--ardrive-primary-50)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--gray-300)';
-                e.currentTarget.style.backgroundColor = 'white';
-              }}
-            >
-              <Plus size={24} style={{ color: 'var(--ardrive-primary)' }} />
+            <button onClick={onCreateNewDrive} className="drive-create-option">
+              <Plus size={24} />
               <div>
-                <h4 style={{ 
-                  fontSize: '16px', 
-                  fontWeight: '600',
-                  color: 'var(--gray-900)',
-                  marginBottom: '4px'
-                }}>
-                  Create New Drive
-                </h4>
-                <p style={{ fontSize: '14px', color: 'var(--gray-600)' }}>
-                  Start fresh with a new Drive
-                </p>
+                <div className="drive-create-option-title">Create New Drive</div>
+                <div className="drive-create-option-desc">Start fresh with a new Drive</div>
               </div>
             </button>
           </div>
@@ -403,73 +350,41 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
         ) : (
           // Show "No drives" state with Create New Drive option
           <div style={{ marginBottom: 'var(--space-6)' }}>
-            <div style={{ 
-              textAlign: 'center', 
+            <div style={{
+              textAlign: 'center',
               padding: 'var(--space-6)',
-              backgroundColor: 'var(--gray-50)',
+              backgroundColor: 'var(--surface-inset)',
               borderRadius: 'var(--radius-md)',
               marginBottom: 'var(--space-4)'
             }}>
-              <HardDrive size={48} style={{ color: 'var(--gray-400)', marginBottom: 'var(--space-3)' }} />
-              <h3 style={{ 
-                fontSize: '18px', 
-                fontWeight: '600', 
+              <HardDrive size={48} style={{ color: 'var(--icon-low)', marginBottom: 'var(--space-3)' }} />
+              <h3 style={{
+                fontSize: '18px',
+                fontWeight: '600',
                 marginBottom: 'var(--space-2)',
-                color: 'var(--gray-700)'
+                color: 'var(--text-secondary)'
               }}>
                 No drives found
               </h3>
-              <p style={{ fontSize: '14px', color: 'var(--gray-600)' }}>
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
                 Create your first drive to start syncing files
               </p>
             </div>
 
             {/* Create New Drive Option */}
-            <button
-              onClick={onCreateNewDrive}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-3)',
-                padding: 'var(--space-4)',
-                border: '2px dashed var(--gray-300)',
-                borderRadius: 'var(--radius-md)',
-                backgroundColor: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                width: '100%',
-                textAlign: 'left'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--ardrive-primary)';
-                e.currentTarget.style.backgroundColor = 'var(--ardrive-primary-50)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--gray-300)';
-                e.currentTarget.style.backgroundColor = 'white';
-              }}
-            >
-              <Plus size={24} style={{ color: 'var(--ardrive-primary)' }} />
+            <button onClick={onCreateNewDrive} className="drive-create-option">
+              <Plus size={24} />
               <div>
-                <h4 style={{ 
-                  fontSize: '16px', 
-                  fontWeight: '600',
-                  color: 'var(--gray-900)',
-                  marginBottom: '4px'
-                }}>
-                  Create New Drive
-                </h4>
-                <p style={{ fontSize: '14px', color: 'var(--gray-600)' }}>
-                  Start fresh with a new Drive
-                </p>
+                <div className="drive-create-option-title">Create New Drive</div>
+                <div className="drive-create-option-desc">Start fresh with a new Drive</div>
               </div>
             </button>
           </div>
         )}
 
         {/* Action Buttons */}
-        <div style={{ 
-          display: 'flex', 
+        <div style={{
+          display: 'flex',
           gap: 'var(--space-3)',
           alignItems: 'center',
           justifyContent: 'space-between'
@@ -489,7 +404,7 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
                 Back
               </button>
             )}
-            
+
             <button
               className="button outline"
               onClick={onSkipSetup}
@@ -514,16 +429,14 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
                 padding: '12px 24px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 'var(--space-2)',
-                opacity: !selectedDriveId || drivesLoading ? 0.6 : 1,
-                cursor: !selectedDriveId || drivesLoading ? 'not-allowed' : 'pointer'
+                gap: 'var(--space-2)'
               }}
             >
               Continue with Selected Drive
               <ArrowRight size={18} />
             </button>
           )}
-          
+
           {drives.length === 0 && (
             <button
               className="button large"
@@ -546,13 +459,13 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
         <p style={{
           marginTop: 'var(--space-4)',
           fontSize: '13px',
-          color: 'var(--gray-500)',
+          color: 'var(--text-tertiary)',
           textAlign: 'center'
         }}>
           You can add more drives or change your selection later from the dashboard.
         </p>
       </div>
-      
+
       <style>{`
         @keyframes fadeIn {
           from {
