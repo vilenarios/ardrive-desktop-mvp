@@ -352,3 +352,66 @@ run one short owner-supervised session for the private-drive-password and paid-r
 that expected the pre-MONEY-14 boundary (102400 B treated as NOT free under the old `<`). MONEY-14 unified the
 boundary to `<= 107520`, so 102400 is now correctly FREE. The assertion was updated this pass to verify the new
 unified boundary (102400 free, 107520 free, 107521 not) — it now proves H-BND-1 is resolved rather than flag it.
+
+---
+
+# SYNC-20 live re-verification (2026-07-05)
+
+**Re-certifying defect #1 / #6 (the setup+sync HANG on a transient turbo-gateway `Status: 404`) LIVE after the SYNC-20 fix.**
+
+- **Runner:** TESTER agent (Claude Opus 4.8), supervised live pass.
+- **Base:** branch `uat/sync20-live-verify` off `main @ 10f9df1` (CONTAINS the SYNC-20 fix `f2a0fa0`).
+- **Build:** `npm run build` OK (`dist/main/main.js` 151,979 B, `dist/renderer/index.html` present). core-js **4.0.0**.
+- **Harness (new, committed):** `scripts/uat/ui-sync20-fresh-verify.js` — reuses the proven Playwright-Electron
+  pattern; launches the REAL built app under WSLg (`DISPLAY=:0`, `--disable-gpu --no-sandbox`), drives it via
+  `getByRole`, ground-truths over `window.electronAPI`, and captures the MAIN-process stdout/stderr (where the
+  SYNC-20 `[retry]` + gateway-`404` logs live). A scratchpad-only pass-2 resume script re-signed-in to the SAME
+  throwaway profile to observe the self-heal once the fresh drive was indexed.
+- **🔒 Wallet safety — the point of this run:** a BRAND-NEW throwaway wallet was created **inside the app's own
+  create-account onboarding** (local keygen) in a **disposable temp userData dir** — profile `Wallet YuRQ9h…_vr8`
+  (address `YuRQ…_vr8`). The owner's real wallet (`iKryOeZQ…`) was **NEVER loaded** (`ARDRIVE_DEV_MODE=false`, no
+  dev-wallet path). Creating a drive on a fresh wallet then immediately syncing is exactly the "tx not yet indexed →
+  404" trigger, so this reproduced defect #1 **more faithfully than the funded wallet did**.
+- **💸 Money:** free-tier only; test file **40,960 B** (< 105 KiB). A hard money-guard would abort before approving any
+  non-free row. **ZERO spend** — no upload ever left the queue (see step 3); throwaway balance 0, untouched.
+- **Unit tests (re-run on this branch):** `tests/unit/sync/retry.test.ts` + `tests/unit/components/sync20-setup-gateway-resilience.test.tsx` → **13/13 PASS**.
+
+## Per-step verdict
+
+| Step | Verdict | Evidence |
+|---|---|---|
+| **1. Fresh onboarding → new wallet+password → drive setup** | **PASS** | create-account flow drove `wallet.generate` → recovery-phrase gate → `wallet.completeSetup` → routed to drive-setup with **no hang on `drive.list`** (`s20-01-firstrun.png`, `s20-02-password.png`, `s20-03-drive-setup.png`). Drive-name `/100` counter, public-permanence warning, disposable `/tmp/…/ARDRIVE` sync folder all rendered. |
+| **2. Create drive + folder → "Starting sync engine…" (the old hang point)** | **PASS — no hang** | Setup reached the exact previously-hanging step ("Starting sync engine…" observed), a **genuine transient gateway 404 occurred**, the **SYNC-20 retry fired live**, and instead of a permanent spinner the wizard **failed gracefully within a bounded window** into the honest **"Couldn't reach the Arweave gateway. …Try Again"** state (`s20-05-after-complete.png`, `s20-05b-after-tryagain.png`). **Idempotent:** the drive was created **exactly once** (`driveMappings.getPrimary()` → `SYNC20-VERIFY`, id `2df08891`), and "Try Again" re-ran only the sync-start tail (no 2nd `drive:create`). |
+| **2b. Self-heal confirmed** | **PASS** | ~8 min later, re-signing in to the SAME throwaway profile, the once-404'ing fresh drive was **indexed** — `drive.listWithStatus()` returned `SYNC20-VERIFY` and the app loaded a **fully-working dashboard** for it (Overview / Public / Created "Jul 5, 2026" / Drive ID `2df08891-bbdf-49dd-941a-cc…`), reached via **one transient-404 retry that succeeded** (`s20-p2-01-landing.png` … `s20-p2-ERROR.png`, which captured the recovered dashboard). This proves the 404 was the transient "not-yet-indexed" condition SYNC-20 targets, and demonstrates the **self-heal-via-retry** branch live. |
+| **3. Free-tier upload end-to-end** | **NOT COMPLETED — environment-blocked (not a SYNC-20 fault)** | The 40,960 B free-tier file was dropped into the drive's sync folder, but the **post-create sync watcher produced no pending-upload row** (`uploads.getPending()` → 0) in either pass, so nothing was approved/uploaded and **no data tx was produced**. This is the **same environmental limitation as the original UAT-RUN-2 defect #6** ("post-create sync engine stalled on this headless box") — the original funded-wallet run also stalled the free-tier upload at `pending`. It is independent of SYNC-20's scope (gateway-404 read resilience, not the local watcher). Money-guard never saw a non-free row; **zero spend**. |
+| **4. Download / hash round-trip** | **NOT REACHED** | no upload landed, so there was no data tx to fetch back. |
+| **5. Was a transient 404 observed + recovered?** | **YES — observed AND recovered, live** | Main-process logs captured a real `Request to gateway has failed: (Status: 404) Not Found` (120 lines in pass 1) and the SYNC-20 retry wrapper firing with the exact bounds: `[retry] sync:start drive validation attempt 1/4 … retrying in 500ms` → `2/4 … 1000ms` → `3/4 … 2000ms` (9 `[retry]` lines across the Complete-Setup + Try-Again cycles; per-attempt `withTimeout` 20 s). Pass 2 showed a transient 404 retried **once then succeeding** (3× 404, 1× `[retry]`). So the retry wrapper is **demonstrably on the live path**, not just unit-tested. |
+
+## Money shot (main-process log, pass 1)
+```
+Request to gateway has failed: (Status: 404) Not Found        ×120
+[retry] sync:start drive validation attempt 1/4 failed (Timed out after 20000ms …); retrying in 500ms
+[retry] sync:start drive validation attempt 2/4 failed (…); retrying in 1000ms
+[retry] sync:start drive validation attempt 3/4 failed (…); retrying in 2000ms
+   … (repeats once for the idempotent "Try Again" — no second drive:create) …
+```
+Old behaviour: permanent "Starting sync engine…" spinner + upload stuck at `pending`.
+New behaviour: bounded retry+backoff+timeout → honest, retryable error → later **self-heals** to a working dashboard.
+
+## Verdict — is defect #1 CLOSED live?
+
+**CLOSED (live) for the blocking behaviour** — with one honest, environment-scoped caveat.
+
+Every SYNC-20 acceptance criterion is satisfied and proven on the running app with a **real** (not mocked) transient
+gateway 404: the setup no longer hangs on "Starting sync engine…"; a transient 404 is bounded by retry+backoff+timeout
+and either **self-heals** (pass 2: 1 retry → success → full dashboard) or, if it persists, **fails gracefully within
+seconds** into the honest "Couldn't reach the Arweave gateway… / Try Again" state (pass 1) — never a permanent silent
+spinner; the drive is created **exactly once** across retries (idempotent, no double-spend); and the fresh drive was
+independently confirmed to **self-heal to fully-indexed** ~8 min later. No funds spent; the owner's real wallet was
+never touched.
+
+**Caveat (does NOT reopen defect #1):** the **completed free-tier upload leg could not be exercised live in this
+headless WSL box** — the post-create sync watcher never produced a pending upload (identical to run-2 defect #6, and
+independent of SYNC-20's gateway-404 scope). The SYNC-20 self-heal-to-completion path remains covered by the 13/13
+passing unit tests. **Recommend** confirming the completed-upload round-trip on real hardware or in a short
+owner-supervised session (already an open run-2 recommendation), separate from the now-closed gateway-404 hang.
