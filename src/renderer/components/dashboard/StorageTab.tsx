@@ -828,11 +828,15 @@ export const StorageTab: React.FC<StorageTabProps> = ({
               </button>
             </div>
             
-            <button 
+            {/* UAT-1b (defect #5): last two icon-bearing buttons in this file
+                that carried only a `title` (hover-only) with no aria-label —
+                add one with the same human text, keep the tooltip. */}
+            <button
               className="button small outline"
               onClick={handleRefresh}
               disabled={isLoading}
               title="Refresh file list"
+              aria-label="Refresh file list"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -969,6 +973,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                             <button
                               className="action-menu-item"
                               title="Restore this item to view on Arweave (it was hidden, not erased)"
+                              aria-label="Restore this item to view on Arweave (it was hidden, not erased)"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleUnhide(item);

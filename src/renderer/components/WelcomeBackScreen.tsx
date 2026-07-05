@@ -119,6 +119,16 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
     }
   };
 
+  // UAT-1b (defect #2): belt-and-suspenders for the wallet-manager-secure.ts
+  // unixTime normalization fix — even a correctly-normalized ms value could
+  // still be implausible (e.g. a future upstream regression), so clamp any
+  // year outside a sane Arweave-era window to an honest "Unknown date"
+  // instead of rendering a wild year like "Apr 3, 58474". 2018 is just after
+  // Arweave's mainnet genesis (June 2018); a couple years of headroom past
+  // "now" absorbs clock skew without hiding genuinely recent dates.
+  const MIN_PLAUSIBLE_YEAR = 2018;
+  const MAX_PLAUSIBLE_YEAR_SLACK = 2;
+
   const formatDate = (timestamp: number) => {
     try {
       if (!timestamp || timestamp <= 0) {
@@ -127,6 +137,11 @@ const WelcomeBackScreen: React.FC<WelcomeBackScreenProps> = ({
       const date = new Date(timestamp);
       if (isNaN(date.getTime())) {
         return 'Invalid date';
+      }
+      const year = date.getFullYear();
+      const maxPlausibleYear = new Date().getFullYear() + MAX_PLAUSIBLE_YEAR_SLACK;
+      if (year < MIN_PLAUSIBLE_YEAR || year > maxPlausibleYear) {
+        return 'Unknown date';
       }
       return date.toLocaleDateString('en-US', {
         month: 'short',

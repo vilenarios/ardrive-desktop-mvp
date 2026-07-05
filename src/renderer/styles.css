@@ -326,17 +326,12 @@ label {
   margin-top: var(--space-1);
 }
 
-/* App Layout */
-.app {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #f9fafb;
-  overflow: hidden;
-  direction: ltr; /* Ensure proper text direction for scrollbar placement */
-  margin: 0;
-  padding: 0;
-}
+/* UAT-1b (defect #6): the old `.app` rule (last raw hex outside theme.css,
+   `background: #f9fafb`) was a dead orphan — no element in the render tree
+   uses className="app" (the actual root wrapper is `.app-container`, which
+   has no rule of its own and inherits html/body's token-based
+   `background: var(--gray-50)` i.e. `var(--surface)`). Removed rather than
+   re-pointed at a token since it never applied to anything. */
 
 /* Header */
 .header {
