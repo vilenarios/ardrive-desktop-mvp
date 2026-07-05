@@ -1,10 +1,35 @@
-import React, { useState, useEffect } from 'react';
-import { Cloud, FolderOpen, HardDrive, Info, Globe, Zap, X, HelpCircle, CheckCircle, Trash2, AlertCircle, ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Cloud, FolderOpen, HardDrive, Info, Globe, Zap, X, HelpCircle, CheckCircle, Trash2, AlertCircle, ArrowLeft, RefreshCw } from 'lucide-react';
 import { ClientInputValidator } from '../input-validator';
 import { InfoButton } from './common/InfoButton';
 import SetupSuccessScreen from './SetupSuccessScreen';
 import { SyncProgressDisplay } from './SyncProgressDisplay';
-import { Profile, SyncProgress } from '../../types';
+import { Profile, SyncProgress, DriveInfo } from '../../types';
+
+// SYNC-20: translate a raw gateway/network failure into honest, actionable
+// copy. A transient turbo-gateway 404 (fresh drive not yet indexed) or a
+// connectivity blip should tell the user what to do — not surface a cryptic
+// "Request to gateway has failed: (Status: 404)".
+const GATEWAY_ERROR_COPY =
+  "Couldn't reach the Arweave gateway. Check your connection or try a different gateway in Settings, then try again.";
+export const isGatewaySetupError = (message: string): boolean => {
+  const m = message.toLowerCase();
+  return (
+    m.includes('gateway') ||
+    m.includes('status: 404') ||
+    m.includes('status 404') ||
+    m.includes('not found') ||
+    m.includes('timed out') ||
+    m.includes('timeout') ||
+    m.includes('network') ||
+    m.includes('fetch failed') ||
+    m.includes('econnreset') ||
+    m.includes('econnrefused') ||
+    m.includes('enotfound')
+  );
+};
+const toFriendlySetupError = (message: string): string =>
+  isGatewaySetupError(message) ? GATEWAY_ERROR_COPY : message;
 
 interface DriveAndSyncSetupProps {
   currentProfile?: Profile | null;
@@ -31,6 +56,13 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
     rootFolderId?: string;
     driveTxId?: string;
   } | null>(null);
+
+  // SYNC-20 idempotency: drive-create is a permanent, potentially-costly ArFS
+  // write and driveMappings.add is a DB insert — neither may run twice. If setup
+  // fails at the retryable tail (sync-start on a transient 404), we remember what
+  // was already provisioned so "Try Again" only re-runs the tail, never re-creates
+  // the drive or re-adds the mapping.
+  const provisionedRef = useRef<{ drive: DriveInfo; driveFolderPath: string } | null>(null);
 
   // Dev mode auto-fill for faster testing
   useEffect(() => {
@@ -161,58 +193,77 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
         throw new Error('Wallet not loaded. Please ensure your wallet is properly imported.');
       }
 
-      // Create drive (UX-3: IpcResult envelope)
-      setSetupProgress('Creating your drive on Arweave...');
-      const createResult = await window.electronAPI.drive.create(driveName.trim(), 'public');
-
-      if (!createResult.success) {
-        throw new Error(createResult.error || 'Failed to create drive. Please try again.');
-      }
-
-      const drive = createResult.data;
-      if (!drive || !drive.id) {
-        throw new Error('Failed to create drive. Please try again.');
-      }
-      
-      // Create local folder inside selected sync directory
+      // Deterministic local folder path (same on every retry).
       const driveFolderName = driveName.trim();
-      // Use platform-appropriate path separator
       const pathSeparator = syncFolder.includes('\\') ? '\\' : '/';
       const driveFolderPath = `${syncFolder}${syncFolder.endsWith(pathSeparator) ? '' : pathSeparator}${driveFolderName}`;
-      
-      setSetupProgress('Creating local folder...');
-      // The sync.setFolder should handle creating the subfolder
-      // UX-3: handler resolves { success:false } on error rather than throwing.
-      const setFolderResult = await window.electronAPI.sync.setFolder(driveFolderPath);
-      if (!setFolderResult.success) {
-        throw new Error(setFolderResult.error || 'Failed to set up the sync folder');
-      }
 
-      // Save drive metadata and config
-      setSetupProgress('Saving configuration...');
-      
-      // Create drive mapping using the drive data from ardrive-core-js
-      const driveMapping = {
-        id: drive.id, // Use the drive ID as the mapping ID for simplicity
-        driveId: drive.id,
-        driveName: drive.name,
-        drivePrivacy: drive.privacy,
-        localFolderPath: driveFolderPath,
-        rootFolderId: drive.rootFolderId,
-        isActive: true,
-        syncSettings: {
-          syncDirection: 'bidirectional' as const,
-          uploadPriority: 0
+      // SYNC-20 idempotency: reuse a drive already provisioned by a PRIOR attempt
+      // instead of creating a second one. drive.create is a permanent ArFS write
+      // (and can cost) and driveMappings.add is a DB insert — both run at most once.
+      let drive = provisionedRef.current?.drive ?? null;
+
+      if (!drive) {
+        // Create drive (UX-3: IpcResult envelope)
+        setSetupProgress('Creating your drive on Arweave...');
+        const createResult = await window.electronAPI.drive.create(driveFolderName, 'public');
+
+        if (!createResult.success) {
+          throw new Error(createResult.error || 'Failed to create drive. Please try again.');
         }
-      };
-      
-      // Add the drive mapping via IPC (UX-3: unwrap the envelope)
-      const addMappingResult = await window.electronAPI.driveMappings.add(driveMapping);
-      if (!addMappingResult.success) {
-        throw new Error(addMappingResult.error || 'Failed to save the drive mapping');
+
+        drive = createResult.data ?? null;
+        if (!drive || !drive.id) {
+          throw new Error('Failed to create drive. Please try again.');
+        }
+
+        // Create local folder inside selected sync directory.
+        // The sync.setFolder should handle creating the subfolder.
+        // UX-3: handler resolves { success:false } on error rather than throwing.
+        setSetupProgress('Creating local folder...');
+        const setFolderResult = await window.electronAPI.sync.setFolder(driveFolderPath);
+        if (!setFolderResult.success) {
+          throw new Error(setFolderResult.error || 'Failed to set up the sync folder');
+        }
+
+        // Save drive metadata and config
+        setSetupProgress('Saving configuration...');
+
+        // Create drive mapping using the drive data from ardrive-core-js
+        const driveMapping = {
+          id: drive.id, // Use the drive ID as the mapping ID for simplicity
+          driveId: drive.id,
+          driveName: drive.name,
+          drivePrivacy: drive.privacy,
+          localFolderPath: driveFolderPath,
+          rootFolderId: drive.rootFolderId,
+          isActive: true,
+          syncSettings: {
+            syncDirection: 'bidirectional' as const,
+            uploadPriority: 0
+          }
+        };
+
+        // Add the drive mapping via IPC (UX-3: unwrap the envelope)
+        const addMappingResult = await window.electronAPI.driveMappings.add(driveMapping);
+        if (!addMappingResult.success) {
+          throw new Error(addMappingResult.error || 'Failed to save the drive mapping');
+        }
+
+        // Provisioning is done and irreversible — remember it so a later failure
+        // (e.g. a transient gateway 404 at sync-start) can be retried WITHOUT
+        // re-creating the drive or re-adding the mapping.
+        provisionedRef.current = { drive, driveFolderPath };
+      } else {
+        // Retry after provisioning already succeeded: just make sure the sync
+        // folder still points at the right place (setFolder is idempotent).
+        console.log('[DriveAndSyncSetup] Reusing provisioned drive on retry:', drive.id);
+        await window.electronAPI.sync.setFolder(driveFolderPath);
       }
 
-      // Initialize sync engine
+      // Initialize sync engine — the retryable tail. sync:start is now bounded in
+      // the main process (retry + timeout), so it always settles instead of
+      // hanging on "Starting sync engine…".
       if (enableAutoSync) {
         setSetupProgress('Starting sync engine...');
         const startResult = await window.electronAPI.sync.start();
@@ -222,10 +273,10 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
       } else {
         setSetupProgress('Sync engine ready (manual start required)...');
       }
-      
+
       // Mark first run as complete
       await window.electronAPI.config.markFirstRunComplete();
-      
+
       // Store created drive info for success screen
       setCreatedDriveInfo({
         driveName: driveFolderName,
@@ -234,16 +285,20 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
         rootFolderId: drive.rootFolderId,
         driveTxId: drive.metadataTxId // Transaction ID from drive creation
       });
-      
+
       setSetupProgress('Setup complete! 🎉');
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       // Show success screen instead of calling onSetupComplete
       setShowSuccess(true);
       setLoading(false);
     } catch (err) {
+      // SYNC-20: setup must FAIL GRACEFULLY, never hang. Surface honest,
+      // actionable copy for gateway/connectivity failures; the render path shows
+      // a "Try Again" affordance (idempotent — see provisionedRef above).
       console.error('Setup error:', err);
-      setError(err instanceof Error ? err.message : 'Setup failed');
+      const rawMessage = err instanceof Error ? err.message : 'Setup failed';
+      setError(toFriendlySetupError(rawMessage));
       setSetupProgress('');
       setLoading(false);
     }
@@ -302,7 +357,31 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
 
         {error && (
           <div className="error-message" style={{ marginBottom: 'var(--space-4)' }}>
-            {error}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+              <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '1px' }} />
+              <span style={{ flex: 1 }}>{error}</span>
+            </div>
+            {/* SYNC-20: after a setup attempt failed (e.g. transient gateway 404),
+                give the user an explicit, idempotent way forward so they are never
+                trapped on a stuck wizard step. Only shown once setup was attempted
+                (on the summary step) and not while a retry is in flight. */}
+            {showSummary && !loading && (
+              <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-3)', flexWrap: 'wrap' }}>
+                <button
+                  className="button small"
+                  onClick={handleSetup}
+                  style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}
+                >
+                  <RefreshCw size={14} />
+                  Try Again
+                </button>
+                {isReturningUser && onBack && (
+                  <button className="button small outline" onClick={onBack}>
+                    Back to Existing Drives
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 

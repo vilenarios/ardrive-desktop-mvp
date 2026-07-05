@@ -17,6 +17,7 @@ import { FileOperationDetector, FileOperationDetection } from './sync/FileOperat
 import { driveKeyManager } from './drive-key-manager';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
 import { getGatewayUrl } from './gateway';
+import { retryWithBackoff } from './sync/retry';
 
 interface SyncProgress {
   phase?: string;
@@ -293,8 +294,16 @@ export class SyncManager {
     // Small delay to ensure UI shows the starting phase
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Step 1: Get authoritative drive state (BLOCKING - needed for UI)
-    await this.downloadManager.syncDriveMetadata();
+    // Step 1: Get authoritative drive state (BLOCKING - needed for UI).
+    // SYNC-20: this is the gateway GQL fetch that stalled setup on a transient
+    // 404 (fresh drive not yet indexed) — the wizard hung on "Starting sync
+    // engine…" with no retry/timeout. Bound it: retry with backoff so it
+    // self-heals, and cap each attempt so a hung gateway can't trap setup.
+    // Metadata read is idempotent (no writes/spend), so retrying is safe.
+    await retryWithBackoff(() => this.downloadManager.syncDriveMetadata(), {
+      label: 'syncDriveMetadata',
+      timeoutMs: 30000,
+    });
     
     // Update metadata sync timestamp
     if (this.driveId) {
