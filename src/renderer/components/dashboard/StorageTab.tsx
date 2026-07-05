@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { DriveInfo, AppConfig, SyncStatus, FileUpload } from '../../../types';
 import { InfoButton } from '../common/InfoButton';
 import { useModalA11y } from '../../hooks/useModalA11y';
+import { getGatewayHost } from '../../utils/gateway';
 import { 
   Folder,
   FolderOpen,
@@ -983,7 +984,10 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                               className="action-menu-item"
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                await window.electronAPI.shell.openExternal(`https://arweave.net/${item.dataTxId}`);
+                                // SYNC-19: route through the configured gateway host instead
+                                // of hardcoding arweave.net (which rate-limits some users).
+                                const gatewayHost = await getGatewayHost();
+                                await window.electronAPI.shell.openExternal(`https://${gatewayHost}/${item.dataTxId}`);
                                 // Hide menu
                                 setOpenMenuId(null);
                               }}
@@ -1071,8 +1075,10 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                             onClick={async (e) => {
                               e.stopPropagation();
                               // Copy share link to clipboard
-                              const shareUrl = item.dataTxId 
-                                ? `https://arweave.net/${item.dataTxId}`
+                              // SYNC-19: route through the configured gateway host instead
+                              // of hardcoding arweave.net (which rate-limits some users).
+                              const shareUrl = item.dataTxId
+                                ? `https://${await getGatewayHost()}/${item.dataTxId}`
                                 : item.ardriveUrl || '';
                               if (shareUrl) {
                                 await navigator.clipboard.writeText(shareUrl);
@@ -1104,7 +1110,10 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                           onClick={async (e) => {
                             e.stopPropagation();
                             e.preventDefault();
-                            await window.electronAPI.shell.openExternal(`https://arweave.net/${item.dataTxId}`);
+                            // SYNC-19: route through the configured gateway host instead
+                            // of hardcoding arweave.net (which rate-limits some users).
+                            const gatewayHost = await getGatewayHost();
+                            await window.electronAPI.shell.openExternal(`https://${gatewayHost}/${item.dataTxId}`);
                           }}
                         >
                           <Eye size={14} />
@@ -1417,7 +1426,10 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                   <button 
                     className="button small"
                     onClick={async () => {
-                      await window.electronAPI.shell.openExternal(`https://arweave.net/${selectedItemDetails.dataTxId}`);
+                      // SYNC-19: route through the configured gateway host instead
+                      // of hardcoding arweave.net (which rate-limits some users).
+                      const gatewayHost = await getGatewayHost();
+                      await window.electronAPI.shell.openExternal(`https://${gatewayHost}/${selectedItemDetails.dataTxId}`);
                     }}
                   >
                     <ExternalLink size={14} />

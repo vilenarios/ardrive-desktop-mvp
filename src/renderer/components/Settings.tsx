@@ -3,13 +3,13 @@ import { X, FolderOpen, Key, Info, ExternalLink, Globe } from 'lucide-react';
 import { AppConfig } from '../../types';
 import { InfoButton } from './common/InfoButton';
 import { useModalA11y } from '../hooks/useModalA11y';
-
-// INFO-3: mirrors src/main/gateway.ts's DEFAULT_GATEWAY_HOST. This is a
-// renderer-side display/reset value only — the main process (gateway.ts) is
-// the single source of truth for gateway resolution; nothing here changes
-// that logic. Renderer code can't import main-process modules, so the
-// literal is intentionally duplicated as a UI-only constant.
-const DEFAULT_GATEWAY_HOST = 'turbo-gateway.com';
+// INFO-3/SYNC-19: mirrors src/main/gateway.ts's DEFAULT_GATEWAY_HOST — the
+// main process (gateway.ts) is the single source of truth for gateway
+// *resolution*; nothing here changes that logic. Renderer code can't import
+// main-process modules, so this display/reset value comes from the renderer's
+// own single source (src/renderer/utils/gateway.ts) rather than a second
+// duplicated literal.
+import { DEFAULT_GATEWAY_HOST, invalidateGatewayHostCache } from '../utils/gateway';
 
 interface SettingsProps {
   isOpen: boolean;
@@ -99,6 +99,11 @@ const Settings: React.FC<SettingsProps> = ({
       }
       setGatewayHost(trimmed);
       setGatewaySaved(true);
+      // SYNC-19: drop the cached renderer-side gateway host so link builders
+      // elsewhere in the dashboard (Storage/Activity/Overview tabs,
+      // FileLinkActions) pick up the new value on their next call instead of
+      // continuing to use the pre-save (possibly default) host until restart.
+      invalidateGatewayHostCache();
       setTimeout(() => setGatewaySaved(false), 2500);
     } catch (error) {
       console.error('Failed to save gateway host:', error);

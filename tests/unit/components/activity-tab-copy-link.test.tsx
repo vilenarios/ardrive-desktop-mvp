@@ -113,9 +113,13 @@ describe('ActivityTab — Copy Link builds resolvable raw-gateway URLs (UX-10)',
     const copyLinkButton = within(item).getByText('Copy Link');
     fireEvent.click(copyLinkButton);
 
+    // SYNC-19: the raw-gateway link is now built from the configured gateway
+    // host (src/renderer/utils/gateway.ts), not a hardcoded arweave.net. This
+    // suite's mockElectronAPI has no `config.get`, so getGatewayHost() falls
+    // back to its default, turbo-gateway.com.
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        `https://arweave.net/${upload.dataTxId}`
+        `https://turbo-gateway.com/${upload.dataTxId}`
       );
     });
 

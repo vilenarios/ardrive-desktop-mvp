@@ -2,6 +2,15 @@
  * Utility functions for generating ArDrive and Arweave links
  */
 
+// SYNC-19: matches src/main/gateway.ts's DEFAULT_GATEWAY_HOST and
+// src/renderer/utils/gateway.ts's fallback. arweave.net rate-limits (429s)
+// some users, so no link builder in this file may fall back to it silently —
+// every function below takes the resolved gateway host as a parameter and
+// defaults it to turbo-gateway.com, never arweave.net. Callers should pass
+// the actual configured host (via src/renderer/utils/gateway.ts's
+// getGatewayHost()) whenever one is available.
+export const DEFAULT_GATEWAY_HOST = 'turbo-gateway.com';
+
 export interface LinkSet {
   // Direct Arweave links
   dataTransactionUrl?: string;
@@ -23,18 +32,19 @@ export function generateFileLinks(
   metadataTxId?: string,
   fileId?: string,
   driveId?: string,
-  fileKey?: string
+  fileKey?: string,
+  gatewayHost: string = DEFAULT_GATEWAY_HOST
 ): LinkSet {
   const links: LinkSet = {};
 
   // Direct Arweave transaction links
   if (dataTxId) {
-    links.dataTransactionUrl = `https://arweave.net/tx/${dataTxId}`;
-    links.rawFileUrl = `https://arweave.net/${dataTxId}`;
+    links.dataTransactionUrl = `https://${gatewayHost}/tx/${dataTxId}`;
+    links.rawFileUrl = `https://${gatewayHost}/${dataTxId}`;
   }
 
   if (metadataTxId) {
-    links.metadataTransactionUrl = `https://arweave.net/tx/${metadataTxId}`;
+    links.metadataTransactionUrl = `https://${gatewayHost}/tx/${metadataTxId}`;
   }
 
   // ArDrive app links
@@ -85,9 +95,9 @@ export function generateShareableDriveLink(driveId: string, driveName?: string):
 /**
  * Generate Arweave block explorer links
  */
-export function generateExplorerLinks(txId: string) {
+export function generateExplorerLinks(txId: string, gatewayHost: string = DEFAULT_GATEWAY_HOST) {
   return {
-    arweave: `https://arweave.net/tx/${txId}`,
+    arweave: `https://${gatewayHost}/tx/${txId}`,
     viewblock: `https://viewblock.io/arweave/tx/${txId}`,
     arscan: `https://arscan.io/tx/${txId}`
   };
