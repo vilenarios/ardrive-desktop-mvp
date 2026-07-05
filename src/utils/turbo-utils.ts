@@ -2,8 +2,17 @@
  * Utilities for Turbo transactions and cost calculations
  */
 
-// Turbo free tier limit - 100KB (100 * 1024 bytes)
-export const TURBO_FREE_SIZE_LIMIT = 100 * 1024; // 100KB in bytes
+// Turbo free-tier upload limit — the SINGLE SOURCE OF TRUTH for the whole app
+// (main + renderer). Value comes from the Turbo upload service's
+// `freeUploadLimitBytes`: https://upload.ardrive.io/info reports 107520 bytes
+// (= 105 KiB). Files whose size is <= this are uploaded free by Turbo.
+// TODO(MONEY-14): the drift-proof fix is to fetch `freeUploadLimitBytes` from
+// upload.ardrive.io/info at startup, cache it, and fall back to this constant
+// only if the fetch fails or returns a non-positive-integer. Deferred because
+// this constant is consumed synchronously in pure functions and renderer
+// render paths, so wiring a fetched value in requires IPC plumbing + state.
+// Until then this constant must be updated if the service value ever changes.
+export const TURBO_FREE_SIZE_LIMIT = 105 * 1024; // 107520 bytes (105 KiB)
 
 /**
  * Check if a transaction qualifies for free Turbo upload
@@ -45,7 +54,7 @@ export function getUploadRecommendation(
     return {
       method: 'turbo',
       isFree: true,
-      reason: 'Free with Turbo! Files under 100KB cost no credits.',
+      reason: `Free with Turbo! Files up to ${TURBO_FREE_SIZE_LIMIT / 1024} KiB cost no credits.`,
       estimatedCost: '0'
     };
   }

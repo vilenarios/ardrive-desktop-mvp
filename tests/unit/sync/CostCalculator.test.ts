@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CostCalculator } from '@/main/sync/CostCalculator';
 import { turboManager } from '@/main/turbo-manager';
+import { TURBO_FREE_SIZE_LIMIT, isTurboFree } from '@/utils/turbo-utils';
 
 vi.mock('@/main/turbo-manager', () => ({
   turboManager: {
@@ -133,10 +134,29 @@ describe('CostCalculator', () => {
     });
   });
 
-  describe('free tier', () => {
-    it('flags files under 100KB as free with Turbo', () => {
-      expect(calculator.isFreeWithTurbo(100 * 1024 - 1)).toBe(true);
-      expect(calculator.isFreeWithTurbo(100 * 1024)).toBe(false);
+  // MONEY-14: the free-tier limit is 107520 bytes (105 KiB), the authoritative
+  // `freeUploadLimitBytes` from upload.ardrive.io/info. There is ONE constant
+  // (utils/turbo-utils) and every check uses `<=`. These tests pin the exact
+  // boundary through BOTH consumers so they can never drift apart again.
+  describe('free-tier boundary [MONEY-14]', () => {
+    it('the single-source constant equals 107520 bytes (105 KiB)', () => {
+      expect(TURBO_FREE_SIZE_LIMIT).toBe(107520);
+      expect(TURBO_FREE_SIZE_LIMIT).toBe(105 * 1024);
+    });
+
+    it('CostCalculator: exactly the limit is FREE, one byte over is PAID (<=)', () => {
+      expect(calculator.isFreeWithTurbo(107519)).toBe(true);
+      expect(calculator.isFreeWithTurbo(107520)).toBe(true); // exactly the limit → free
+      expect(calculator.isFreeWithTurbo(107521)).toBe(false); // one over → paid
+    });
+
+    it('turbo-utils.isTurboFree agrees with CostCalculator on the boundary', () => {
+      for (const size of [0, 107519, 107520, 107521, 200000]) {
+        expect(isTurboFree(size)).toBe(calculator.isFreeWithTurbo(size));
+      }
+      // and the specific boundary values
+      expect(isTurboFree(107520)).toBe(true);
+      expect(isTurboFree(107521)).toBe(false);
     });
   });
 });

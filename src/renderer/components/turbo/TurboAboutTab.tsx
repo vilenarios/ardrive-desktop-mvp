@@ -5,6 +5,9 @@ import {
 } from 'lucide-react';
 import { ExpandableSection } from '../common/ExpandableSection';
 import { InfoButton } from '../common/InfoButton';
+import { TURBO_FREE_SIZE_LIMIT } from '../../../utils/turbo-utils';
+
+const FREE_TIER_KIB = TURBO_FREE_SIZE_LIMIT / 1024;
 
 const TurboAboutTab: React.FC = () => {
   return (
@@ -61,7 +64,7 @@ const TurboAboutTab: React.FC = () => {
               </div>
               <h4>Free Tier Included</h4>
               <p>
-                Files under 100KB are completely free. This covers most documents, photos, 
+                Files up to {FREE_TIER_KIB} KiB are completely free. This covers most documents, photos,
                 and metadata - perfect for getting started without any upfront costs.
               </p>
             </div>
@@ -121,7 +124,7 @@ const TurboAboutTab: React.FC = () => {
             </div>
 
             <div className="tcm-comparison-row">
-              <div>Small Files (&lt; 100KB)</div>
+              <div>Small Files (&le; {FREE_TIER_KIB} KiB)</div>
               <div><DollarSign size={14} /> Costs AR</div>
               <div><Gift size={14} /> Completely free</div>
             </div>
