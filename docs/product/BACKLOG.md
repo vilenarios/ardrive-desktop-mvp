@@ -566,8 +566,12 @@ Progress 2026-07-04: guard IMPLEMENTED + verified in isolation in ardrive-core-j
 **Head start (D-019, Phil): an incremental-sync branch was already started in ardrive-core-js** — first task is locating and assessing that branch (rebase/resume vs. cherry-pick vs. restart informed by it).
 Acceptance: second listing of an unchanged large drive transfers near-zero data; changed-entity listing returns exactly the delta.
 
-### CORE-3 · P1 · Beta consumption / Post-beta creation (elevated 2026-07-05, D-026 — was Track C `deferred`) · `todo`
-> **Split per [CORE-JS-PLAN.md](CORE-JS-PLAN.md):** snapshot **CONSUMPTION (read)** is BETA-BLOCKING (the ≥web fix that ends always-full-sync; ~M–L, port web's height-range set-arithmetic); snapshot **CREATION (write)** stays post-beta (FEAT-3). Verified via CLI interop vectors (snapshot listing == full-replay listing).
+### CORE-3 · P1 · Beta consumption / Post-beta creation (elevated 2026-07-05, D-026 — was Track C `deferred`) · `in-progress`
+> **Split per [CORE-JS-PLAN.md](CORE-JS-PLAN.md):** snapshot **CONSUMPTION (read)** is BETA-BLOCKING (the ≥web fix that ends always-full-sync); snapshot **CREATION (write)** stays post-beta (FEAT-3). Verified via the interop gate (D-027, `docs/product/interop-harness/`).
+> **Phased (2026-07-05):**
+> - **3a — foundation (DONE, `feat/snapshot-foundation @ f6da1d2`):** height-range set-arithmetic (ported line-for-line from ardrive-web + tag constants verified against `entity_tag.dart`), snapshot query/model/parser. 78 unit tests. Unwired — zero behavior change.
+> - **3b — listing integration (DONE + interop-verified, `feat/snapshot-integration @ f647d59`):** composite-merge + entity cache + wired into `listPublic/PrivateFolder` with a mandatory full-replay fallback. Interop PASS per D-027: `a84b951b` byte-identical + 6-vs-7 requests; `1f373b21` superset +1 verified-gateway-dropped entity + 6-vs-14 requests; fallback byte-identical (zero regression). **Finding: snapshots are a data-integrity fix (recover gateway-index-dropped files), not just perf.** CAVEAT: private-snapshot path built + unit-tested but NOT live-verified — blocked on CORE-6 (private listing) + a private snapshotted drive interop vector.
+> - **3c — creation (write, POST-BETA):** FEAT-3.
 **ArFS snapshot support.** Per D-018: consume ArFS snapshot entities (as ardrive-web does) so cold-start listing of a large drive reads the snapshot + tail instead of replaying full GQL history. Read-side first; write-side (snapshot creation) confirmed in scope per D-019 — powers FEAT-3's desktop UI.
 Acceptance: cold listing of a snapshotted large drive is dramatically fewer queries than full-history replay; results identical to full replay on interop vectors; creation API produces snapshots ardrive-web reads correctly.
 

@@ -1,0 +1,120 @@
+[
+  {
+    "appName": "ArDrive-App",
+    "appVersion": "2.67.4",
+    "arFS": "0.14",
+    "contentType": "application/json",
+    "customMetaDataGqlTags": {
+      "App-Platform": "Web"
+    },
+    "dataContentType": "text/plain",
+    "dataTxId": "CcDm6MSxLk5uQ7vCkdaIIitqqordXtLiTb31Me39phA",
+    "driveId": "c863be1f-a725-4554-9a9e-18268ed8a035",
+    "entityId": "3b7842a5-2b00-423e-bf4e-36e481fe469a",
+    "entityIdPath": "/41520b33-28c1-4892-886b-b845a5709085/3b7842a5-2b00-423e-bf4e-36e481fe469a",
+    "entityType": "file",
+    "fileId": "3b7842a5-2b00-423e-bf4e-36e481fe469a",
+    "lastModifiedDate": 1745242195850,
+    "name": "ar.io network vision.txt",
+    "parentFolderId": "41520b33-28c1-4892-886b-b845a5709085",
+    "path": "/New Test Drive/ar.io network vision.txt",
+    "size": 11623,
+    "txId": "DP-xV87r477xRj70pDpNAprTQkRrtvT7k-NIxorLXXY",
+    "txIdPath": "/JcdZR9sslgMFlag5UAcjlr0JebeLfsujzeRPclW4rMc/DP-xV87r477xRj70pDpNAprTQkRrtvT7k-NIxorLXXY",
+    "unixTime": 1745507370
+  },
+  {
+    "appName": "ArDrive-App",
+    "appVersion": "2.67.4",
+    "arFS": "0.14",
+    "contentType": "application/json",
+    "customMetaDataGqlTags": {
+      "App-Platform": "Web"
+    },
+    "driveId": "c863be1f-a725-4554-9a9e-18268ed8a035",
+    "entityId": "41520b33-28c1-4892-886b-b845a5709085",
+    "entityIdPath": "/41520b33-28c1-4892-886b-b845a5709085",
+    "entityType": "folder",
+    "folderId": "41520b33-28c1-4892-886b-b845a5709085",
+    "name": "New Test Drive",
+    "parentFolderId": "root folder",
+    "path": "/New Test Drive",
+    "txId": "JcdZR9sslgMFlag5UAcjlr0JebeLfsujzeRPclW4rMc",
+    "txIdPath": "/JcdZR9sslgMFlag5UAcjlr0JebeLfsujzeRPclW4rMc",
+    "unixTime": 1745507325
+  },
+  {
+    "appName": "ArDrive-App",
+    "appVersion": "2.67.4",
+    "arFS": "0.14",
+    "contentType": "application/json",
+    "customMetaDataGqlTags": {
+      "App-Platform": "Web"
+    },
+    "customMetaDataJson": {
+      "thumbnail": {
+        "variants": [
+          {
+            "height": 100,
+            "name": "small",
+            "size": 15119,
+            "txId": "8S3lXDKnrAqGaNrD16otKHMyYoLsjqrue9558Yzx6lQ",
+            "width": 100
+          }
+        ]
+      }
+    },
+    "dataContentType": "image/png",
+    "dataTxId": "cYmpahd9zDy9aatAGwTsFpBGm4Z76szmgt-WA0J6Vw0",
+    "driveId": "c863be1f-a725-4554-9a9e-18268ed8a035",
+    "entityId": "5fe75296-c7bc-463d-b40e-e8f132975655",
+    "entityIdPath": "/41520b33-28c1-4892-886b-b845a5709085/5fe75296-c7bc-463d-b40e-e8f132975655",
+    "entityType": "file",
+    "fileId": "5fe75296-c7bc-463d-b40e-e8f132975655",
+    "lastModifiedDate": 1745503149594,
+    "name": "permaman_detailed.png",
+    "parentFolderId": "41520b33-28c1-4892-886b-b845a5709085",
+    "path": "/New Test Drive/permaman_detailed.png",
+    "size": 2010053,
+    "txId": "aQ12qBRP5gAyvm_yvEnu2aJO-6gmiQacRxAC7Pu381c",
+    "txIdPath": "/JcdZR9sslgMFlag5UAcjlr0JebeLfsujzeRPclW4rMc/aQ12qBRP5gAyvm_yvEnu2aJO-6gmiQacRxAC7Pu381c",
+    "unixTime": 1745507353
+  },
+  {
+    "appName": "ArDrive-App",
+    "appVersion": "2.67.5",
+    "arFS": "0.15",
+    "contentType": "application/json",
+    "customMetaDataGqlTags": {
+      "App-Platform": "Web"
+    },
+    "customMetaDataJson": {
+      "thumbnail": {
+        "variants": [
+          {
+            "height": 45,
+            "name": "small",
+            "size": 9791,
+            "txId": "tjyTprkWqOZJRRgjBNT82xqgTf_xb6jR61maZhhxnNs",
+            "width": 100
+          }
+        ]
+      }
+    },
+    "dataContentType": "image/jpeg",
+    "dataTxId": "APcHxi1T7d4j0KjAsCuV_GtfME2Z3OTAZ4CNZjfANKQ",
+    "driveId": "c863be1f-a725-4554-9a9e-18268ed8a035",
+    "entityId": "9a9585fa-7ecf-4640-8421-015822f0b509",
+    "entityIdPath": "/41520b33-28c1-4892-886b-b845a5709085/9a9585fa-7ecf-4640-8421-015822f0b509",
+    "entityType": "file",
+    "fileId": "9a9585fa-7ecf-4640-8421-015822f0b509",
+    "lastModifiedDate": 1744299623138,
+    "name": "Michelangelo_-_Creation_of_Adam_(cropped).jpg",
+    "parentFolderId": "41520b33-28c1-4892-886b-b845a5709085",
+    "path": "/New Test Drive/Michelangelo_-_Creation_of_Adam_(cropped).jpg",
+    "size": 527254,
+    "txId": "WJ2qMFsXgWlgGYAVguJYXOsb3gGqjXdGraC1QY8OLCc",
+    "txIdPath": "/JcdZR9sslgMFlag5UAcjlr0JebeLfsujzeRPclW4rMc/WJ2qMFsXgWlgGYAVguJYXOsb3gGqjXdGraC1QY8OLCc",
+    "unixTime": 1746475181
+  }
+]

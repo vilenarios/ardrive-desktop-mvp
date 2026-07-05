@@ -1,0 +1,17 @@
+{
+  "driveId": "a84b951b-7d2f-4fa1-a89f-4b4ed673b404",
+  "label": "ytmnd",
+  "gateway": "https://turbo-gateway.com",
+  "runs": 3,
+  "capturedAt": "2026-07-05T20:04:35.539Z",
+  "corejs": "feat/snapshot-foundation (git f6da1d2, snapshots UNWIRED => full-replay)",
+  "cli": "ardrive-cli 4.0.0 (local, tsc build)",
+  "canonicalization": "sort by entityId then entityType; deep key-sort; 2-space JSON; trailing newline",
+  "totalEntities": 14,
+  "breakdown": {
+    "file": 12,
+    "folder": 2
+  },
+  "goldenSha256": "4607b96fc56f0181a60e15dba5a93cfb23b9ffe931de01ea1e2fcd5a0327542e",
+  "goldenGraphqlRequests": 7
+}

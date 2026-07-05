@@ -1,0 +1,17 @@
+{
+  "driveId": "1f373b21-117d-4988-9107-ac12676bd342",
+  "label": "bundled-drive",
+  "gateway": "https://turbo-gateway.com",
+  "runs": 3,
+  "capturedAt": "2026-07-05T20:04:10.591Z",
+  "corejs": "feat/snapshot-foundation (git f6da1d2, snapshots UNWIRED => full-replay)",
+  "cli": "ardrive-cli 4.0.0 (local, tsc build)",
+  "canonicalization": "sort by entityId then entityType; deep key-sort; 2-space JSON; trailing newline",
+  "totalEntities": 39,
+  "breakdown": {
+    "file": 30,
+    "folder": 9
+  },
+  "goldenSha256": "1ee56cb114f0fca4bfc0ab08f9bf3b7d9976886d2f20a029b9f5f2ed767dbf7b",
+  "goldenGraphqlRequests": 14
+}
