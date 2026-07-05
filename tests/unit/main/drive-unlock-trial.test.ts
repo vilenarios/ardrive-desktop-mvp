@@ -67,8 +67,9 @@ vi.mock('../../../src/main/drive-key-manager', () => ({
 vi.mock('ardrive-core-js', () => ({
   arDriveFactory: vi.fn(() => ({})),
   readJWKFile: vi.fn(),
-  ArweaveAddress: vi.fn(),
+  ArweaveAddress: vi.fn((addr: string) => ({ address: addr })),
   EID: vi.fn((id: string) => ({ entityId: id })),
+  DriveSignatureType: { v1: 1, v2: 2 },
 }));
 vi.mock('fs/promises', () => ({
   access: vi.fn().mockRejectedValue(new Error('ENOENT')),
@@ -84,6 +85,7 @@ const mockDriveKey = { keyData: Buffer.from('derived') };
 describe('unlockPrivateDrive trial decryption (PRIV-2)', () => {
   let walletManager: SecureWalletManager;
   let mockGetPrivateDrive: ReturnType<typeof vi.fn>;
+  let mockGetDriveSignatureInfo: ReturnType<typeof vi.fn>;
   let recreateSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -91,9 +93,17 @@ describe('unlockPrivateDrive trial decryption (PRIV-2)', () => {
     walletManager = new SecureWalletManager();
 
     mockGetPrivateDrive = vi.fn();
-    (walletManager as any).arDrive = { getPrivateDrive: mockGetPrivateDrive };
+    // PRIV-SIG-1: unlock now detects the on-chain signature type first. Default
+    // the mock to a v2 drive; individual tests override as needed.
+    mockGetDriveSignatureInfo = vi.fn().mockResolvedValue({ driveSignatureType: 2 });
+    (walletManager as any).arDrive = {
+      getPrivateDrive: mockGetPrivateDrive,
+      getDriveSignatureInfo: mockGetDriveSignatureInfo,
+    };
     (walletManager as any).wallet = { fake: 'wallet' };
     (walletManager as any).walletJson = { kty: 'RSA', n: 'test' };
+    // Owner address resolution is a local hash; stub it so no real arweave loads.
+    vi.spyOn(walletManager as any, 'getAddressFromJWK').mockResolvedValue('owner-address');
 
     vi.mocked(driveKeyManager.deriveKey).mockResolvedValue(mockDriveKey as any);
     recreateSpy = vi
@@ -199,5 +209,78 @@ describe('unlockPrivateDrive trial decryption (PRIV-2)', () => {
 
     expect(result.success).toBe(true);
     expect(driveKeyManager.cacheKey).toHaveBeenCalled();
+  });
+
+  // ===== PRIV-SIG-1: per-drive v1/v2 signature-type detection on unlock =====
+  // The audited bug: derivation hardcoded v1, so v2 drives rejected the CORRECT
+  // password. Unlock must detect the on-chain type and derive with it.
+
+  it('detects a v1 drive and derives the key with the v1 signature type', async () => {
+    mockGetDriveSignatureInfo.mockResolvedValue({ driveSignatureType: 1 });
+    mockGetPrivateDrive.mockResolvedValue({ name: 'Secret Drive' });
+
+    const result = await walletManager.unlockPrivateDrive(DRIVE_ID, 'correct-password');
+
+    expect(result.success).toBe(true);
+    expect(mockGetDriveSignatureInfo).toHaveBeenCalledWith(
+      expect.objectContaining({ driveId: { entityId: DRIVE_ID } })
+    );
+    // Derived with the DETECTED v1 type — not a hardcoded default.
+    expect(driveKeyManager.deriveKey).toHaveBeenCalledWith(DRIVE_ID, 'correct-password', 1, undefined);
+  });
+
+  it('detects a v2 drive and derives the key with the v2 signature type (the lockout fix)', async () => {
+    mockGetDriveSignatureInfo.mockResolvedValue({ driveSignatureType: 2 });
+    mockGetPrivateDrive.mockResolvedValue({ name: 'Secret Drive' });
+
+    const result = await walletManager.unlockPrivateDrive(DRIVE_ID, 'correct-password');
+
+    expect(result.success).toBe(true);
+    expect(driveKeyManager.deriveKey).toHaveBeenCalledWith(DRIVE_ID, 'correct-password', 2, undefined);
+    expect(driveKeyManager.cacheKey).toHaveBeenCalledWith(DRIVE_ID, mockDriveKey);
+  });
+
+  it("threads a v1 drive's encryptedSignatureData into derivation", async () => {
+    const encryptedSignatureData = { cipherIV: 'iv', encryptedData: Buffer.from('sig') };
+    mockGetDriveSignatureInfo.mockResolvedValue({ driveSignatureType: 1, encryptedSignatureData });
+    mockGetPrivateDrive.mockResolvedValue({ name: 'Secret Drive' });
+
+    const result = await walletManager.unlockPrivateDrive(DRIVE_ID, 'correct-password');
+
+    expect(result.success).toBe(true);
+    expect(driveKeyManager.deriveKey).toHaveBeenCalledWith(
+      DRIVE_ID,
+      'correct-password',
+      1,
+      encryptedSignatureData
+    );
+  });
+
+  it('retries a transient 404 from getDriveSignatureInfo (SYNC-20) then unlocks', async () => {
+    mockGetDriveSignatureInfo
+      .mockRejectedValueOnce(new Error('Request to gateway has failed: (Status: 404) Not Found'))
+      .mockResolvedValueOnce({ driveSignatureType: 2 });
+    mockGetPrivateDrive.mockResolvedValue({ name: 'Secret Drive' });
+
+    const result = await walletManager.unlockPrivateDrive(DRIVE_ID, 'correct-password');
+
+    expect(result.success).toBe(true);
+    expect(mockGetDriveSignatureInfo).toHaveBeenCalledTimes(2);
+    expect(driveKeyManager.deriveKey).toHaveBeenCalledWith(DRIVE_ID, 'correct-password', 2, undefined);
+  }, 15000);
+
+  it('reports a persistent signature-detection failure as an honest, distinct error — never wrong-password, never a cached key', async () => {
+    // A non-transient gateway failure (e.g. the drive txs aren't retrievable):
+    // must NOT masquerade as "Invalid password", and must NOT derive/cache a
+    // guessed-type key (data-safety: no wrong key ever reaches the cache/disk).
+    mockGetDriveSignatureInfo.mockRejectedValue(new Error('Drive is public'));
+
+    const result = await walletManager.unlockPrivateDrive(DRIVE_ID, 'correct-password');
+
+    expect(result.success).toBe(false);
+    expect(result.error).not.toMatch(/Invalid password/);
+    expect(result.error).toMatch(/Could not verify the drive type/);
+    expect(driveKeyManager.deriveKey).not.toHaveBeenCalled();
+    expect(driveKeyManager.cacheKey).not.toHaveBeenCalled();
   });
 });
