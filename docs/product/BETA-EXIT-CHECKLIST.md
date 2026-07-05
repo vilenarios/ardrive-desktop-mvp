@@ -66,7 +66,9 @@ Previously all **mock-verified** and blocked. Executed 2026-07-04 against Phil's
 - [x] **Private drive** round-trip: create/unlock → private crypto round-trips to correct plaintext via the derived drive key; wrong password fails closed.
 - [x] **Payment approval:** a real Turbo upload spent only after explicit approval; free-tier (<100 KiB) stayed free; one capped >free-tier paid upload proved the payment path (~0.0012 credits, one-shot, Phil-authorized).
 - [x] **Upload integrity:** public upload → download → SHA-256 identical.
-- [ ] *Remaining:* re-run the full multi-round matrix (R2–R5 + Batch 2) end-to-end through the **live app UI** rather than the service-level harness — folds into the UAT plan / Gate 5.
+- [x] **LIVE end-to-end through the running app UI** (2026-07-05, UAT-RUN-2-LIVE + follow-ups): real wallet authenticated, 18 drives listed live (0 console errors); free-tier upload → download → **SHA-256 byte-exact** (data tx `_rAAJ0…`); gateway-404 **self-heal proven live** (real 404 → SYNC-20 retry → recovered); **private drives v1 AND v2 unlock live** after the PRIV-SIG-1 fix, wrong-password fails closed.
+- [x] **PRIV-SIG-1 (P0, found by this live pass):** app hardcoded v1 drive-signature derivation → v2 private drives rejected the correct password, and app-created private drives could never be re-unlocked (data-loss class). Fixed (per-drive v1/v2 detection) + live-proven on the owner's real v2 drives + create→re-unlock round-trip.
+- [ ] *Remaining (owner-gated):* real **paid** rails — Turbo top-up (Stripe), AR→Credits conversion, and a >free-tier paid upload through the live UI (guards verified; the charge needs the owner). Two environmental test-only caveats documented (WSL `/mnt/c` drops file-watch events; fresh-drive gateway indexing ~10–18 min on this box) — neither affects real users on native FS / normal networks.
 
 ## Gate 5 — Release mechanics & known-issues
 
