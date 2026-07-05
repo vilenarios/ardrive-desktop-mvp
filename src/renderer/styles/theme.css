@@ -168,6 +168,20 @@
    * polish pass, §5A of DESIGN-SYSTEM.md). */
   --brand-rgb: 211, 23, 33;
 
+  /* File-type icon accents (THEME-3/H-TOKEN-1): decorative per-extension
+   * icon colors in styles.css's .file-type-icon.* rules used raw hex outside
+   * this token file. image/video/audio/archive already reuse existing
+   * brand/status tokens (--ardrive-secondary/-primary/-warning/--gray-700);
+   * these four had no equivalent, so they get dedicated tokens here instead
+   * of overloading unrelated status colors (e.g. --danger) for a purely
+   * categorical, non-status meaning. Grouped with --brand-rgb above as
+   * theme-constant — values are the exact hex previously hardcoded, so this
+   * is a pure move, not a recolor. */
+  --filetype-code: #10b981;
+  --filetype-spreadsheet: #059669;
+  --filetype-pdf: #dc2626;
+  --filetype-document: #2563eb;
+
   /* 2.2 Type scale (desktop) — ArDriveDesktopTypography */
   --text-display: 2.8125rem; /* 45px */
   --text-h1: 2.25rem; /* 36px */

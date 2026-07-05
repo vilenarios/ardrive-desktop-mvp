@@ -34,10 +34,13 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
   if (!isOpen) return null;
 
   // Real-time drive name validation
+  // H-COPY-2: this cap must match input-validator.ts's MAX_DRIVE_NAME_LENGTH
+  // (100) — the UI previously hardcoded 32, silently truncating well below
+  // what the backend validator (and ArFS itself) actually allows.
   const validateDriveNameRealtime = (name: string) => {
     // Check length
-    if (name.length > 32) {
-      setDriveNameError('Drive name must be under 32 characters');
+    if (name.length > 100) {
+      setDriveNameError('Drive name must be under 100 characters');
       return false;
     }
 
@@ -55,7 +58,7 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
 
   const handleDriveNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newName = e.target.value;
-    if (newName.length <= 32) {
+    if (newName.length <= 100) {
       setDriveName(newName);
       validateDriveNameRealtime(newName);
     }
@@ -179,10 +182,16 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
 
   return (
     <div className="drive-modal-overlay" onClick={handleBackdropClick}>
-      <div className="drive-modal-panel size-md" ref={containerRef}>
+      <div
+        className="drive-modal-panel size-md"
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-drive-modal-title"
+      >
         {/* Header */}
         <div className="drive-modal-header">
-          <h2 className="drive-modal-title">
+          <h2 className="drive-modal-title" id="create-drive-modal-title">
             <HardDrive size={24} />
             Create New Drive
             {/* INFO-8: "what is a drive" had no explanation reachable from
@@ -218,19 +227,21 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
             onChange={handleDriveNameChange}
             placeholder="Enter drive name (e.g., Personal Files, Work Documents)"
           />
-          {/* POLISH-15: warn as the 32-char limit approaches, matching the
+          {/* POLISH-15: warn as the char limit approaches, matching the
               near-limit treatment DriveAndSyncSetup already applies to its
-              own drive-name field (there: driveName.length > 28). */}
+              own drive-name field. H-COPY-2: limit raised from 32 to 100 to
+              match input-validator.ts's MAX_DRIVE_NAME_LENGTH; warning
+              threshold scaled proportionally (was 28/32, now 90/100). */}
           <small
             style={{
               color: driveNameError
                 ? 'var(--danger-fg)'
-                : driveName.length > 28
+                : driveName.length > 90
                   ? 'var(--warning-fg)'
                   : undefined
             }}
           >
-            {driveNameError || `${driveName.length}/32 characters`}
+            {driveNameError || `${driveName.length}/100 characters`}
           </small>
         </div>
 

@@ -611,7 +611,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     return (
       <div className="fade-in">
         {copyMessage && (
-          <div className="copy-toast">
+          <div className="copy-toast" role="status" aria-live="polite">
             {copyMessage}
           </div>
         )}
@@ -634,7 +634,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     <div className="dashboard-container fade-in">
       {/* Copy Message */}
       {copyMessage && (
-        <div className="copy-toast">
+        <div className="copy-toast" role="status" aria-live="polite">
           {copyMessage}
         </div>
       )}
@@ -823,7 +823,12 @@ const Dashboard: React.FC<DashboardProps> = ({
         <div className="tab-content">
           <div className="tab-content-inner">
             {dashboardTab === 'overview' && (
-              <div className="overview-tab-wrapper">
+              <div
+                className="overview-tab-wrapper"
+                id="overview-panel"
+                role="tabpanel"
+                aria-labelledby="overview-tab"
+              >
                 <OverviewTab
                   drive={drive}
                   config={config}
@@ -833,7 +838,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             )}
 
             {dashboardTab === 'upload-queue' && (
-              <div className="upload-queue-tab">
+              <div
+                className="upload-queue-tab"
+                id="upload-queue-panel"
+                role="tabpanel"
+                aria-labelledby="upload-queue-tab"
+              >
                 {pendingUploads.length > 0 ? (
                   <UploadApprovalQueueModern
                     pendingUploads={pendingUploads}
@@ -873,7 +883,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             )}
 
             {dashboardTab === 'download-queue' && (
-              <div className="download-queue-tab-wrapper">
+              <div
+                className="download-queue-tab-wrapper"
+                id="download-queue-panel"
+                role="tabpanel"
+                aria-labelledby="download-queue-tab"
+              >
                 <DownloadQueueTab
                   downloads={downloads}
                   onOpenFolder={async (filePath) => {
@@ -886,7 +901,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             )}
 
             {dashboardTab === 'activity' && (
-              <div className="activity-tab-wrapper">
+              <div
+                className="activity-tab-wrapper"
+                id="activity-panel"
+                role="tabpanel"
+                aria-labelledby="activity-tab"
+              >
                 <ActivityTab
                   uploads={uploads}
                   downloads={downloads}
@@ -899,7 +919,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             )}
 
             {dashboardTab === 'permaweb' && (
-              <div className="storage-tab-wrapper">
+              <div
+                className="storage-tab-wrapper"
+                id="permaweb-panel"
+                role="tabpanel"
+                aria-labelledby="permaweb-tab"
+              >
                 <StorageTab
                   drive={drive}
                   config={config}

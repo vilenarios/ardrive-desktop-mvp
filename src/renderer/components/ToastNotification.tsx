@@ -62,8 +62,19 @@ const ToastNotification: React.FC<ToastNotificationProps> = ({ toast, onClose })
     }
   };
 
+  // A11Y-1: toasts previously had no role/aria-live at all, so payment/copy/
+  // error outcomes were silent to screen readers. Error toasts get an
+  // assertive role="alert" (interrupts immediately); everything else is
+  // role="status" (implicit aria-live="polite", matching ToastContainer's
+  // own polite live region so the announcement isn't duplicated/contradicted).
+  const role = toast.type === 'error' ? 'alert' : 'status';
+
   return (
-    <div className={`toast-notification ${getTypeClass()} ${isExiting ? 'exiting' : ''}`}>
+    <div
+      className={`toast-notification ${getTypeClass()} ${isExiting ? 'exiting' : ''}`}
+      role={role}
+      aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
+    >
       <div className="toast-icon">
         {getIcon()}
       </div>
@@ -71,7 +82,7 @@ const ToastNotification: React.FC<ToastNotificationProps> = ({ toast, onClose })
         <h4 className="toast-title">{toast.title}</h4>
         {toast.message && <p className="toast-message">{toast.message}</p>}
       </div>
-      <button className="toast-close" onClick={handleClose}>
+      <button className="toast-close" onClick={handleClose} aria-label="Dismiss notification">
         <X size={16} />
       </button>
 

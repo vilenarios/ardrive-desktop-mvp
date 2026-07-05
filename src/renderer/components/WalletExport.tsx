@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { 
+import {
   Download,
   Copy,
   Eye,
@@ -12,6 +12,7 @@ import {
   Check,
   AlertCircle
 } from 'lucide-react';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface WalletExportProps {
   walletAddress: string;
@@ -198,14 +199,25 @@ const WalletExport: React.FC<WalletExportProps> = ({ walletAddress, onClose }) =
   const isRawTextSecret =
     selectedFormat === 'jwk-plain' || selectedFormat === 'private-key';
 
+  // A11Y-2: WalletExport had no Escape/focus-trap and no role="dialog" — it
+  // only mounts while the export flow is open (Dashboard.tsx), so wiring the
+  // shared hook here is as trivial as it is for the drive modals.
+  const { containerRef, handleBackdropClick } = useModalA11y<HTMLDivElement>(true, onClose);
+
   return (
     <div className="wallet-export-modal fade-in">
-      <div className="modal-overlay" onClick={onClose} />
-      
-      <div className="modal-content">
+      <div className="modal-overlay" onClick={handleBackdropClick} />
+
+      <div
+        className="modal-content"
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="wallet-export-modal-title"
+      >
         <div className="modal-header">
-          <h2>Export Wallet</h2>
-          <button className="close-btn" onClick={onClose}>
+          <h2 id="wallet-export-modal-title">Export Wallet</h2>
+          <button className="close-btn" onClick={onClose} aria-label="Close">
             <X size={20} />
           </button>
         </div>

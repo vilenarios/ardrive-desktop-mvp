@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DriveInfo, AppConfig, SyncStatus, FileUpload } from '../../../types';
 import { InfoButton } from '../common/InfoButton';
+import { useModalA11y } from '../../hooks/useModalA11y';
 import { 
   Folder,
   FolderOpen,
@@ -116,6 +117,13 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   const [selectedItemDetails, setSelectedItemDetails] = useState<FileItem | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+
+  // A11Y-2: the file-details modal had no Escape/focus-trap and no
+  // role="dialog" — reuse the shared hook used by the drive modals. Called
+  // unconditionally here (before the `if (!selectedDrive)` early return
+  // below) per rules of hooks.
+  const { containerRef: fileDetailsModalRef, handleBackdropClick: handleFileDetailsBackdropClick } =
+    useModalA11y<HTMLDivElement>(!!selectedItemDetails, () => setSelectedItemDetails(null));
 
   const selectedDrive = drive;
   const loadDriveMetadataRef = useRef<(isManualRefresh?: boolean) => Promise<void>>();
@@ -801,17 +809,19 @@ export const StorageTab: React.FC<StorageTabProps> = ({
               </ul>
             </InfoButton>
             <div className="view-toggle">
-              <button 
+              <button
                 className={`view-button ${viewMode === 'list' ? 'active' : ''}`}
                 onClick={() => setViewMode('list')}
                 title="List view"
+                aria-label="List view"
               >
                 <List size={16} />
               </button>
-              <button 
+              <button
                 className={`view-button ${viewMode === 'grid' ? 'active' : ''}`}
                 onClick={() => setViewMode('grid')}
                 title="Grid view"
+                aria-label="Grid view"
               >
                 <Grid size={16} />
               </button>
@@ -911,9 +921,10 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                         {/* Quick actions on hover */}
                         {item.type === 'file' && (
                           <>
-                            <button 
+                            <button
                               className="quick-action"
                               title="Open in ArDrive"
+                              aria-label="Open in ArDrive"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (item.ardriveUrl) {
@@ -923,9 +934,10 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                             >
                               <ExternalLink size={14} />
                             </button>
-                            <button 
+                            <button
                               className="quick-action"
                               title="Copy ArDrive link"
+                              aria-label="Copy ArDrive link"
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 if (item.ardriveUrl) {
@@ -938,9 +950,10 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                             </button>
                           </>
                         )}
-                        <button 
+                        <button
                           className="action-menu-trigger"
                           title="More actions"
+                          aria-label="More actions"
                           onClick={(e) => {
                             e.stopPropagation();
                             // Toggle dropdown menu using state
@@ -949,7 +962,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                         >
                           <MoreHorizontal size={16} />
                         </button>
-                        
+
                         <div className="action-menu" style={{ display: openMenuId === item.id ? 'block' : 'none' }}>
                           {item.isHidden && (
                             <button
@@ -1087,6 +1100,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                         <button
                           className="grid-preview-button"
                           title="Preview on Arweave"
+                          aria-label="Preview on Arweave"
                           onClick={async (e) => {
                             e.stopPropagation();
                             e.preventDefault();
@@ -1100,6 +1114,7 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                         <button
                           className="grid-preview-button"
                           title="View on ArDrive"
+                          aria-label="View on ArDrive"
                           onClick={async (e) => {
                             e.stopPropagation();
                             e.preventDefault();
@@ -1244,24 +1259,33 @@ export const StorageTab: React.FC<StorageTabProps> = ({
 
       {/* File Details Modal */}
       {selectedItemDetails && (
-        <div className="modal-overlay" onClick={() => setSelectedItemDetails(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={handleFileDetailsBackdropClick}>
+          <div
+            className="modal-content"
+            ref={fileDetailsModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="file-details-modal-title"
+          >
             <div className="modal-header">
-              <h3 style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 'var(--space-2)',
-                margin: 0,
-                fontSize: '18px',
-                fontWeight: '600'
-              }}>
+              <h3
+                id="file-details-modal-title"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  margin: 0,
+                  fontSize: '18px',
+                  fontWeight: '600'
+                }}>
                 {getFileIcon(selectedItemDetails)}
                 {selectedItemDetails.name}
               </h3>
-              <button 
+              <button
                 className="modal-close"
                 onClick={() => setSelectedItemDetails(null)}
                 title="Close"
+                aria-label="Close"
               >
                 ×
               </button>
@@ -1328,13 +1352,14 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                     <span className="detail-label">Data Transaction ID:</span>
                     <span className="detail-value monospace">
                       {selectedItemDetails.dataTxId}
-                      <button 
+                      <button
                         className="copy-button"
                         onClick={async () => {
                           await navigator.clipboard.writeText(selectedItemDetails.dataTxId!);
                           console.log('Data TX ID copied to clipboard');
                         }}
                         title="Copy to clipboard"
+                        aria-label="Copy data transaction ID to clipboard"
                       >
                         <Copy size={12} />
                       </button>
@@ -1347,13 +1372,14 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                     <span className="detail-label">Metadata Transaction ID:</span>
                     <span className="detail-value monospace">
                       {selectedItemDetails.metadataTxId}
-                      <button 
+                      <button
                         className="copy-button"
                         onClick={async () => {
                           await navigator.clipboard.writeText(selectedItemDetails.metadataTxId!);
                           console.log('Metadata TX ID copied to clipboard');
                         }}
                         title="Copy to clipboard"
+                        aria-label="Copy metadata transaction ID to clipboard"
                       >
                         <Copy size={12} />
                       </button>

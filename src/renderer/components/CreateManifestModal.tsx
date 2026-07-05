@@ -290,6 +290,9 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
     >
       <div
         ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-manifest-modal-title"
         style={{
           background: 'var(--ardrive-surface)',
           borderRadius: 'var(--radius-lg)',
@@ -311,7 +314,7 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
             <FileJson size={24} style={{ color: 'var(--ardrive-primary)' }} />
-            <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 600 }}>Create Arweave Manifest</h2>
+            <h2 id="create-manifest-modal-title" style={{ margin: 0, fontSize: '20px', fontWeight: 600 }}>Create Arweave Manifest</h2>
           </div>
           <button
             className="manifest-close-button"
@@ -493,6 +496,9 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
         >
           <div
             ref={confirmContainerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-manifest-modal-title"
             style={{
               background: 'var(--ardrive-surface)',
               borderRadius: 'var(--radius-lg)',
@@ -510,7 +516,7 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
                 <CheckCircle2 size={24} style={{ color: 'var(--success-600)' }} />
-                <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 600 }}>Confirm Manifest Creation</h2>
+                <h2 id="confirm-manifest-modal-title" style={{ margin: 0, fontSize: '20px', fontWeight: 600 }}>Confirm Manifest Creation</h2>
               </div>
             </div>
 

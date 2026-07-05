@@ -353,6 +353,7 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
                               onOpenFolder(download.localPath);
                             }}
                             title="Open containing folder"
+                            aria-label="Open containing folder"
                           >
                             <FolderOpen size={14} />
                           </button>
@@ -365,6 +366,7 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
                               onRetryDownload(download.id);
                             }}
                             title="Retry download"
+                            aria-label="Retry download"
                           >
                             <RefreshCw size={14} />
                           </button>
@@ -377,6 +379,7 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
                               onPauseDownload(download.id);
                             }}
                             title="Pause download"
+                            aria-label="Pause download"
                           >
                             <Pause size={14} />
                           </button>
@@ -389,6 +392,7 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
                               onResumeDownload(download.id);
                             }}
                             title="Resume download"
+                            aria-label="Resume download"
                           >
                             <Play size={14} />
                           </button>
@@ -401,6 +405,7 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
                               await window.electronAPI.files.cancelDownload(download.fileId);
                             }}
                             title={download.status === 'queued' ? 'Remove from queue' : 'Make cloud-only (cancel download)'}
+                            aria-label={download.status === 'queued' ? 'Remove from queue' : 'Make cloud-only (cancel download)'}
                           >
                             <Cloud size={14} />
                           </button>
@@ -410,7 +415,14 @@ export const DownloadQueueTab: React.FC<DownloadQueueTabProps> = ({
 
                     {/* Progress bar for active downloads */}
                     {download.status === 'downloading' && (
-                      <div className="download-progress-track">
+                      <div
+                        className="download-progress-track"
+                        role="progressbar"
+                        aria-valuenow={download.progress}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label={`Download progress for ${download.fileName}`}
+                      >
                         <div
                           className="download-progress-fill"
                           style={{ width: `${download.progress}%` }}

@@ -92,15 +92,22 @@ export const SyncProgressDisplay: React.FC<SyncProgressDisplayProps> = ({ progre
     return (stepInfo.step / stepInfo.total) * 100;
   };
 
+  const progressPercentage = getProgressPercentage();
+
   return (
     <div className="sync-progress-modal">
-      <div className="sync-progress-content">
+      <div
+        className="sync-progress-content"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sync-progress-modal-title"
+      >
         <div className="sync-progress-header">
           <div className="sync-progress-icon" style={{ color: getProgressColor() }}>
             {getIcon()}
           </div>
           <div className="sync-progress-title">
-            <h3>Syncing Drive</h3>
+            <h3 id="sync-progress-modal-title">Syncing Drive</h3>
             <div className="sync-progress-step">
               Step {getStepInfo().step} of {getStepInfo().total}
             </div>
@@ -119,11 +126,18 @@ export const SyncProgressDisplay: React.FC<SyncProgressDisplayProps> = ({ progre
             </p>
           )}
 
-          <div className="sync-progress-bar-container">
-            <div 
+          <div
+            className="sync-progress-bar-container"
+            role="progressbar"
+            aria-valuenow={Math.round(progressPercentage)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Sync progress"
+          >
+            <div
               className="sync-progress-bar"
-              style={{ 
-                width: `${getProgressPercentage()}%`,
+              style={{
+                width: `${progressPercentage}%`,
                 backgroundColor: getProgressColor(),
                 transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
                 borderRadius: '4px'

@@ -47,6 +47,7 @@ import {
   X
 } from 'lucide-react';
 import { InfoButton } from '../common/InfoButton';
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface FileDownload {
   id: string;
@@ -87,6 +88,13 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
   const [activityFilter, setActivityFilter] = useState<'all' | 'uploads' | 'downloads'>('all');
   const [contextMenuOpen, setContextMenuOpen] = useState<string | null>(null);
   const [selectedActivityDetails, setSelectedActivityDetails] = useState<ActivityItem | null>(null);
+
+  // A11Y-2: the activity-details modal had no Escape/focus-trap and no
+  // role="dialog" — reuse the shared hook used by the drive modals. Called
+  // unconditionally here (before the `if (!selectedDrive)` early return
+  // below) per rules of hooks.
+  const { containerRef: activityDetailsModalRef, handleBackdropClick: handleActivityDetailsBackdropClick } =
+    useModalA11y<HTMLDivElement>(!!selectedActivityDetails, () => setSelectedActivityDetails(null));
 
   // Use the single drive
   const selectedDrive = drive;
@@ -632,6 +640,15 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                       handleActivityClick(activity);
                     }
                   }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${activity.type === 'upload' ? 'Upload' : 'Download'}: ${activity.fileName}, ${activity.status}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleActivityClick(activity);
+                    }
+                  }}
                   style={{ userSelect: 'none' }}
                 >
                   {/* Activity Type Badge */}
@@ -736,8 +753,15 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                     {/* Progress bar for active operations */}
                     {activity.status === 'uploading' || activity.status === 'downloading' ? (
                       <div className="activity-progress">
-                        <div className="progress-bar">
-                          <div 
+                        <div
+                          className="progress-bar"
+                          role="progressbar"
+                          aria-valuenow={activity.progress || 0}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-label={`${activity.type === 'upload' ? 'Upload' : 'Download'} progress for ${activity.fileName}`}
+                        >
+                          <div
                             className={`progress-fill ${activity.type}`}
                             style={{
                               width: `${activity.progress || 0}%`
@@ -859,24 +883,33 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
 
       {/* Activity Details Modal */}
       {selectedActivityDetails && (
-        <div className="modal-overlay" onClick={() => setSelectedActivityDetails(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={handleActivityDetailsBackdropClick}>
+          <div
+            className="modal-content"
+            ref={activityDetailsModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="activity-details-modal-title"
+          >
             <div className="modal-header">
-              <h3 style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 'var(--space-2)',
-                margin: 0,
-                fontSize: '18px',
-                fontWeight: '600'
-              }}>
+              <h3
+                id="activity-details-modal-title"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  margin: 0,
+                  fontSize: '18px',
+                  fontWeight: '600'
+                }}>
                 {getFileIcon(selectedActivityDetails.fileName)}
                 {selectedActivityDetails.fileName}
               </h3>
-              <button 
+              <button
                 className="modal-close"
                 onClick={() => setSelectedActivityDetails(null)}
                 title="Close"
+                aria-label="Close"
               >
                 ×
               </button>
@@ -937,7 +970,13 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                     <span className="detail-label">Progress:</span>
                     <span className="detail-value">
                       {selectedActivityDetails.progress}%
-                      <div className="detail-progress-track">
+                      <div
+                        className="detail-progress-track"
+                        role="progressbar"
+                        aria-valuenow={selectedActivityDetails.progress}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                      >
                         <div
                           className={`detail-progress-fill ${selectedActivityDetails.type === 'upload' ? 'upload' : 'download'}`}
                           style={{ width: `${selectedActivityDetails.progress}%` }}

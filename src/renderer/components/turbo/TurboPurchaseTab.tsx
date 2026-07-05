@@ -72,6 +72,7 @@ const TurboPurchaseTab: React.FC<TurboPurchaseTabProps> = ({
               <select
                 value={topUpCurrency}
                 onChange={(e) => setTopUpCurrency(e.target.value)}
+                aria-label="Currency"
               >
                 <option value="USD">USD</option>
                 <option value="EUR">EUR</option>

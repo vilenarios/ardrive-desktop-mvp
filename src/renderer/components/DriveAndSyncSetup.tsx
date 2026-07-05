@@ -90,10 +90,13 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
   };
 
   // Real-time drive name validation
+  // H-COPY-2: this cap must match input-validator.ts's MAX_DRIVE_NAME_LENGTH
+  // (100) — the UI previously hardcoded 32, silently truncating well below
+  // what the backend validator (and ArFS itself) actually allows.
   const validateDriveNameRealtime = (name: string) => {
     // Check length
-    if (name.length > 32) {
-      setDriveNameError('Drive name must be under 32 characters');
+    if (name.length > 100) {
+      setDriveNameError('Drive name must be under 100 characters');
       return false;
     }
     
@@ -117,7 +120,7 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
   const handleDriveNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newName = e.target.value;
     // Allow typing but validate
-    if (newName.length <= 32) {
+    if (newName.length <= 100) {
       setDriveName(newName);
     }
     if (newName) {
@@ -392,8 +395,8 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
                   value={driveName}
                   onChange={handleDriveNameChange}
                   placeholder="e.g., Personal Files, Work Documents"
-                  maxLength={32}
-                  style={{ 
+                  maxLength={100}
+                  style={{
                     fontSize: '16px',
                     borderColor: driveNameError ? 'var(--error)' : undefined,
                     paddingRight: '60px'
@@ -405,9 +408,9 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
                   top: '50%',
                   transform: 'translateY(-50%)',
                   fontSize: '13px',
-                  color: driveName.length > 28 ? 'var(--error-600)' : 'var(--gray-500)'
+                  color: driveName.length > 90 ? 'var(--error-600)' : 'var(--gray-500)'
                 }}>
-                  {driveName.length}/32
+                  {driveName.length}/100
                 </span>
               </div>
               {driveNameError && (
@@ -636,7 +639,7 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
               <button
                 className="button large"
                 onClick={handleProceedToSummary}
-                disabled={!driveName.trim() || !syncFolder || !!driveNameError || driveName.length > 32}
+                disabled={!driveName.trim() || !syncFolder || !!driveNameError || driveName.length > 100}
                 style={{ 
                   flex: 1,
                   fontSize: '16px', 

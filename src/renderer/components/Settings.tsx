@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, FolderOpen, Key, Info, ExternalLink, Globe } from 'lucide-react';
 import { AppConfig } from '../../types';
 import { InfoButton } from './common/InfoButton';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 // INFO-3: mirrors src/main/gateway.ts's DEFAULT_GATEWAY_HOST. This is a
 // renderer-side display/reset value only — the main process (gateway.ts) is
@@ -120,20 +121,28 @@ const Settings: React.FC<SettingsProps> = ({
     await window.electronAPI.shell.openExternal('https://github.com/ardriveapp/ardrive-desktop-mvp');
   };
 
+  // A11Y-2: Settings had no Escape/focus-trap and no role="dialog" — reuse
+  // the shared hook used by the drive modals. Must be called before the
+  // `if (!isOpen) return null` below (hooks can't be conditional).
+  const { containerRef, handleBackdropClick } = useModalA11y<HTMLDivElement>(isOpen, onClose);
+
   if (!isOpen) return null;
 
   return (
-    <div 
-      className="settings-modal-backdrop" 
-      onClick={(e) => {
-        e.stopPropagation();
-        onClose();
-      }}
+    <div
+      className="settings-modal-backdrop"
+      onClick={handleBackdropClick}
     >
-      <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="settings-modal"
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-modal-title"
+      >
         <div className="settings-modal-header">
-          <h2>Settings</h2>
-          <button className="settings-close-button" onClick={onClose}>
+          <h2 id="settings-modal-title">Settings</h2>
+          <button className="settings-close-button" onClick={onClose} aria-label="Close">
             <X size={20} />
           </button>
         </div>

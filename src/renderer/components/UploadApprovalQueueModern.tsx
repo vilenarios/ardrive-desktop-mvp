@@ -480,6 +480,7 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
           onClick={onRefreshBalance}
           className="refresh-button"
           title="Refresh balances"
+          aria-label="Refresh balances"
         >
           <RefreshCw size={14} />
         </button>
@@ -599,6 +600,7 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
                     onClick={() => handleCancelUpload(upload.id)}
                     className="file-action-btn file-action-btn--cancel"
                     title="Cancel upload"
+                    aria-label="Cancel upload"
                   >
                     <X size={16} />
                   </button>
@@ -608,6 +610,7 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
                   <button
                     onClick={() => handleRetryUpload(upload.id)}
                     title="Retry upload"
+                    aria-label="Retry upload"
                     className="file-action-btn file-action-btn--retry"
                   >
                     <RefreshCw size={16} />
@@ -619,6 +622,7 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
                     onClick={() => onRejectUpload(upload.id)}
                     className="file-action-btn file-action-btn--reject"
                     title="Remove from queue"
+                    aria-label="Remove from queue"
                   >
                     <X size={16} />
                   </button>

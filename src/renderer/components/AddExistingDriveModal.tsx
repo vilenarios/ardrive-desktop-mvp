@@ -115,10 +115,16 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
 
   return (
     <div className="drive-modal-overlay" onClick={handleBackdropClick}>
-      <div className="drive-modal-panel size-lg" ref={containerRef}>
+      <div
+        className="drive-modal-panel size-lg"
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-existing-drive-modal-title"
+      >
         {/* Header */}
         <div className="drive-modal-header">
-          <h2 className="drive-modal-title">
+          <h2 className="drive-modal-title" id="add-existing-drive-modal-title">
             <HardDrive size={24} />
             Add Existing Drive
           </h2>
