@@ -89,6 +89,9 @@ export const PrivateDriveUnlockModal: React.FC<PrivateDriveUnlockModalProps> = (
         style={{ maxWidth: '420px', maxHeight: '90vh', overflow: 'auto' }}
         onClick={(e) => e.stopPropagation()}
         ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="unlock-drive-modal-title"
       >
         {/* Header */}
         <div
@@ -115,7 +118,7 @@ export const PrivateDriveUnlockModal: React.FC<PrivateDriveUnlockModalProps> = (
             <Lock size={20} style={{ color: 'var(--brand)' }} />
           </div>
           <div>
-            <h2 style={{
+            <h2 id="unlock-drive-modal-title" style={{
               margin: 0,
               fontSize: '18px',
               fontWeight: 600,

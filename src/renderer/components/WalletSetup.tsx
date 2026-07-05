@@ -638,6 +638,15 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onClick={() => !walletPath && handleSelectWallet()}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={walletPath ? `Selected wallet file: ${walletPath.split(/[/\\]/).pop()}` : 'Browse for a wallet file, or drag and drop one here'}
+                  onKeyDown={(e) => {
+                    if ((e.key === 'Enter' || e.key === ' ') && !walletPath) {
+                      e.preventDefault();
+                      handleSelectWallet();
+                    }
+                  }}
                 >
                   {walletPath ? (
                     <>

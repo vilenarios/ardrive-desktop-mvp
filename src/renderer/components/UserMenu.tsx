@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Profile } from '../../types';
 import { InfoButton } from './common/InfoButton';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface UserMenuProps {
   currentProfile: Profile;
@@ -127,6 +128,11 @@ const UserMenu: React.FC<UserMenuProps> = ({
   const handleLogoutCancel = () => {
     setShowLogoutConfirm(false);
   };
+
+  // A11Y-2: the logout confirmation had no Escape/focus-trap and no
+  // role="dialog" — reuse the shared hook used by the drive modals.
+  const { containerRef: logoutModalRef, handleBackdropClick: handleLogoutBackdropClick } =
+    useModalA11y<HTMLDivElement>(showLogoutConfirm, handleLogoutCancel);
 
   return (
     <div className="user-menu" ref={dropdownRef}>
@@ -332,11 +338,17 @@ const UserMenu: React.FC<UserMenuProps> = ({
 
       {/* Logout Confirmation Modal */}
       {showLogoutConfirm && (
-        <div className="logout-modal-backdrop" onClick={handleLogoutCancel}>
-          <div className="logout-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="logout-modal-backdrop" onClick={handleLogoutBackdropClick}>
+          <div
+            className="logout-modal"
+            ref={logoutModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logout-modal-title"
+          >
             <div className="logout-modal-header">
-              <h3>Confirm Logout</h3>
-              <button className="close-button" onClick={handleLogoutCancel}>
+              <h3 id="logout-modal-title">Confirm Logout</h3>
+              <button className="close-button" onClick={handleLogoutCancel} aria-label="Close">
                 <X size={20} />
               </button>
             </div>

@@ -77,11 +77,14 @@ export class ErrorBoundary extends Component<Props, State> {
       // Default error UI
       return (
         <div className="error-boundary">
-          <div className="error-boundary-content">
+          {/* A11Y: role="alert" (implicit aria-live="assertive") so a fatal
+              render error is announced immediately instead of silently
+              replacing the screen for a screen-reader user. */}
+          <div className="error-boundary-content" role="alert">
             <div className="error-icon">
               <AlertTriangle size={48} />
             </div>
-            
+
             <h1>Something went wrong</h1>
             <p>An unexpected error occurred in the application. This has been automatically reported.</p>
             

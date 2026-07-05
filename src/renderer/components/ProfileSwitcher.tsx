@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronDown, User, Plus, Check, LogOut, Settings, Lock, X } from 'lucide-react';
 import { Profile } from '../../types';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface ProfileSwitcherProps {
   currentProfile: Profile | null;
@@ -119,6 +120,11 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
+  // A11Y-2: the password prompt had no Escape/focus-trap and no
+  // role="dialog" — reuse the shared hook used by the drive modals.
+  const { containerRef: passwordModalRef, handleBackdropClick: handlePasswordBackdropClick } =
+    useModalA11y<HTMLDivElement>(showPasswordPrompt, closePasswordPrompt);
+
   return (
     <div className="profile-switcher" ref={dropdownRef}>
       <button
@@ -225,11 +231,17 @@ const ProfileSwitcher: React.FC<ProfileSwitcherProps> = ({
 
       {/* Password Prompt Modal */}
       {showPasswordPrompt && (
-        <div className="password-modal-backdrop" onClick={closePasswordPrompt}>
-          <div className="password-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="password-modal-backdrop" onClick={handlePasswordBackdropClick}>
+          <div
+            className="password-modal"
+            ref={passwordModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="switch-profile-modal-title"
+          >
             <div className="password-modal-header">
-              <h3>Switch Profile</h3>
-              <button className="close-button" onClick={closePasswordPrompt}>
+              <h3 id="switch-profile-modal-title">Switch Profile</h3>
+              <button className="close-button" onClick={closePasswordPrompt} aria-label="Close">
                 <X size={20} />
               </button>
             </div>

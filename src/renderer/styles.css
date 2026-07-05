@@ -527,6 +527,16 @@ label {
   box-shadow: var(--elevation-2);
 }
 
+/* A11Y-5: dropzone is now a real tab stop (role="button" tabIndex={0} in
+   WalletSetup.tsx) — give keyboard users the same visible affordance as
+   :hover instead of relying on the browser's default (often invisible on a
+   custom-styled div) focus ring. */
+.wallet-dropzone:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-color: var(--brand);
+}
+
 .wallet-dropzone.is-dragging,
 .wallet-dropzone.has-file {
   border-color: var(--brand);
@@ -2062,11 +2072,11 @@ label {
 }
 
 .file-type-icon.code {
-  color: #10b981;
+  color: var(--filetype-code);
 }
 
 .file-type-icon.spreadsheet {
-  color: #059669;
+  color: var(--filetype-spreadsheet);
 }
 
 .file-type-icon.archive {
@@ -2074,11 +2084,11 @@ label {
 }
 
 .file-type-icon.pdf {
-  color: #dc2626;
+  color: var(--filetype-pdf);
 }
 
 .file-type-icon.document {
-  color: #2563eb;
+  color: var(--filetype-document);
 }
 
 .file-type-icon.text {

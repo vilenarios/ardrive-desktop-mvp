@@ -1,6 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckCircle, FolderOpen, Globe, Lock, Zap, ArrowRight, ChevronDown, ChevronUp, Copy, ExternalLink } from 'lucide-react';
 import { Profile } from '../../types';
+
+// H-GW-1: mirrors src/main/gateway.ts's DEFAULT_GATEWAY_HOST and the same
+// pattern Settings.tsx already uses (see its own DEFAULT_GATEWAY_HOST
+// comment) — a renderer-side fallback only, used until config:get resolves.
+// The main process (gateway.ts) remains the single source of truth.
+const DEFAULT_GATEWAY_HOST = 'turbo-gateway.com';
 
 interface SetupSuccessScreenProps {
   currentProfile?: Profile | null;
@@ -27,6 +33,32 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
 }) => {
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  // H-GW-1: "View" used to hardcode arweave.net, which rate-limits (429s)
+  // some users and violates the turbo-gateway.com read rail (D-012). Resolve
+  // the same configured gateway host Settings.tsx reads/writes via
+  // config:get, falling back to the same default if unset.
+  const [gatewayHost, setGatewayHost] = useState(DEFAULT_GATEWAY_HOST);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Defensive `await` on an optional call (rather than `.then`/`.catch`
+    // chained straight off it): several component suites render this screen
+    // against a minimal electronAPI stub that doesn't implement config.get,
+    // and `await undefined` resolves harmlessly instead of throwing.
+    (async () => {
+      try {
+        const result = await window.electronAPI?.config?.get?.();
+        if (!cancelled && result?.success && result.data?.gatewayHost?.trim()) {
+          setGatewayHost(result.data.gatewayHost.trim());
+        }
+      } catch (err) {
+        console.error('Failed to load gateway host, using default:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // TRUST-5: this row used to hardcode a Globe icon regardless of the actual
   // driveType passed in — a private drive's own confirmation screen showed
@@ -47,7 +79,7 @@ const SetupSuccessScreen: React.FC<SetupSuccessScreenProps> = ({
   };
 
   const openTransaction = (txId: string) => {
-    window.open(`https://arweave.net/${txId}`, '_blank');
+    window.open(`https://${gatewayHost}/${txId}`, '_blank');
   };
 
   return (

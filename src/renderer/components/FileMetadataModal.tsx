@@ -2,6 +2,7 @@ import React from 'react';
 import { CheckCircle2, Clock, XCircle, ClipboardList, HelpCircle, FileText, X, Copy, ExternalLink } from 'lucide-react';
 import { FileUpload } from '../../types';
 import FileLinkActions from './FileLinkActions';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface FileMetadataModalProps {
   file: FileUpload;
@@ -18,6 +19,12 @@ const FileMetadataModal: React.FC<FileMetadataModalProps> = ({
   onClose,
   onCopySuccess
 }) => {
+  // A11Y-2: this modal previously had no Escape/focus-trap and no
+  // role="dialog" at all — it mounts only while a file is selected (see
+  // Dashboard.tsx), so wiring the shared hook here is as trivial as it is
+  // for the drive modals.
+  const { containerRef, handleBackdropClick } = useModalA11y<HTMLDivElement>(true, onClose);
+
   const copyToClipboard = async (text: string, label: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -88,23 +95,32 @@ const FileMetadataModal: React.FC<FileMetadataModalProps> = ({
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000,
-      padding: 'var(--space-4)'
-    }}>
-      <div className="file-metadata-modal">
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: 'var(--space-4)'
+      }}
+      onClick={handleBackdropClick}
+    >
+      <div
+        className="file-metadata-modal"
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="file-metadata-modal-title"
+      >
         <div className="modal-header">
-          <h2>File Details</h2>
-          <button className="close-btn" onClick={onClose}>
+          <h2 id="file-metadata-modal-title">File Details</h2>
+          <button className="close-btn" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
         </div>
@@ -139,14 +155,20 @@ const FileMetadataModal: React.FC<FileMetadataModalProps> = ({
           {file.progress > 0 && file.status === 'uploading' && (
             <div style={{ marginTop: 'var(--space-2)' }}>
               <div className="text-sm text-gray-600">Progress: {file.progress}%</div>
-              <div style={{ 
-                width: '100%', 
-                height: '6px', 
-                backgroundColor: 'var(--gray-200)',
-                borderRadius: '3px',
-                overflow: 'hidden',
-                marginTop: 'var(--space-1)'
-              }}>
+              <div
+                role="progressbar"
+                aria-valuenow={file.progress}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Upload progress for ${file.fileName}`}
+                style={{
+                  width: '100%',
+                  height: '6px',
+                  backgroundColor: 'var(--gray-200)',
+                  borderRadius: '3px',
+                  overflow: 'hidden',
+                  marginTop: 'var(--space-1)'
+                }}>
                 <div style={{
                   width: `${file.progress}%`,
                   height: '100%',

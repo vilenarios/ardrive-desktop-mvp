@@ -19,6 +19,7 @@ import {
 import CreateManifestModal from '../CreateManifestModal';
 import { InfoButton } from '../common/InfoButton';
 import { ARDRIVE_OPERATION_SIZES, isArDriveOperationFree } from '../../../utils/turbo-utils';
+import { useModalA11y } from '../../hooks/useModalA11y';
 
 interface OverviewTabProps {
   drive: DriveInfo;
@@ -51,6 +52,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   // POLISH-18: at-a-glance sync health so a failed/in-progress upload doesn't
   // require a trip to Activity to discover.
   const [uploadHealth, setUploadHealth] = useState<{ failed: number; inProgress: number } | null>(null);
+
+  // A11Y-2: neither rename modal had Escape/focus-trap/role="dialog" — reuse
+  // the shared hook used by the drive modals. Called unconditionally here
+  // (before the `if (!selectedDrive)` early return below) per rules of hooks.
+  const { containerRef: renameModalRef, handleBackdropClick: handleRenameBackdropClick } =
+    useModalA11y<HTMLDivElement>(showRenameModal, () => setShowRenameModal(false));
+  const { containerRef: renameCostConfirmRef, handleBackdropClick: handleRenameCostConfirmBackdropClick } =
+    useModalA11y<HTMLDivElement>(showRenameCostConfirm, () => setShowRenameCostConfirm(false));
 
   useEffect(() => {
     if (selectedDrive) {
@@ -569,9 +578,15 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
       {/* Rename Drive Modal */}
       {showRenameModal && (
-        <div className="modal-overlay">
-          <div className="modal-content overview-modal-panel">
-            <h2 className="overview-modal-title">
+        <div className="modal-overlay" onClick={handleRenameBackdropClick}>
+          <div
+            className="modal-content overview-modal-panel"
+            ref={renameModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rename-drive-modal-title"
+          >
+            <h2 className="overview-modal-title" id="rename-drive-modal-title">
               Rename Drive
             </h2>
 
@@ -623,9 +638,15 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
       {/* Rename Cost Confirmation Modal */}
       {showRenameCostConfirm && (
-        <div className="modal-overlay">
-          <div className="modal-content overview-modal-panel overview-modal-panel-wide">
-            <h2 className="overview-modal-title">
+        <div className="modal-overlay" onClick={handleRenameCostConfirmBackdropClick}>
+          <div
+            className="modal-content overview-modal-panel overview-modal-panel-wide"
+            ref={renameCostConfirmRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rename-drive-confirm-modal-title"
+          >
+            <h2 className="overview-modal-title" id="rename-drive-confirm-modal-title">
               Confirm Drive Rename
             </h2>
 

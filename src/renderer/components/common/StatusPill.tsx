@@ -70,8 +70,15 @@ const StatusPill: React.FC<StatusPillProps> = ({ status, progress = 0 }) => {
   const config = getStatusConfig();
 
   return (
-    <span 
+    <span
       className={`status-pill status-pill--${status}`}
+      // A11Y-7: the tinted fill below doubles as a progress indicator while
+      // uploading; expose it as a real progressbar (the visible label text
+      // already carries the percentage, so no separate aria-label is needed).
+      role={status === 'uploading' ? 'progressbar' : undefined}
+      aria-valuenow={status === 'uploading' ? Math.round(progress) : undefined}
+      aria-valuemin={status === 'uploading' ? 0 : undefined}
+      aria-valuemax={status === 'uploading' ? 100 : undefined}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
