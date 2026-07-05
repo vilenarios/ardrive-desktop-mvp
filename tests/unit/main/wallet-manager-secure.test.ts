@@ -18,13 +18,24 @@ vi.mock('electron', () => ({
   }
 }));
 
+// PRIV-SIG-1: PrivateDriveKeyData.from derives a **v2** drive key; the create
+// path must cache THIS exact key, not re-derive (which defaulted to v1 and
+// permanently locked out the just-created v2 drive).
+const { createdV2DriveKey } = vi.hoisted(() => ({
+  createdV2DriveKey: {
+    keyData: Buffer.from('created-v2-key-bytes'),
+    driveSignatureType: 2,
+  },
+}));
+
 vi.mock('ardrive-core-js', () => ({
   arDriveFactory: vi.fn(),
   readJWKFile: vi.fn(),
   ArweaveAddress: vi.fn(),
+  DriveSignatureType: { v1: 1, v2: 2 },
   // Dynamically imported inside createPrivateDrive()
   PrivateDriveKeyData: {
-    from: vi.fn(async () => ({ mocked: 'private-drive-key-data' }))
+    from: vi.fn(async () => ({ driveKey: createdV2DriveKey }))
   }
 }));
 
@@ -47,13 +58,14 @@ vi.mock('../../../src/main/crypto-utils', () => ({
   encryptData: vi.fn()
 }));
 vi.mock('../../../src/main/drive-key-manager', () => ({
-  // PRIV-2 renamed unlockDrive -> unlockDriveUnverified (createPrivateDrive's
-  // just-created-drive path); the trial-decrypt path uses deriveKey/cacheKey.
-  driveKeyManager: { unlockDriveUnverified: vi.fn(async () => true) }
+  // PRIV-SIG-1: createPrivateDrive now caches the exact v2 key returned by
+  // PrivateDriveKeyData.from via cacheKey (no re-derivation).
+  driveKeyManager: { cacheKey: vi.fn(), unlockDriveUnverified: vi.fn(async () => true) }
 }));
 
 import { SecureWalletManager, normalizeUnixTimeToMs } from '../../../src/main/wallet-manager-secure';
 import { summarizeArFSResult } from '../../../src/main/utils/arfs-result-summary';
+import { driveKeyManager } from '../../../src/main/drive-key-manager';
 
 // The sentinel stands in for the url-encoded raw drive key. If this string
 // (or its hex-encoded bytes) shows up in any console output, the key leaked.
@@ -168,6 +180,20 @@ describe('SecureWalletManager.createPrivateDrive — SEC-1 key logging', () => {
     expect(driveInfo.id).toBe(DRIVE_ID);
     expect(driveInfo.rootFolderId).toBe(ROOT_FOLDER_ID);
     expect(driveInfo.isPrivate).toBe(true);
+  });
+
+  it('caches the EXACT v2 key from PrivateDriveKeyData.from — never a re-derived (v1) key [PRIV-SIG-1]', async () => {
+    // The data-loss regression guard: a drive is created on-chain as v2, so its
+    // session key MUST be the same v2 key. The old path re-derived via
+    // unlockDriveUnverified → v1 → the drive could never be re-unlocked.
+    vi.mocked(driveKeyManager.cacheKey).mockClear();
+    vi.mocked(driveKeyManager.unlockDriveUnverified).mockClear();
+    const driveInfo = await manager.createPrivateDrive('My Private Drive', 'test-password-1');
+
+    expect(driveKeyManager.cacheKey).toHaveBeenCalledTimes(1);
+    expect(driveKeyManager.cacheKey).toHaveBeenCalledWith(driveInfo.id, createdV2DriveKey);
+    // The v1 re-derivation path is NOT taken.
+    expect(driveKeyManager.unlockDriveUnverified).not.toHaveBeenCalled();
   });
 
   it('still logs a useful key-free creation summary (ids and tx ids)', async () => {

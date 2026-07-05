@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { app } from 'electron';
-import { arDriveFactory, ArDrive, JWKWallet, ArweaveAddress, EID } from 'ardrive-core-js';
+import { arDriveFactory, ArDrive, JWKWallet, ArweaveAddress, EID, DriveSignatureInfo } from 'ardrive-core-js';
 import Arweave from 'arweave';
 import { DriveInfo, DriveInfoWithStatus, WalletInfo, WalletStorageFormat } from '../types';
 import { turboManager } from './turbo-manager';
@@ -16,6 +16,7 @@ import { driveKeyManager } from './drive-key-manager';
 import { getDriveEmojiFingerprint } from './utils/drive-fingerprint';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
 import { getGatewayConfig } from './gateway';
+import { retryWithBackoff } from './sync/retry';
 
 // UAT-1b (defect #2): ArFS's `unixTime` field is nominally SECONDS per the
 // spec, but different SDK/gateway code paths have been observed returning it
@@ -1336,14 +1337,16 @@ export class SecureWalletManager {
         throw new Error('Folder creation failed - no entity ID returned');
       }
       const driveId = driveEntity.entityId.toString();
-      
-      // Unlock the drive immediately for this session. Unverified is correct
-      // here: the drive was just created with this exact password, and its
-      // entity is not yet queryable for trial decryption.
-      const unlocked = await driveKeyManager.unlockDriveUnverified(driveId, password);
-      if (!unlocked) {
-        console.warn('Drive created but failed to unlock immediately');
-      }
+
+      // PRIV-SIG-1: cache the EXACT key the drive was just created with.
+      // `PrivateDriveKeyData.from` derives a **v2** drive key and the drive is
+      // created on-chain with that key (and driveId). The old path re-derived
+      // via unlockDriveUnverified, which defaulted to **v1** — so a freshly
+      // created v2 drive was cached with a v1 key and could NEVER be unlocked
+      // again (data-loss class). Caching `newPrivateDriveData.driveKey`
+      // directly guarantees the session key matches the on-chain drive, and a
+      // later re-unlock detects the same v2 signature type.
+      driveKeyManager.cacheKey(driveId, newPrivateDriveData.driveKey);
       
       const driveInfo: DriveInfo = {
         id: driveId,
@@ -1375,14 +1378,48 @@ export class SecureWalletManager {
     try {
       console.log(`Attempting to unlock private drive ${driveId.slice(0, 8)}...`);
 
-      if (!this.arDrive) {
+      if (!this.arDrive || !this.walletJson) {
         return { success: false, error: 'Wallet not loaded. Please log in again.' };
       }
-      
+
+      // PRIV-SIG-1: detect the drive's ACTUAL signature type (v1 vs v2) BEFORE
+      // deriving. v1 and v2 derive different HKDF keys; the previous derive
+      // hardcoded v1, so v2 drives (half the owner's drives, and every drive
+      // this app creates) rejected the CORRECT password as "Invalid password".
+      // getDriveSignatureInfo is an owner-scoped gateway READ — wrap it in the
+      // SYNC-20 retry helper so a transient 404 (drive not yet indexed) or blip
+      // self-heals. A persistent failure must surface an honest "couldn't
+      // verify drive type" error (distinct from wrong-password) and must NEVER
+      // fall back to a guessed type / cache a wrong key.
+      let signatureInfo: DriveSignatureInfo;
+      try {
+        const owner = new ArweaveAddress(await this.getAddressFromJWK(this.walletJson));
+        signatureInfo = await retryWithBackoff(
+          () => this.arDrive!.getDriveSignatureInfo({ driveId: EID(driveId), owner }),
+          { label: `drive ${driveId.slice(0, 8)} signature type`, timeoutMs: 30000 }
+        );
+      } catch (detectError) {
+        const message = detectError instanceof Error ? detectError.message : String(detectError);
+        console.error(`Could not determine signature type for drive ${driveId.slice(0, 8)}:`, message);
+        return {
+          success: false,
+          error: 'Could not verify the drive type (network or gateway error). Please try again.'
+        };
+      }
+      console.log(
+        `Drive ${driveId.slice(0, 8)}... signature type: v${signatureInfo.driveSignatureType}`
+      );
+
       // PRIV-2: HKDF derives a key for ANY password — derivation success
-      // proves nothing. Trial-decrypt the drive entity before caching.
-      const driveKey = await driveKeyManager.deriveKey(driveId, password);
-      
+      // proves nothing. Derive with the DETECTED signature type, then
+      // trial-decrypt the drive entity before caching.
+      const driveKey = await driveKeyManager.deriveKey(
+        driveId,
+        password,
+        signatureInfo.driveSignatureType,
+        signatureInfo.encryptedSignatureData
+      );
+
       try {
         await this.arDrive.getPrivateDrive({ driveId: EID(driveId), driveKey });
       } catch (trialError) {

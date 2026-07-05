@@ -91,12 +91,34 @@ export class DriveKeyManager {
    * PRIV-2: HKDF derivation succeeds for ANY password — a derived key proves
    * nothing. Callers handling user-supplied passwords must trial-decrypt
    * something real (e.g. the drive entity) before caching via cacheKey().
+   *
+   * PRIV-SIG-1: ArFS private drives use one of two signature schemes — v1
+   * (deterministic RSA sign) or v2 (`signDataItem`) — that produce DIFFERENT
+   * wallet signatures and therefore DIFFERENT HKDF drive keys. The legacy
+   * 3-arg `deriveDriveKey(password, driveId, wallet)` overload hardcodes v1,
+   * so v2 drives (including every private drive THIS app creates) failed to
+   * unlock even with the correct password (GCM auth fails on the wrong key).
+   * Callers MUST pass the drive's ACTUAL signature type (detected on unlock
+   * via `getDriveSignatureInfo`). `encryptedSignatureData` is threaded through
+   * for v1 drives whose on-chain signature was stored encrypted (non-
+   * deterministic signers) so the exact creation-time signature is recovered.
    */
-  async deriveKey(driveId: string, password: string): Promise<DriveKey> {
+  async deriveKey(
+    driveId: string,
+    password: string,
+    driveSignatureType: DriveSignatureType,
+    encryptedSignatureData?: { cipherIV: string; encryptedData: Buffer }
+  ): Promise<DriveKey> {
     if (!this.walletJson) {
       throw new Error('Wallet not loaded');
     }
-    return deriveDriveKey(password, driveId, JSON.stringify(this.walletJson));
+    return deriveDriveKey({
+      dataEncryptionKey: password,
+      driveId,
+      walletPrivateKey: JSON.stringify(this.walletJson),
+      driveSignatureType,
+      ...(encryptedSignatureData ? { encryptedSignatureData } : {})
+    });
   }
 
   /**
@@ -110,14 +132,24 @@ export class DriveKeyManager {
   }
 
   /**
-   * Derive + cache WITHOUT verification. Only safe when the password is
-   * known-correct — i.e. for a drive this session just created with that
-   * same password. User-supplied unlocks go through
-   * SecureWalletManager.unlockPrivateDrive (trial decryption, PRIV-2).
+   * Derive + cache WITHOUT verification. Only safe when the password AND the
+   * drive's signature type are known-correct. User-supplied unlocks go through
+   * SecureWalletManager.unlockPrivateDrive (which detects the signature type
+   * and trial-decrypts, PRIV-2/PRIV-SIG-1).
+   *
+   * PRIV-SIG-1: a signature type is now REQUIRED — the previous v1-hardcoded
+   * derivation cached a wrong-typed (v1) key for v2 drives, which could never
+   * decrypt them again. The create-drive path prefers caching the exact key
+   * returned by `PrivateDriveKeyData.from` directly (see createPrivateDrive)
+   * over re-deriving here.
    */
-  async unlockDriveUnverified(driveId: string, password: string): Promise<boolean> {
+  async unlockDriveUnverified(
+    driveId: string,
+    password: string,
+    driveSignatureType: DriveSignatureType
+  ): Promise<boolean> {
     try {
-      const driveKey = await this.deriveKey(driveId, password);
+      const driveKey = await this.deriveKey(driveId, password, driveSignatureType);
       this.cacheKey(driveId, driveKey);
       return true;
     } catch (error) {
