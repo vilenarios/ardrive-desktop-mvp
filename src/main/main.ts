@@ -29,6 +29,7 @@ import { readDevEnv } from './utils/dev-env';
 import { applySyncFolderChange } from './utils/sync-folder-change';
 import { isRetryAllowed } from './utils/upload-retry-guard';
 import { TURBO_FREE_SIZE_LIMIT } from '../utils/turbo-utils';
+import { retryWithBackoff } from './sync/retry';
 
 // Load .env file in development
 if (process.env.NODE_ENV !== 'production') {
@@ -870,8 +871,15 @@ class ArDriveApp {
     }));
 
     // Drive operations
+    // SYNC-20: a transient gateway 404 (fresh tx not yet indexed, momentary
+    // blip) must not fail the whole boot/import — retry with backoff so it
+    // self-heals, and cap each attempt so a hung request can't stall the UI.
+    // Read-only (getAllDrivesForAddress), so retrying can't spend or double-create.
     ipcMain.handle('drive:list', envelopeHandler(async () => {
-      return await this.walletManager.listDrives();
+      return await retryWithBackoff(() => this.walletManager.listDrives(), {
+        label: 'drive:list',
+        timeoutMs: 20000,
+      });
     }));
 
     ipcMain.handle('drive:create', envelopeHandler(async (_, name: string, privacy: 'private' | 'public' = 'private') => {
@@ -975,7 +983,14 @@ class ArDriveApp {
     }));
 
     ipcMain.handle('drive:listWithStatus', envelopeHandler(async () => {
-      return await this.walletManager.listDrivesWithStatus();
+      // SYNC-20: same transient-gateway resilience as drive:list. This is the
+      // call handleWalletImported() awaits on import; without a retry a single
+      // 404 made an existing (18-drive) wallet look empty and got routed into
+      // create-drive. Read-only, so retrying is safe.
+      return await retryWithBackoff(() => this.walletManager.listDrivesWithStatus(), {
+        label: 'drive:listWithStatus',
+        timeoutMs: 20000,
+      });
     }));
 
     ipcMain.handle('drive:rename', envelopeHandler(async (_, driveId: string, newName: string) => {
@@ -1861,8 +1876,14 @@ class ArDriveApp {
       
       console.log('Using drive mapping:', primaryMapping);
       
-      // Validate drive is accessible
-      const drives = await this.walletManager.listDrives();
+      // Validate drive is accessible.
+      // SYNC-20: right after create, the new drive tx may not be indexed yet —
+      // a bare listDrives() 404s and setup dies on "Starting sync engine…".
+      // Retry with backoff so the index catches up; read-only, no spend.
+      const drives = await retryWithBackoff(() => this.walletManager.listDrives(), {
+        label: 'sync:start drive validation',
+        timeoutMs: 20000,
+      });
       const targetDrive = drives.find(d => d.id === primaryMapping.driveId);
       
       if (!targetDrive) {

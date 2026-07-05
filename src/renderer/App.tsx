@@ -401,52 +401,75 @@ const App: React.FC = () => {
       const profile = profileResult.success ? profileResult.data : null;
 
       console.log('[handleWalletImported] Raw drive list result:', driveListResult);
-      
-      // Extract drives from the result (UX-3: IpcResult envelope)
+
+      // SYNC-20 / UX-7: a transient gateway failure must NEVER be mistaken for
+      // "0 drives". The drive-list IPC now retries transient 404s in the main
+      // process, but if it STILL fails we must route to the retryable
+      // boot-error screen — not silently drop an existing (multi-drive) wallet
+      // into create-drive. Track whether the fetch actually SUCCEEDED (empty
+      // list is a valid success) vs. failed.
       let driveList: DriveInfoWithStatus[] = [];
-      if (driveListResult) {
-        if (driveListResult.success && driveListResult.data) {
+      let driveFetchSucceeded = false;
+      if (driveListResult && driveListResult.success) {
+        driveFetchSucceeded = true;
+        if (driveListResult.data) {
           driveList = driveListResult.data;
-        } else if (!driveListResult.success) {
-          console.error('[handleWalletImported] Failed to list drives:', driveListResult.error);
         }
+      } else {
+        console.error('[handleWalletImported] Failed to list drives:', driveListResult?.error);
       }
 
-      // If still no drives, try fallback (drive.list returns base DriveInfo —
-      // no lock status; downstream treats a missing isLocked as unlocked).
-      if (!driveList || driveList.length === 0) {
+      // If the status fetch didn't yield drives, try the base drive.list()
+      // fallback (no lock status; downstream treats a missing isLocked as
+      // unlocked). A success here — even empty — confirms the fetch worked.
+      if (!driveFetchSucceeded || driveList.length === 0) {
         try {
           console.log('[handleWalletImported] Trying fallback to regular drive.list()');
           const fallbackDrives = await window.electronAPI.drive.list();
           console.log('[handleWalletImported] Fallback drives:', fallbackDrives);
-          if (fallbackDrives && fallbackDrives.success && fallbackDrives.data) {
-            driveList = fallbackDrives.data as DriveInfoWithStatus[];
+          if (fallbackDrives && fallbackDrives.success) {
+            driveFetchSucceeded = true;
+            if (fallbackDrives.data) {
+              driveList = fallbackDrives.data as DriveInfoWithStatus[];
+            }
+          } else {
+            console.error('[handleWalletImported] Fallback failed:', fallbackDrives?.error);
           }
         } catch (fallbackError) {
           console.error('[handleWalletImported] Fallback also failed:', fallbackError);
         }
       }
-      
-      console.log('[handleWalletImported] Final drive list:', driveList);
+
+      console.log('[handleWalletImported] Final drive list:', driveList, 'fetchSucceeded:', driveFetchSucceeded);
       console.log('[handleWalletImported] Drive count:', driveList.length);
-      
+
       if (wallet) {
         setWalletInfo(wallet);
       }
-      
+
       if (profile) {
         // Set basic profile immediately
         setCurrentProfile(profile);
-        
+
         // Load ArNS data in background (non-blocking)
         loadArnsProfileInBackground(profile);
       }
-      
+
+      // SYNC-20: fetch FAILED (transient gateway, still failing after main-process
+      // retries) — land on the retryable boot-error screen instead of trapping
+      // the user or masquerading as a new/empty account.
+      if (!driveFetchSucceeded) {
+        console.error('[handleWalletImported] Drive fetch failed — routing to boot-error');
+        setBootError("Couldn't reach the Arweave gateway. Check your connection or try a different gateway in Settings, then retry.");
+        setAppState('boot-error');
+        return;
+      }
+
       // Pass ALL drives to the component - let it handle filtering
-      setDrives(driveList || []);
-      
-      // If no drives at all, navigate to drive setup
-      if (!driveList || driveList.length === 0) {
+      setDrives(driveList);
+
+      // Confirmed empty (fetch succeeded, genuinely no drives) → create a drive.
+      if (driveList.length === 0) {
         console.log('[handleWalletImported] No drives found, navigating to drive-setup');
         setAppState('drive-setup');
       } else {
@@ -454,8 +477,11 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.error('[handleWalletImported] Error during initial load:', error);
-      toast.error('Failed to load data');
-      // Stay on welcome back screen - it will show an error state
+      // SYNC-20: an unexpected throw here (e.g. wallet/profile IPC) must also
+      // land somewhere recoverable rather than leaving the welcome-back screen
+      // stuck loading with no way out.
+      setBootError("Couldn't load your account. Check your connection and try again.");
+      setAppState('boot-error');
     }
   };
   
