@@ -16,8 +16,11 @@ import { FolderOperationDetector, OperationDetection } from './sync/FolderOperat
 import { FileOperationDetector, FileOperationDetection } from './sync/FileOperationDetector';
 import { driveKeyManager } from './drive-key-manager';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
-import { getGatewayUrl } from './gateway';
 import { retryWithBackoff } from './sync/retry';
+import {
+  fetchTxDataWithFailover,
+  queryMetadataWithResilience,
+} from './sync/gateway-failover';
 
 interface SyncProgress {
   phase?: string;
@@ -752,20 +755,42 @@ export class SyncManager {
       
       const variables = { folderId: this.rootFolderId };
       console.log('GraphQL query variables:', variables);
-      
-      // Make the GraphQL request
-      const response = await fetch(`${getGatewayUrl()}/graphql`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+
+      // SYNC-23: this is the app's OWN hand-rolled ArFS metadata query (distinct
+      // from core-js's GatewayAPI). Metadata resilience is CONSERVATIVE and
+      // deliberately DIFFERENT from data-fetch failover: retry the PRIMARY
+      // gateway robustly, but fail over to an alternate gateway ONLY if the
+      // primary is HARD-UNREACHABLE (network error / 5xx) — NEVER on an
+      // empty/404 result. Rationale (measured live): perma.online does NOT index
+      // this owner's ArFS metadata (returns EMPTY for owner-scoped entity
+      // queries), so trusting an alternate's empty answer would be silently
+      // WORSE than the primary's. An empty result here is a valid answer, never
+      // a failover trigger. See sync/gateway-failover.ts for the full reasoning.
+      const result: ArweaveQueryResult = await queryMetadataWithResilience(
+        async (gatewayUrl) => {
+          const response = await fetch(`${gatewayUrl}/graphql`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              query: query,
+              variables: variables
+            })
+          });
+          if (!response.ok) {
+            // Carry the HTTP status so isHardUnreachable can classify it: a 5xx
+            // means the gateway gave no answer (may fail over); a 404/other is
+            // an answer — retry the primary but NEVER fail over to an alternate.
+            throw Object.assign(
+              new Error(`GraphQL HTTP ${response.status}: ${response.statusText}`),
+              { status: response.status }
+            );
+          }
+          return (await response.json()) as ArweaveQueryResult;
         },
-        body: JSON.stringify({
-          query: query,
-          variables: variables
-        })
-      });
-      
-      const result: ArweaveQueryResult = await response.json();
+        { label: 'direct ArFS folder-files query' }
+      );
       console.log('Direct GraphQL result:', result);
       
       if (result.data?.transactions?.edges) {
@@ -833,18 +858,14 @@ export class SyncManager {
         progress: 0
       });
       
-      // Download file data directly from Arweave
+      // Download file data directly from Arweave.
       // SYNC-17: gateway host is configurable (defaults to turbo-gateway.com).
-      const gatewayUrl = getGatewayUrl();
-      console.log(`Fetching data from ${gatewayUrl}/${dataTxId}`);
-      const response = await fetch(`${gatewayUrl}/${dataTxId}`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const fileData = await response.arrayBuffer();
-      const buffer = Buffer.from(fileData);
+      // SYNC-23: this is a raw by-txid DATA fetch, so it gets ordered gateway
+      // FAILOVER (primary → perma.online → arweave.net), each with bounded
+      // retry+backoff. The primary intermittently 404-storms data that IS
+      // available; the next gateway serves it. See sync/gateway-failover.ts.
+      const { buffer, gatewayHost } = await fetchTxDataWithFailover(dataTxId);
+      console.log(`Fetched ${buffer.length} bytes for ${dataTxId} from ${gatewayHost}`);
       
       // Ensure directory exists
       await fs.mkdir(path.dirname(localFilePath), { recursive: true });

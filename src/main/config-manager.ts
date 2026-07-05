@@ -122,6 +122,23 @@ export class ConfigManager {
     await this.saveGlobalConfig();
   }
 
+  // SYNC-23: ordered DATA-fetch fallback gateways (device/app-level global
+  // config, like `gatewayHost`). Tried in order AFTER the primary when a
+  // by-txid data fetch persistently fails. Returns the raw configured value
+  // (may be undefined); the default order (perma.online, arweave.net) is
+  // applied by src/main/gateway.ts (getGatewayHosts), the single resolution
+  // point. Synchronous so it can be read alongside getGatewayHost(). NOTE: this
+  // is for DATA fetches only — metadata/GraphQL must not fail over (see
+  // gateway-failover.ts).
+  getGatewayFallbacks(): string[] | undefined {
+    return this.globalConfig.gatewayFallbacks;
+  }
+
+  async setGatewayFallbacks(hosts: string[]): Promise<void> {
+    this.globalConfig.gatewayFallbacks = hosts;
+    await this.saveGlobalConfig();
+  }
+
   // Legacy clear methods removed - use removeDriveMapping instead
 
   // Migration removed - legacy fields no longer supported
