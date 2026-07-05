@@ -73,6 +73,12 @@ interface ActivityTabProps {
   config: AppConfig;
   drive: DriveInfo;
   onViewFile: (file: FileUpload) => void;
+  // UX-22: used to surface retry/remove feedback without a full page reload.
+  toast?: {
+    success: (message: string) => void;
+    error: (message: string) => void;
+    info: (message: string) => void;
+  };
 }
 
 
@@ -82,8 +88,13 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
   pendingUploads,
   config,
   drive,
-  onViewFile
+  onViewFile,
+  toast
 }) => {
+  // UX-22: which failed download (by fileId) is currently being retried/removed,
+  // so the action buttons can show a spinner and disable while the IPC is in
+  // flight — instead of the old window.location.reload() that rebooted the app.
+  const [pendingDownloadAction, setPendingDownloadAction] = useState<string | null>(null);
   const [showingItems, setShowingItems] = useState(15); // Show 15 items initially, load more on scroll
   const [searchQuery, setSearchQuery] = useState('');
   const [activityFilter, setActivityFilter] = useState<'all' | 'uploads' | 'downloads'>('all');
@@ -412,6 +423,51 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
       }
     }
     setContextMenuOpen(null);
+  };
+
+  // UX-22: retry a failed download by re-queueing THAT specific file through
+  // the real per-item download IPC (sync:queue-download), instead of the old
+  // window.location.reload() that rebooted the entire renderer to "refresh"
+  // the list. The parent Dashboard already polls files.getDownloads() and
+  // listens for sync:file-state-changed / download:progress, so the row
+  // updates on its own once the download is re-queued — no reload needed.
+  const handleRetryDownload = async (download: FileDownload) => {
+    if (!download.fileId || pendingDownloadAction) return;
+    try {
+      setPendingDownloadAction(download.fileId);
+      const result = await window.electronAPI.files.queueDownload(download.fileId, 100);
+      // envelope (D-005): resolves { success:false } rather than throwing
+      if (result && result.success === false) {
+        throw new Error(result.error || 'Failed to queue download');
+      }
+      toast?.info(`Retrying download of "${download.fileName}"…`);
+      setSelectedActivityDetails(null);
+    } catch (error) {
+      console.error('Failed to retry download:', error);
+      toast?.error(`Couldn't retry "${download.fileName}". Please try again.`);
+    } finally {
+      setPendingDownloadAction(null);
+    }
+  };
+
+  // UX-22: remove a failed download from the queue via the real per-item IPC
+  // (sync:cancel-download), again without reloading the app.
+  const handleRemoveDownload = async (download: FileDownload) => {
+    if (!download.fileId || pendingDownloadAction) return;
+    try {
+      setPendingDownloadAction(download.fileId);
+      const result = await window.electronAPI.files.cancelDownload(download.fileId);
+      if (result && result.success === false) {
+        throw new Error(result.error || 'Failed to cancel download');
+      }
+      toast?.info(`Removed "${download.fileName}" from the download queue`);
+      setSelectedActivityDetails(null);
+    } catch (error) {
+      console.error('Failed to remove download:', error);
+      toast?.error(`Couldn't remove "${download.fileName}". Please try again.`);
+    } finally {
+      setPendingDownloadAction(null);
+    }
   };
 
   // Raw-gateway links are only resolvable from the Arweave data transaction
@@ -1260,34 +1316,20 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                 
                 {selectedActivityDetails.type === 'download' && (selectedActivityDetails.originalItem as FileDownload).status === 'failed' && (
                   <>
-                    <button 
-                      className="button small primary"
-                      onClick={async () => {
-                        const download = selectedActivityDetails.originalItem as FileDownload;
-                        if (download.fileId) {
-                          // Queue for re-download
-                          await window.electronAPI.files.queueDownload(download.fileId, 100);
-                          setSelectedActivityDetails(null);
-                          // Refresh the activity list
-                          window.location.reload();
-                        }
-                      }}
+                    {/* UX-22: re-queue THIS download via the real per-item IPC
+                        (handleRetryDownload) — no window.location.reload(). */}
+                    <button
+                      className={`button small primary${pendingDownloadAction ? ' loading' : ''}`}
+                      disabled={!!pendingDownloadAction}
+                      onClick={() => handleRetryDownload(selectedActivityDetails.originalItem as FileDownload)}
                     >
                       <RefreshCw size={14} />
                       Retry Download
                     </button>
-                    <button 
+                    <button
                       className="button small outline"
-                      onClick={async () => {
-                        const download = selectedActivityDetails.originalItem as FileDownload;
-                        if (download.fileId) {
-                          // Cancel/remove this download
-                          await window.electronAPI.files.cancelDownload(download.fileId);
-                          setSelectedActivityDetails(null);
-                          // Refresh the activity list
-                          window.location.reload();
-                        }
-                      }}
+                      disabled={!!pendingDownloadAction}
+                      onClick={() => handleRemoveDownload(selectedActivityDetails.originalItem as FileDownload)}
                     >
                       <X size={14} />
                       Remove from Queue

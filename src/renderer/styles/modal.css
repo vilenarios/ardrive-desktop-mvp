@@ -314,6 +314,16 @@
   flex-shrink: 0;
 }
 
+/* ConfirmModal (UX-21) message body — sits between the header and the
+ * footer action row on the size-sm panel variant. */
+.confirm-modal-message {
+  margin: 0 0 var(--space-6);
+  color: var(--text-secondary);
+  font-size: var(--text-body);
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
 /* Footer action row */
 .drive-modal-footer {
   display: flex;

@@ -17,6 +17,7 @@ import Settings from './Settings';
 import { DriveSelector } from './DriveSelector';
 import { CreateDriveModal } from './CreateDriveModal';
 import { AddExistingDriveModal } from './AddExistingDriveModal';
+import { useConfirm } from '../hooks/useConfirm';
 import {
   Pause,
   RefreshCw,
@@ -65,6 +66,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   onRefreshWalletInfo,
   toast
 }) => {
+  // UX-21: in-app confirm modal replacing native window.confirm(). `confirm`
+  // returns a Promise<boolean>; `confirmDialog` is rendered near the bottom of
+  // this component's JSX.
+  const { confirm, confirmDialog } = useConfirm();
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
   const [showTurboManager, setShowTurboManager] = useState(false);
@@ -376,12 +381,18 @@ const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
     
-    // Always show confirmation for drive switching
-    const confirmMessage = pendingUploads.length > 0 
-      ? `Switch to "${targetDrive.name}"?\n\nYou have ${pendingUploads.length} pending uploads that will be cancelled.`
-      : `Switch to "${targetDrive.name}"?\n\nThis will change your active drive and sync folder.`;
-    
-    const confirmed = window.confirm(confirmMessage);
+    // Always show confirmation for drive switching (UX-21: in-app modal, not
+    // the native OS confirm dialog).
+    const confirmMessage = pendingUploads.length > 0
+      ? `You have ${pendingUploads.length} pending upload${pendingUploads.length === 1 ? '' : 's'} that will be cancelled. This will change your active drive and sync folder.`
+      : 'This will change your active drive and sync folder.';
+
+    const confirmed = await confirm({
+      title: `Switch to "${targetDrive.name}"?`,
+      message: confirmMessage,
+      confirmLabel: 'Switch',
+      variant: pendingUploads.length > 0 ? 'danger' : 'default'
+    });
     if (!confirmed) return;
     
     try {
@@ -465,8 +476,13 @@ const Dashboard: React.FC<DashboardProps> = ({
       
       toast?.success(`Drive "${addedDrive.name}" added successfully!`);
       
-      // Optionally switch to the newly added drive
-      const shouldSwitch = window.confirm(`Would you like to switch to "${addedDrive.name}" now?`);
+      // Optionally switch to the newly added drive (UX-21: in-app modal)
+      const shouldSwitch = await confirm({
+        title: 'Switch drives?',
+        message: `Would you like to switch to "${addedDrive.name}" now?`,
+        confirmLabel: 'Switch now',
+        cancelLabel: 'Not now'
+      });
       if (shouldSwitch) {
         await handleDriveSwitch(addedDrive.id);
       }
@@ -543,11 +559,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     try {
       const result = await window.electronAPI.uploads.approveAll();
       
-      // Handle the new response format
+      // Handle the new response format (UX-21: surface via toast, not window.alert)
       if (result.errors && result.errors.length > 0) {
-        // Show error message to user
-        const errorMessage = `Only ${result.approvedCount} of ${result.totalCount} files were approved.\n\nErrors:\n${result.errors.join('\n')}`;
-        alert(errorMessage); // TODO: Replace with proper toast notification
+        const errorMessage = `Only ${result.approvedCount} of ${result.totalCount} files were approved. ${result.errors.join(' ')}`;
+        toast?.error(errorMessage);
       } else if (result.approvedCount > 0) {
         console.log(`Successfully approved ${result.approvedCount} uploads`);
       }
@@ -556,7 +571,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       // The files should remain visible with progress indicators until completion
     } catch (err) {
       console.error('Failed to approve all uploads:', err);
-      alert(`Failed to approve uploads: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      toast?.error(`Failed to approve uploads: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -912,6 +927,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   downloads={downloads}
                   pendingUploads={pendingUploads}
                   config={config}
+                  toast={toast}
                   drive={drive}
                   onViewFile={(file) => setSelectedFile(file)}
                 />
@@ -1019,7 +1035,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Sync Progress Modal */}
       {syncProgress && (
-        <SyncProgressDisplay 
+        <SyncProgressDisplay
           progress={syncProgress}
           onClose={() => {
             // Clear sync progress when modal is closed
@@ -1028,6 +1044,9 @@ const Dashboard: React.FC<DashboardProps> = ({
           }}
         />
       )}
+
+      {/* UX-21: in-app confirmation modal (replaces native window.confirm) */}
+      {confirmDialog}
     </div>
   );
 };

@@ -195,6 +195,8 @@ describe('QA re-verify probe: Dashboard toasts with REAL IPC shapes (698316f)', 
     await screen.findByText('drives-count:2');
 
     fireEvent.click(screen.getByText('stub-switch-drive'));
+    // UX-9: confirm via the in-app ConfirmModal (replaced window.confirm)
+    fireEvent.click(await screen.findByRole('button', { name: 'Switch' }));
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
@@ -219,6 +221,7 @@ describe('QA re-verify probe: Dashboard toasts with REAL IPC shapes (698316f)', 
 
     // and the switch-failure toast is still reachable
     fireEvent.click(screen.getByText('stub-switch-drive'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Switch' }));
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
         expect.stringContaining('Failed to switch to "Other Drive"')
