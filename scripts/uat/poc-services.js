@@ -162,11 +162,15 @@ async function main() {
   check('40KiB is free (isFreeWithTurbo)', cc.isFreeWithTurbo(40 * 1024) === true);
   check('200KiB is NOT free', cc.isFreeWithTurbo(200 * 1024) === false);
   check('100MiB exceeds MVP max (isFileTooBig false for 100MiB)', cc.isFileTooBig(100 * 1024 * 1024) === false);
-  // Documented boundary discrepancy: CostCalculator uses `<` (102400 => NOT
-  // free) while the main.ts approval gate uses `<=` (102400 => free). Recorded
-  // as an assertion so the tester notices if either side changes.
-  check('BOUNDARY NOTE: CostCalculator treats exactly 102400 bytes as NOT free (strict <)',
-    cc.isFreeWithTurbo(102400) === false, 'main.ts approval gate uses <= (would be free) — see UAT-PLAN EDGE-3');
+  // MONEY-14 (H-BND-1 RESOLVED): the free-tier limit is now a single source of
+  // truth (TURBO_FREE_SIZE_LIMIT = 107520 = 105 KiB) with a consistent `<=`
+  // boundary across CostCalculator, turbo-utils, and main.ts's approval gate.
+  // The old `<` (which made exactly 102400 NOT free) is gone. Assert the new,
+  // unified boundary so the tester notices if either side regresses.
+  check('H-BND-1 RESOLVED: 102400 bytes is FREE (<= 107520, MONEY-14 unified boundary)',
+    cc.isFreeWithTurbo(102400) === true);
+  check('boundary: exactly 107520 (105 KiB) is FREE', cc.isFreeWithTurbo(107520) === true);
+  check('boundary: 107521 (just over 105 KiB) is NOT free', cc.isFreeWithTurbo(107521) === false);
 
   // --- cleanup + verdict ----------------------------------------------------
   try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch { /* best effort */ }
