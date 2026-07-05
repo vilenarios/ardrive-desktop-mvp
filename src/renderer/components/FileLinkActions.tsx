@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, Target, FileText, Copy, Search, ExternalLink, HardDrive, Globe } from 'lucide-react';
 import { generateFileLinks, generateShareableFileLink, generateExplorerLinks } from '../../utils/link-generator';
+import { getGatewayHost, DEFAULT_GATEWAY_HOST } from '../utils/gateway';
 
 interface FileLinkActionsProps {
   dataTxId?: string;
@@ -22,9 +23,24 @@ const FileLinkActions: React.FC<FileLinkActionsProps> = ({
   onCopySuccess
 }) => {
   const [expanded, setExpanded] = useState(false);
-  
-  const links = generateFileLinks(dataTxId, metadataTxId, fileId, driveId, fileKey);
-  const explorerLinks = dataTxId ? generateExplorerLinks(dataTxId) : null;
+  // SYNC-19: resolve the configured gateway host once on mount (cached by
+  // getGatewayHost() after the first call) instead of hardcoding arweave.net.
+  const [gatewayHost, setGatewayHost] = useState(DEFAULT_GATEWAY_HOST);
+
+  useEffect(() => {
+    let cancelled = false;
+    getGatewayHost().then((host) => {
+      if (!cancelled) {
+        setGatewayHost(host);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const links = generateFileLinks(dataTxId, metadataTxId, fileId, driveId, fileKey, gatewayHost);
+  const explorerLinks = dataTxId ? generateExplorerLinks(dataTxId, gatewayHost) : null;
 
   const copyToClipboard = async (text: string, message: string) => {
     try {

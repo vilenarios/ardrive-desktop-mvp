@@ -48,6 +48,7 @@ import {
 } from 'lucide-react';
 import { InfoButton } from '../common/InfoButton';
 import { useModalA11y } from '../../hooks/useModalA11y';
+import { getGatewayHost, DEFAULT_GATEWAY_HOST } from '../../utils/gateway';
 
 interface FileDownload {
   id: string;
@@ -88,6 +89,23 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
   const [activityFilter, setActivityFilter] = useState<'all' | 'uploads' | 'downloads'>('all');
   const [contextMenuOpen, setContextMenuOpen] = useState<string | null>(null);
   const [selectedActivityDetails, setSelectedActivityDetails] = useState<ActivityItem | null>(null);
+  // SYNC-19: resolve the configured gateway host once on mount instead of
+  // hardcoding arweave.net (which rate-limits some users) in the raw-gateway
+  // links below. getGatewayHost() caches after the first call, so mounting
+  // this alongside other tabs doesn't cause repeat IPC round-trips.
+  const [gatewayHost, setGatewayHost] = useState(DEFAULT_GATEWAY_HOST);
+
+  useEffect(() => {
+    let cancelled = false;
+    getGatewayHost().then((host) => {
+      if (!cancelled) {
+        setGatewayHost(host);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // A11Y-2: the activity-details modal had no Escape/focus-trap and no
   // role="dialog" — reuse the shared hook used by the drive modals. Called
@@ -402,7 +420,9 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
   // raw-gateway link rather than a dead one.
   const getRawGatewayUrl = (activity: ActivityItem): string | undefined => {
     const item = activity.originalItem as FileUpload | FileDownload;
-    return item.dataTxId ? `https://arweave.net/${item.dataTxId}` : undefined;
+    // SYNC-19: route through the configured gateway host (resolved on mount
+    // above) instead of hardcoding arweave.net, which rate-limits some users.
+    return item.dataTxId ? `https://${gatewayHost}/${item.dataTxId}` : undefined;
   };
 
   const handleShareFile = async (activity: ActivityItem) => {
@@ -1214,7 +1234,9 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                   <button 
                     className="button small"
                     onClick={async () => {
-                      await window.electronAPI.shell.openExternal(`https://arweave.net/${(selectedActivityDetails.originalItem as FileUpload).dataTxId}`);
+                      // SYNC-19: route through the configured gateway host instead
+                      // of hardcoding arweave.net (which rate-limits some users).
+                      await window.electronAPI.shell.openExternal(`https://${gatewayHost}/${(selectedActivityDetails.originalItem as FileUpload).dataTxId}`);
                     }}
                   >
                     <ExternalLink size={14} />
@@ -1226,7 +1248,9 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                   <button 
                     className="button small"
                     onClick={async () => {
-                      await window.electronAPI.shell.openExternal(`https://arweave.net/${(selectedActivityDetails.originalItem as FileDownload).dataTxId}`);
+                      // SYNC-19: route through the configured gateway host instead
+                      // of hardcoding arweave.net (which rate-limits some users).
+                      await window.electronAPI.shell.openExternal(`https://${gatewayHost}/${(selectedActivityDetails.originalItem as FileDownload).dataTxId}`);
                     }}
                   >
                     <ExternalLink size={14} />

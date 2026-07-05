@@ -20,6 +20,7 @@ import CreateManifestModal from '../CreateManifestModal';
 import { InfoButton } from '../common/InfoButton';
 import { ARDRIVE_OPERATION_SIZES, isArDriveOperationFree } from '../../../utils/turbo-utils';
 import { useModalA11y } from '../../hooks/useModalA11y';
+import { getGatewayHost } from '../../utils/gateway';
 
 interface OverviewTabProps {
   drive: DriveInfo;
@@ -189,6 +190,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         return;
       }
 
+      // SYNC-19: route the exported "Direct Download Link" column through the
+      // configured gateway host instead of hardcoding arweave.net (which
+      // rate-limits some users). Resolved once up front since this function
+      // is already async and the value is reused across every row below.
+      const gatewayHost = await getGatewayHost();
+
       // Convert the data to CSV format
       const csvHeaders = [
         'File Id',
@@ -224,7 +231,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             file.size || 0,
             formatDate(file.createdAt || file.modifiedAt),
             formatDate(file.modifiedAt),
-            file.dataTxId ? `https://arweave.net/${file.dataTxId}` : '',
+            file.dataTxId ? `https://${gatewayHost}/${file.dataTxId}` : '',
             'confirmed' // Default status - could be enhanced based on actual status
           ];
         });
