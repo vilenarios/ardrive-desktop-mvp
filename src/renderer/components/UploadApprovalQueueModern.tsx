@@ -126,6 +126,16 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
     };
   }, [pendingUploads, onRejectUpload, onRefreshBalance]);
 
+  // UAT-1b (defect #3): a pending-upload row can arrive with a stored,
+  // stale-but-non-zero estimatedTurboCost quote even when its SIZE puts it
+  // in the Turbo free tier (e.g. the quote was calculated upstream before
+  // the free-tier check ran). The size rule is authoritative — reading the
+  // raw field is centralized here so free-tier ALWAYS reports 0 regardless
+  // of what's stored, and no future reorder of the free-tier checks below
+  // can let that phantom number leak into the UI or the cost total.
+  const getEffectiveTurboCost = (upload: PendingUpload): number | null | undefined =>
+    isTurboFree(upload.fileSize) ? 0 : upload.estimatedTurboCost;
+
   // Calculate upload cost breakdown. Everything is paid via Turbo (D-010) —
   // files either have a real Turbo quote, are free-tier, or have no quote
   // ("estimate unavailable"). There is no AR cost to total.
@@ -146,15 +156,18 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
         freeFiles++;
       } else if (isTurboFree(upload.fileSize)) {
         freeFiles++;
-      } else if (upload.estimatedTurboCost != null) {
-        // Real Turbo quote (whether or not the balance covers it) — the cost
-        // itself is known. NOTE: rows arrive DB-shaped over IPC (booleans as
-        // 0/1, missing quotes as null), so only `!= null` is a safe test here.
-        turboFiles++;
-        totalTurboCredits += upload.estimatedTurboCost;
       } else {
-        // Genuinely no quote — cost unknown, disclosed as unavailable
-        unquotedFiles++;
+        const effectiveTurboCost = getEffectiveTurboCost(upload);
+        if (effectiveTurboCost != null) {
+          // Real Turbo quote (whether or not the balance covers it) — the cost
+          // itself is known. NOTE: rows arrive DB-shaped over IPC (booleans as
+          // 0/1, missing quotes as null), so only `!= null` is a safe test here.
+          turboFiles++;
+          totalTurboCredits += effectiveTurboCost;
+        } else {
+          // Genuinely no quote — cost unknown, disclosed as unavailable
+          unquotedFiles++;
+        }
       }
     });
 
@@ -314,7 +327,9 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
     }
     if (isTurboFree(upload.fileSize)) {
       return { method: 'turbo-free', cost: 'Free', hasQuote: true };
-    } else if (upload.estimatedTurboCost != null) {
+    }
+    const effectiveTurboCost = getEffectiveTurboCost(upload);
+    if (effectiveTurboCost != null) {
       // Real Turbo quote from the payment service — always shown. If the
       // balance can't cover it, say so rather than hiding the real number.
       // MONEY-6 staleness fix: prefer the LIVE balance (the walletInfo prop
@@ -323,18 +338,18 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
       // stored flag when no live balance is available.
       // (Truthy check: rows arrive DB-shaped over IPC with booleans as 0/1.)
       const liveWinc = walletInfo?.turboWinc != null ? parseFloat(walletInfo.turboWinc) : NaN;
-      const costWinc = upload.estimatedTurboCost * 1e12;
+      const costWinc = effectiveTurboCost * 1e12;
       const sufficient = !Number.isNaN(liveWinc)
         ? liveWinc >= costWinc
         : !!upload.hasSufficientTurboBalance;
       if (sufficient) {
-        return { method: 'turbo', cost: `${upload.estimatedTurboCost.toFixed(4)} Credits`, hasQuote: true };
+        return { method: 'turbo', cost: `${effectiveTurboCost.toFixed(4)} Credits`, hasQuote: true };
       }
       // Known cost the balance cannot cover — approval of this row is
       // blocked until the user tops up (MONEY-1).
       return {
         method: 'turbo',
-        cost: `${upload.estimatedTurboCost.toFixed(4)} Credits`,
+        cost: `${effectiveTurboCost.toFixed(4)} Credits`,
         hasQuote: true,
         insufficientBalance: true
       };

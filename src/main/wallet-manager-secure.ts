@@ -17,6 +17,23 @@ import { getDriveEmojiFingerprint } from './utils/drive-fingerprint';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
 import { getGatewayConfig } from './gateway';
 
+// UAT-1b (defect #2): ArFS's `unixTime` field is nominally SECONDS per the
+// spec, but different SDK/gateway code paths have been observed returning it
+// already in MILLISECONDS with no reliable per-record signal for which unit
+// a given drive used — naively doing `unixTime * 1000` on an already-ms value
+// overflows into a garbage year (e.g. "Apr 3, 58474"). Disambiguate by
+// magnitude instead: a SECONDS value for any year up to ~5138 is < 1e11,
+// while a MILLISECONDS value for any year after ~1973 is >= 1e11 — since
+// Arweave itself didn't exist before 2017, that gap cleanly separates the
+// two units for every real ArFS timestamp.
+export function normalizeUnixTimeToMs(unixTime: unknown): number {
+  const n = typeof unixTime === 'number' ? unixTime : Number(unixTime);
+  if (!Number.isFinite(n) || n <= 0) {
+    return Date.now();
+  }
+  return n < 1e11 ? n * 1000 : n;
+}
+
 /**
  * Secure Wallet Manager
  * 
@@ -686,8 +703,9 @@ export class SecureWalletManager {
       name: drive.name, // Will be decrypted name if drive is unlocked
       privacy: drive.drivePrivacy as 'public' | 'private',
       rootFolderId: drive.rootFolderId === 'ENCRYPTED' ? '' : drive.rootFolderId.toString(),
-      // Convert unixTime from seconds to milliseconds, or use current time if not available
-      dateCreated: drive.unixTime ? drive.unixTime * 1000 : Date.now(),
+      // UAT-1b: unixTime may arrive in seconds OR already in ms — see
+      // normalizeUnixTimeToMs() above for why a naive *1000 overflows.
+      dateCreated: normalizeUnixTimeToMs(drive.unixTime),
       size: 0, // Will need to calculate this from drive contents
       isPrivate: drive.drivePrivacy === 'private'
     }));

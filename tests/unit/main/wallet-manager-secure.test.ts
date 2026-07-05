@@ -52,7 +52,7 @@ vi.mock('../../../src/main/drive-key-manager', () => ({
   driveKeyManager: { unlockDriveUnverified: vi.fn(async () => true) }
 }));
 
-import { SecureWalletManager } from '../../../src/main/wallet-manager-secure';
+import { SecureWalletManager, normalizeUnixTimeToMs } from '../../../src/main/wallet-manager-secure';
 import { summarizeArFSResult } from '../../../src/main/utils/arfs-result-summary';
 
 // The sentinel stands in for the url-encoded raw drive key. If this string
@@ -227,5 +227,48 @@ describe('summarizeArFSResult', () => {
     expect(summarizeArFSResult({ created: [null, 42, { type: 7 }] }).created).toEqual([
       { type: undefined, entityId: undefined, metadataTxId: undefined, dataTxId: undefined, bundledIn: undefined }
     ]);
+  });
+});
+
+// UAT-1b (defect #2): a drive's ArFS `unixTime` can arrive already in
+// SECONDS (per spec) or already in MILLISECONDS (observed from some
+// SDK/gateway paths) with no reliable per-record signal for which — the old
+// code blindly did `unixTime * 1000`, so an already-ms value overflowed into
+// a garbage year ("Apr 3, 58474"). normalizeUnixTimeToMs() disambiguates by
+// magnitude (< 1e11 => seconds, >= 1e11 => already ms) so both shapes land
+// on the SAME correct millisecond value / year.
+describe('normalizeUnixTimeToMs (UAT-1b defect #2)', () => {
+  it('normalizes a seconds-scale value and an already-ms-scale value to the same correct year', () => {
+    const targetMs = Date.UTC(2023, 5, 15); // 2023-06-15, well within both scales' unambiguous range
+    const targetSeconds = targetMs / 1000;
+
+    const fromSeconds = normalizeUnixTimeToMs(targetSeconds);
+    const fromMs = normalizeUnixTimeToMs(targetMs);
+
+    expect(fromSeconds).toBe(targetMs);
+    expect(fromMs).toBe(targetMs);
+    expect(new Date(fromSeconds).getUTCFullYear()).toBe(2023);
+    expect(new Date(fromMs).getUTCFullYear()).toBe(2023);
+
+    // The literal old-bug repro: a real already-ms unixTime run through the
+    // naive `unixTime * 1000` blindly-seconds conversion overflows into a
+    // wild year — proving this fixture would have failed pre-fix.
+    expect(new Date(targetMs * 1000).getUTCFullYear()).not.toBe(2023);
+  });
+
+  it('falls back to "now" for garbage input (NaN, negative, zero, non-numeric) instead of overflowing', () => {
+    const before = Date.now();
+    for (const garbage of [NaN, -1, 0, undefined, null, 'not-a-number', {}]) {
+      const result = normalizeUnixTimeToMs(garbage as unknown);
+      const after = Date.now();
+      expect(result).toBeGreaterThanOrEqual(before);
+      expect(result).toBeLessThanOrEqual(after);
+    }
+  });
+
+  it('accepts a numeric string the same as a number (defensive against stringly-typed IPC data)', () => {
+    const targetMs = Date.UTC(2021, 0, 1);
+    expect(normalizeUnixTimeToMs(String(targetMs))).toBe(targetMs);
+    expect(normalizeUnixTimeToMs(String(targetMs / 1000))).toBe(targetMs);
   });
 });

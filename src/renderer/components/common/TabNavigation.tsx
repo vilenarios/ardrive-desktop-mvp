@@ -34,7 +34,11 @@ export const TabNavigation: React.FC<TabNavigationProps> = ({
             id={`${tab.id}-tab`}
             role="tab"
             aria-selected={activeTab === tab.id}
-            aria-controls={`${tab.id}-panel`}
+            // UAT-1b (defect #4): only the ACTIVE tab's role="tabpanel" is ever
+            // mounted (Dashboard.tsx conditionally renders just one panel) —
+            // inactive tabs must not point aria-controls at a panel id that
+            // doesn't exist in the DOM.
+            aria-controls={activeTab === tab.id ? `${tab.id}-panel` : undefined}
             className={`tab-button ${activeTab === tab.id ? 'active' : ''}`}
             onClick={() => onTabChange(tab.id)}
           >

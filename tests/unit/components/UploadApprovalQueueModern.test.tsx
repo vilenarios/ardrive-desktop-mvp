@@ -153,6 +153,28 @@ describe('UploadApprovalQueueModern cost display (MONEY-3)', () => {
     expect(screen.getAllByText('FREE').length).toBe(2);
   });
 
+  // UAT-1b (defect #3): a free-tier row can arrive with a stored, stale
+  // non-zero estimatedTurboCost quote (observed live: 0.000524 Credits on a
+  // 51200 B / free-tier row). The size rule must always win — the phantom
+  // number must never reach the row or the total banner.
+  it('a free-tier-size row with a stale non-zero estimatedTurboCost still reports FREE/0, not the phantom quote', () => {
+    const { container } = renderQueue([
+      makeUpload({
+        fileSize: 50 * 1024, // well under the free-tier limit
+        estimatedCost: (50 * 1024) / 1e12,
+        estimatedTurboCost: 0.000524, // stale/phantom quote — must be ignored
+        hasSufficientTurboBalance: false,
+      }),
+    ]);
+
+    // Row + banner total both read FREE
+    expect(screen.getAllByText('FREE').length).toBe(2);
+    // The phantom quote must never leak into the DOM in any form
+    expect(container.textContent).not.toContain('0.000524');
+    expect(container.textContent).not.toContain('0.0005 Credits');
+    expect(screen.queryByText('Insufficient balance')).toBeNull();
+  });
+
   it('mixed queue: totals only the real quotes and counts unavailable files honestly', () => {
     const { container } = renderQueue([
       makeUpload({
