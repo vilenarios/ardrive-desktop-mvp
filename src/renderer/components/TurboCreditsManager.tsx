@@ -23,6 +23,7 @@ import TurboBalanceCard from './turbo/TurboBalanceCard';
 import TurboPurchaseTab from './turbo/TurboPurchaseTab';
 import TurboSettingsTab from './turbo/TurboSettingsTab';
 import TurboAboutTab from './turbo/TurboAboutTab';
+import { TURBO_FREE_SIZE_LIMIT } from '../../utils/turbo-utils';
 import TurboComingSoonTab from './turbo/TurboComingSoonTab';
 
 interface TurboCreditsManagerProps {
@@ -253,7 +254,7 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
             <Zap size={24} className="tcm-header-icon" />
             <h1>Turbo Credits</h1>
             <InfoButton 
-              tooltip="Turbo Credits provide instant uploads and better user experience. Files under 100KB are free!" 
+              tooltip={`Turbo Credits provide instant uploads and better user experience. Files up to ${TURBO_FREE_SIZE_LIMIT / 1024} KiB are free!`}
               helpUrl="https://docs.ardrive.io/docs/turbo/what-is-turbo.html"
             />
           </div>

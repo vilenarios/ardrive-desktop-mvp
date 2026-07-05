@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import CreateManifestModal from '../CreateManifestModal';
 import { InfoButton } from '../common/InfoButton';
-import { ARDRIVE_OPERATION_SIZES, isArDriveOperationFree } from '../../../utils/turbo-utils';
+import { ARDRIVE_OPERATION_SIZES, isArDriveOperationFree, TURBO_FREE_SIZE_LIMIT } from '../../../utils/turbo-utils';
 import { useModalA11y } from '../../hooks/useModalA11y';
 import { getGatewayHost } from '../../utils/gateway';
 
@@ -677,7 +677,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                     FREE with Turbo Credits
                   </div>
                   <p className="overview-cost-free-banner-copy">
-                    This operation is under 100KB and qualifies for free upload via Turbo.
+                    This operation is under {TURBO_FREE_SIZE_LIMIT / 1024} KiB and qualifies for free upload via Turbo.
                   </p>
                 </div>
               ) : null}

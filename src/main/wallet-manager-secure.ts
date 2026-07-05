@@ -706,7 +706,7 @@ export class SecureWalletManager {
     try {
       console.log('Creating public drive with name:', name);
       
-      // Try to use Turbo for free drive creation (under 100KB)
+      // Try to use Turbo for free drive creation (under the Turbo free-tier limit)
       // Note: Drive creation should default to Turbo if available
       const result = await this.arDrive.createPublicDrive({
         driveName: name

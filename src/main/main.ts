@@ -28,6 +28,7 @@ import { driveKeyManager } from './drive-key-manager';
 import { readDevEnv } from './utils/dev-env';
 import { applySyncFolderChange } from './utils/sync-folder-change';
 import { isRetryAllowed } from './utils/upload-retry-guard';
+import { TURBO_FREE_SIZE_LIMIT } from '../utils/turbo-utils';
 
 // Load .env file in development
 if (process.env.NODE_ENV !== 'production') {
@@ -1013,7 +1014,7 @@ class ArDriveApp {
       try {
         if (turboManager.isInitialized()) {
           // Rename operations are small metadata updates (<1KB) so they qualify for Turbo Free
-          console.log('Using Turbo for drive rename (free under 100KB)');
+          console.log('Using Turbo for drive rename (free under the Turbo free-tier limit)');
           
           // ArDrive will automatically use Turbo if available
           // The ardrive-core-js library handles Turbo configuration internally
@@ -2170,7 +2171,6 @@ class ArDriveApp {
       // Validate Turbo balance unless the file is free-tier. Approval of a
       // row whose known cost exceeds the balance is BLOCKED (throws) rather
       // than letting a certain-to-charge-later upload through unfunded.
-      const TURBO_FREE_SIZE_LIMIT = 100 * 1024; // 100KB
       const isFreeWithTurbo = pendingUpload.fileSize <= TURBO_FREE_SIZE_LIMIT;
 
       if (turboManager.isInitialized() && !isFreeWithTurbo) {
@@ -2289,7 +2289,6 @@ class ArDriveApp {
 
       let approvedCount = 0;
       const errors: string[] = [];
-      const TURBO_FREE_SIZE_LIMIT = 100 * 1024; // 100KB
 
       // Get current Turbo balance
       let turboBalanceWinc = 0;

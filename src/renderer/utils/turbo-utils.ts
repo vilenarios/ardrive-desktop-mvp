@@ -2,8 +2,8 @@
  * Utility functions for Turbo integration
  */
 
-// Turbo Free tier limit: 100KB (100 * 1024 bytes)
-const TURBO_FREE_LIMIT = 100 * 1024;
+// Free-tier limit re-uses the single source of truth (107520 bytes / 105 KiB).
+import { TURBO_FREE_SIZE_LIMIT as TURBO_FREE_LIMIT } from '../../utils/turbo-utils';
 
 /**
  * Check if a file is eligible for Turbo Free tier

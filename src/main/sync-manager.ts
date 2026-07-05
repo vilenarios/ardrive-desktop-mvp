@@ -2539,10 +2539,10 @@ export class SyncManager {
       }
       
       // For files, continue with existing logic
-      // Check if this is a free Turbo upload (under 100KB)
+      // Check if this is a free Turbo upload (within the free-tier limit)
       const isFreeWithTurbo = upload.uploadMethod === 'turbo' && this.costCalculator.isFreeWithTurbo(upload.fileSize);
       if (isFreeWithTurbo) {
-        console.log(`File ${upload.fileName} is under 100KB (${upload.fileSize} bytes) - should be FREE with Turbo`);
+        console.log(`File ${upload.fileName} is within the Turbo free-tier limit (${upload.fileSize} bytes) - should be FREE with Turbo`);
       }
       
       // Get the correct parent folder for this file (will create folder structure if needed)

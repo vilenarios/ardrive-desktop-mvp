@@ -8,6 +8,7 @@ import {
 import { PendingUpload } from '../../types';
 import { CustomMetadata } from '../../types/metadata';
 import { isTurboFree, formatFileSize } from '../utils/turbo-utils';
+import { TURBO_FREE_SIZE_LIMIT } from '../../utils/turbo-utils';
 import { InfoButton } from './common/InfoButton';
 import StatusPill, { UploadStatus } from './common/StatusPill';
 
@@ -440,7 +441,7 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
             <div>
               <div className="balance-label">
                 Turbo Credits
-                <InfoButton tooltip="Turbo Credits are prepaid, instant-upload credits you buy with a card — no crypto wallet required. Files under 100 KiB upload free; every other file is quoted here in Credits before you approve it. Uploads in this app always go through Turbo, never a direct AR-token payment." />
+                <InfoButton tooltip={`Turbo Credits are prepaid, instant-upload credits you buy with a card — no crypto wallet required. Files up to ${TURBO_FREE_SIZE_LIMIT / 1024} KiB upload free; every other file is quoted here in Credits before you approve it. Uploads in this app always go through Turbo, never a direct AR-token payment.`} />
               </div>
               <div className="balance-value balance-value--turbo">
                 {walletInfo?.turboBalance || '0.0000'} Credits
