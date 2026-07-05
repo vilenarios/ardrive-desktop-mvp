@@ -8,7 +8,7 @@ import { IFileStateManager, ISyncProgressTracker } from './interfaces';
 import { StreamingDownloader } from './StreamingDownloader';
 import { BrowserWindow } from 'electron';
 import { driveKeyManager } from '../drive-key-manager';
-import { getGatewayUrl } from '../gateway';
+import { runWithGatewayFailover } from './gateway-failover';
 
 export class DownloadManager {
   private isDownloading = false;
@@ -709,35 +709,44 @@ export class DownloadManager {
         // Use streaming download for better reliability and progress tracking.
         // SYNC-17: gateway host is configurable (defaults to turbo-gateway.com).
         // StreamingDownloader follows the sandbox 302 (axios maxRedirects) and
-        // retries 5× with backoff, so a flapping 404/504 is not a hard failure.
-        const gatewayUrl = getGatewayUrl();
-        const downloadUrl = `${gatewayUrl}/${fileData.dataTxId}`;
-        
-        console.log(`Downloading file from: ${downloadUrl}`);
-        
-        const downloadResult = await this.streamingDownloader.downloadFile(
-          downloadUrl,
-          localFilePath,
-          downloadId,
-          {
-            onProgress: async (progress) => {
-              // Queue progress update instead of immediate database write
-              this.queueProgressUpdate(downloadId, {
-                downloadId,
-                fileName: fileData.name,
-                progress: progress.progress,
-                bytesDownloaded: progress.bytesDownloaded,
-                totalBytes: progress.totalBytes,
-                speed: progress.speed,
-                remainingTime: progress.remainingTime
-              });
-            },
-            maxRetries: 5,
-            retryDelay: 2000,
-            chunkSize: 2 * 1024 * 1024 // 2MB chunks for better performance
-          }
+        // retries with backoff, so a flapping 404/504 is not a hard failure.
+        // SYNC-23: DATA fetches (by-txid) get ORDERED gateway FAILOVER. The
+        // primary intermittently 404-storms data that IS available, so on
+        // persistent failure we fall through to perma.online (serves this
+        // owner's data 10/10) then arweave.net. StreamingDownloader already
+        // retries each attempt internally, so the failover loop's per-gateway
+        // retry is a single pass — the loop itself provides the cross-gateway
+        // resilience (see sync/gateway-failover.ts).
+        const downloadResult = await runWithGatewayFailover(
+          (gatewayUrl) => {
+            const downloadUrl = `${gatewayUrl}/${fileData.dataTxId}`;
+            console.log(`Downloading file from: ${downloadUrl}`);
+            return this.streamingDownloader.downloadFile(
+              downloadUrl,
+              localFilePath,
+              downloadId,
+              {
+                onProgress: async (progress) => {
+                  // Queue progress update instead of immediate database write
+                  this.queueProgressUpdate(downloadId, {
+                    downloadId,
+                    fileName: fileData.name,
+                    progress: progress.progress,
+                    bytesDownloaded: progress.bytesDownloaded,
+                    totalBytes: progress.totalBytes,
+                    speed: progress.speed,
+                    remainingTime: progress.remainingTime
+                  });
+                },
+                maxRetries: 2,
+                retryDelay: 1500,
+                chunkSize: 2 * 1024 * 1024 // 2MB chunks for better performance
+              }
+            );
+          },
+          { label: `download ${fileData.name}`, retry: { attempts: 1 } }
         );
-        
+
         // Use the hash from streaming download
         hash = downloadResult.hash;
       }
@@ -1159,34 +1168,37 @@ export class DownloadManager {
       // through the working URL shape instead of /raw/. This also works
       // unchanged on arweave.net-style gateways, which serve plain data at
       // GET /<txid> too.
-      const gatewayUrl = getGatewayUrl();
-      const manifestUrl = `${gatewayUrl}/${fileData.dataTxId}`;
-
-      console.log(`Downloading manifest from: ${manifestUrl}`);
-
-      // Use streaming download for manifests too
-      const downloadResult = await this.streamingDownloader.downloadFile(
-        manifestUrl,
-        localFilePath,
-        downloadId,
-        {
-          onProgress: async (progress) => {
-            // Queue progress update instead of immediate database write
-            this.queueProgressUpdate(downloadId, {
-              downloadId,
-              fileName: fileData.name,
-              progress: progress.progress,
-              bytesDownloaded: progress.bytesDownloaded,
-              totalBytes: progress.totalBytes,
-              speed: progress.speed,
-              remainingTime: progress.remainingTime
-            });
-          },
-          maxRetries: 3,
-          retryDelay: 1000
-        }
+      // SYNC-23: manifests are DATA fetches too — give them the same ordered
+      // gateway failover as ordinary public files (see sync/gateway-failover.ts).
+      const downloadResult = await runWithGatewayFailover(
+        (gatewayUrl) => {
+          const manifestUrl = `${gatewayUrl}/${fileData.dataTxId}`;
+          console.log(`Downloading manifest from: ${manifestUrl}`);
+          return this.streamingDownloader.downloadFile(
+            manifestUrl,
+            localFilePath,
+            downloadId,
+            {
+              onProgress: async (progress) => {
+                // Queue progress update instead of immediate database write
+                this.queueProgressUpdate(downloadId, {
+                  downloadId,
+                  fileName: fileData.name,
+                  progress: progress.progress,
+                  bytesDownloaded: progress.bytesDownloaded,
+                  totalBytes: progress.totalBytes,
+                  speed: progress.speed,
+                  remainingTime: progress.remainingTime
+                });
+              },
+              maxRetries: 2,
+              retryDelay: 1000
+            }
+          );
+        },
+        { label: `manifest ${fileData.name}`, retry: { attempts: 1 } }
       );
-      
+
       console.log(`Successfully downloaded manifest to: ${localFilePath}`);
       
       // Return the hash from the download result

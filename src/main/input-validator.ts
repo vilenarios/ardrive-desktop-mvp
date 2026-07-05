@@ -291,6 +291,24 @@ export class InputValidator {
   }
 
   /**
+   * SYNC-23: validates the ORDERED DATA-fetch fallback gateway list. Each entry
+   * must be a valid gateway host (same rules as validateGatewayHost). Empty
+   * array is allowed (means "use the built-in default order"). Caps the count so
+   * a caller can't set an unbounded failover list. Returns the trimmed hosts.
+   */
+  static validateGatewayHosts(value: any, fieldName: string = 'gatewayFallbacks'): string[] {
+    if (!Array.isArray(value)) {
+      throw new ValidationError(`${fieldName} must be an array of gateway hosts`, fieldName);
+    }
+    if (value.length > 8) {
+      throw new ValidationError(`${fieldName} cannot list more than 8 gateways`, fieldName);
+    }
+    return value.map((host, i) =>
+      this.validateGatewayHost(host, `${fieldName}[${i}]`)
+    );
+  }
+
+  /**
    * Validates a positive number
    */
   static validatePositiveNumber(

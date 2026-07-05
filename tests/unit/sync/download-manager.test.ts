@@ -238,9 +238,16 @@ describe('DownloadManager download-status truth (SYNC-2)', () => {
   });
 
   it('(d) re-queues transient failures and the retry actually runs (formerly dead code)', async () => {
+    // SYNC-23: a public DATA download now fails over across ALL gateways
+    // (turbo-gateway.com → perma.online → arweave.net) before it surfaces a
+    // failure, so the DownloadManager-level requeue only fires once the WHOLE
+    // gateway list has been exhausted. Reject on every gateway to reach that
+    // requeue path; the requeued attempt then succeeds on the first gateway.
     mockStreamingDownload
-      .mockRejectedValueOnce(new Error('read ECONNRESET'))
-      .mockResolvedValueOnce({ hash: goodHash });
+      .mockRejectedValueOnce(new Error('read ECONNRESET')) // turbo-gateway.com
+      .mockRejectedValueOnce(new Error('read ECONNRESET')) // perma.online
+      .mockRejectedValueOnce(new Error('read ECONNRESET')) // arweave.net
+      .mockResolvedValueOnce({ hash: goodHash }); // re-queued retry succeeds
 
     await (downloadManager as any).startConcurrentDownload(FILE_ID, makeFileRow());
 
@@ -248,9 +255,10 @@ describe('DownloadManager download-status truth (SYNC-2)', () => {
     expect((downloadManager as any).failedDownloads.get(FILE_ID)).toBe(1);
     expect(failedWrites()).toHaveLength(0);
 
-    // The re-queued download is picked up and succeeds on the second attempt
+    // The re-queued download is picked up and succeeds (4th call = 3 failover
+    // attempts that all failed + 1 successful retry).
     await vi.waitFor(() => {
-      expect(mockStreamingDownload).toHaveBeenCalledTimes(2);
+      expect(mockStreamingDownload).toHaveBeenCalledTimes(4);
       expect(mockDatabaseManager.updateDriveMetadataStatus).toHaveBeenCalledWith(
         FILE_ID,
         'synced',
@@ -275,9 +283,13 @@ describe('DownloadManager download-status truth (SYNC-2)', () => {
     expect((downloadManager as any).downloadQueue.has(FILE_ID)).toBe(false);
     expect((downloadManager as any).failedDownloads.has(FILE_ID)).toBe(false);
 
-    // No second attempt is ever made
+    // SYNC-23: the 404 IS retried on the other gateways first (turbo-gateway.com
+    // 404-storms data that perma.online serves fine), so downloadFile is called
+    // once PER gateway (3). But once the whole ordered list is exhausted the
+    // permanent 404 is recorded failed with NO DownloadManager-level requeue —
+    // no *fourth* attempt is ever made.
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(mockStreamingDownload).toHaveBeenCalledTimes(1);
+    expect(mockStreamingDownload).toHaveBeenCalledTimes(3);
   });
 
   it('(e) oversized files fail permanently without touching the network and are never synced', async () => {
@@ -311,9 +323,14 @@ describe('DownloadManager download-status truth (SYNC-2)', () => {
       makeFileRow(),
       makeFileRow({ fileId: FILE_ID_2, name: 'second.pdf' }),
     ]);
+    // SYNC-23: the first file's download fails over across all three gateways
+    // before it surfaces the failure, so reject on each gateway (3 calls); the
+    // second file then succeeds on its first gateway (1 call) = 4 total.
     mockStreamingDownload
-      .mockRejectedValueOnce(new Error('read ECONNRESET'))
-      .mockResolvedValueOnce({ hash: goodHash });
+      .mockRejectedValueOnce(new Error('read ECONNRESET')) // file 1 @ turbo-gateway.com
+      .mockRejectedValueOnce(new Error('read ECONNRESET')) // file 1 @ perma.online
+      .mockRejectedValueOnce(new Error('read ECONNRESET')) // file 1 @ arweave.net
+      .mockResolvedValueOnce({ hash: goodHash }); // file 2 @ turbo-gateway.com
 
     await downloadManager.downloadMissingFiles();
 
@@ -324,7 +341,7 @@ describe('DownloadManager download-status truth (SYNC-2)', () => {
       expect.stringContaining('ECONNRESET')
     );
     // ...and the batch still attempted the second file
-    expect(mockStreamingDownload).toHaveBeenCalledTimes(2);
+    expect(mockStreamingDownload).toHaveBeenCalledTimes(4);
     const failedForSecond = failedWrites().filter((call: any[]) => call[0] === FILE_ID_2);
     expect(failedForSecond).toHaveLength(0);
   });

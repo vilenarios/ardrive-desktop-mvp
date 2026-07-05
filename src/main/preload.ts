@@ -205,6 +205,10 @@ const api = {
     // SYNC-17: override the Arweave gateway host (defaults to turbo-gateway.com).
     setGateway: (host: string): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('config:set-gateway', host),
+    // SYNC-23: set the ordered DATA-fetch fallback gateway list (tried after the
+    // primary; defaults to [perma.online, arweave.net]). DATA fetches only.
+    setGatewayFallbacks: (hosts: string[]): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('config:set-gateway-fallbacks', hosts),
   },
 
   // Dialog operations (UX-3: migrated to the IpcResult envelope)

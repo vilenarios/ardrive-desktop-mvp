@@ -13,6 +13,14 @@ export interface AppConfig {
    * whose default gateway is rate-limited point the app at a working one.
    */
   gatewayHost?: string;
+  /**
+   * SYNC-23: ordered DATA-fetch fallback gateways, tried after `gatewayHost`
+   * when a by-txid data fetch persistently fails. Unset → defaults to
+   * ['perma.online', 'arweave.net'] (see src/main/gateway.ts). DATA fetches
+   * only — metadata/GraphQL never fails over across gateways (perma.online does
+   * not index this owner's ArFS metadata; see sync/gateway-failover.ts).
+   */
+  gatewayFallbacks?: string[];
 }
 
 export interface DriveSyncMapping {

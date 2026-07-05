@@ -2609,6 +2609,16 @@ class ArDriveApp {
       await configManager.setGatewayHost(validated);
     }));
 
+    // SYNC-23: set the ordered DATA-fetch fallback gateway list (device/app-level
+    // global config). Tried in order after the primary (`config:set-gateway`)
+    // when a by-txid data fetch persistently fails; defaults to
+    // [perma.online, arweave.net] when unset (see src/main/gateway.ts). DATA
+    // fetches only — metadata/GraphQL never fails over across gateways.
+    ipcMain.handle('config:set-gateway-fallbacks', envelopeHandler(async (_, hosts: unknown) => {
+      const validated = InputValidator.validateGatewayHosts(hosts);
+      await configManager.setGatewayFallbacks(validated);
+    }));
+
     ipcMain.handle('config:clear-drive', envelopeHandler(async () => {
       // Clear sync folder
       await configManager.setSyncFolder('');
