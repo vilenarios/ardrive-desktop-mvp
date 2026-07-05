@@ -16,7 +16,7 @@ export interface ConfirmModalProps {
 }
 
 /**
- * UX-21: in-app replacement for `window.confirm()`. Same intent (a modal
+ * UX-9: in-app replacement for `window.confirm()`. Same intent (a modal
  * yes/no prompt that blocks the calling flow until answered) but on-brand
  * and accessible — reuses the drive-modal-* styling (modal.css) and the
  * shared useModalA11y hook (Escape/backdrop/focus-trap/focus-return), so it

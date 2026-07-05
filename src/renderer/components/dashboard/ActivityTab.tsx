@@ -73,7 +73,7 @@ interface ActivityTabProps {
   config: AppConfig;
   drive: DriveInfo;
   onViewFile: (file: FileUpload) => void;
-  // UX-22: used to surface retry/remove feedback without a full page reload.
+  // UX-9: used to surface retry/remove feedback without a full page reload.
   toast?: {
     success: (message: string) => void;
     error: (message: string) => void;
@@ -91,7 +91,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
   onViewFile,
   toast
 }) => {
-  // UX-22: which failed download (by fileId) is currently being retried/removed,
+  // UX-9: which failed download (by fileId) is currently being retried/removed,
   // so the action buttons can show a spinner and disable while the IPC is in
   // flight — instead of the old window.location.reload() that rebooted the app.
   const [pendingDownloadAction, setPendingDownloadAction] = useState<string | null>(null);
@@ -425,7 +425,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
     setContextMenuOpen(null);
   };
 
-  // UX-22: retry a failed download by re-queueing THAT specific file through
+  // UX-9: retry a failed download by re-queueing THAT specific file through
   // the real per-item download IPC (sync:queue-download), instead of the old
   // window.location.reload() that rebooted the entire renderer to "refresh"
   // the list. The parent Dashboard already polls files.getDownloads() and
@@ -450,7 +450,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
     }
   };
 
-  // UX-22: remove a failed download from the queue via the real per-item IPC
+  // UX-9: remove a failed download from the queue via the real per-item IPC
   // (sync:cancel-download), again without reloading the app.
   const handleRemoveDownload = async (download: FileDownload) => {
     if (!download.fileId || pendingDownloadAction) return;
@@ -1316,7 +1316,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({
                 
                 {selectedActivityDetails.type === 'download' && (selectedActivityDetails.originalItem as FileDownload).status === 'failed' && (
                   <>
-                    {/* UX-22: re-queue THIS download via the real per-item IPC
+                    {/* UX-9: re-queue THIS download via the real per-item IPC
                         (handleRetryDownload) — no window.location.reload(). */}
                     <button
                       className={`button small primary${pendingDownloadAction ? ' loading' : ''}`}

@@ -66,7 +66,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onRefreshWalletInfo,
   toast
 }) => {
-  // UX-21: in-app confirm modal replacing native window.confirm(). `confirm`
+  // UX-9: in-app confirm modal replacing native window.confirm(). `confirm`
   // returns a Promise<boolean>; `confirmDialog` is rendered near the bottom of
   // this component's JSX.
   const { confirm, confirmDialog } = useConfirm();
@@ -381,7 +381,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
     
-    // Always show confirmation for drive switching (UX-21: in-app modal, not
+    // Always show confirmation for drive switching (UX-9: in-app modal, not
     // the native OS confirm dialog).
     const confirmMessage = pendingUploads.length > 0
       ? `You have ${pendingUploads.length} pending upload${pendingUploads.length === 1 ? '' : 's'} that will be cancelled. This will change your active drive and sync folder.`
@@ -476,7 +476,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       
       toast?.success(`Drive "${addedDrive.name}" added successfully!`);
       
-      // Optionally switch to the newly added drive (UX-21: in-app modal)
+      // Optionally switch to the newly added drive (UX-9: in-app modal)
       const shouldSwitch = await confirm({
         title: 'Switch drives?',
         message: `Would you like to switch to "${addedDrive.name}" now?`,
@@ -559,7 +559,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     try {
       const result = await window.electronAPI.uploads.approveAll();
       
-      // Handle the new response format (UX-21: surface via toast, not window.alert)
+      // Handle the new response format (UX-9: surface via toast, not window.alert)
       if (result.errors && result.errors.length > 0) {
         const errorMessage = `Only ${result.approvedCount} of ${result.totalCount} files were approved. ${result.errors.join(' ')}`;
         toast?.error(errorMessage);
@@ -1045,7 +1045,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {/* UX-21: in-app confirmation modal (replaces native window.confirm) */}
+      {/* UX-9: in-app confirmation modal (replaces native window.confirm) */}
       {confirmDialog}
     </div>
   );

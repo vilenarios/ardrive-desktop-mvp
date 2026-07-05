@@ -10,7 +10,7 @@ export interface ConfirmOptions {
 }
 
 /**
- * UX-21: promise-based replacement for `window.confirm()`.
+ * UX-9: promise-based replacement for `window.confirm()`.
  *
  * Usage mirrors the native API's call shape so call sites barely change:
  *   const { confirm, confirmDialog } = useConfirm();
