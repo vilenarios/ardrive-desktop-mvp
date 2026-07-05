@@ -177,11 +177,18 @@ describe('Dashboard toast feedback (UX-1)', () => {
     });
   };
 
+  // UX-9: drive switching now shows the in-app ConfirmModal (not window.confirm).
+  // Click its "Switch" button to proceed past the confirmation.
+  const confirmSwitch = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Switch' }));
+  };
+
   it('shows an error toast when a drive switch fails', async () => {
     mockElectronAPI.drive.switchTo.mockRejectedValue(new Error('switch blew up'));
 
     await renderDashboard();
     fireEvent.click(await screen.findByText('stub-switch-drive'));
+    await confirmSwitch();
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
@@ -199,6 +206,7 @@ describe('Dashboard toast feedback (UX-1)', () => {
 
     await renderDashboard();
     fireEvent.click(await screen.findByText('stub-switch-drive'));
+    await confirmSwitch();
 
     await waitFor(() => {
       expect(toast.info).toHaveBeenCalledWith(expect.stringContaining('Switching to "Other Drive"'));
@@ -268,6 +276,7 @@ describe('Dashboard toast feedback (UX-1)', () => {
 
     await renderDashboard();
     fireEvent.click(await screen.findByText('stub-switch-drive'));
+    await confirmSwitch();
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith(
