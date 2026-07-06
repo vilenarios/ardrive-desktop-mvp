@@ -217,6 +217,11 @@ const api = {
     // primary; defaults to [perma.online, arweave.net]). DATA fetches only.
     setGatewayFallbacks: (hosts: string[]): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('config:set-gateway-fallbacks', hosts),
+    // UX-29: native desktop notifications opt-out (device/app-level, default on).
+    getNotificationsEnabled: (): Promise<IpcResult<boolean>> =>
+      ipcRenderer.invoke('config:get-notifications-enabled'),
+    setNotificationsEnabled: (enabled: boolean): Promise<IpcResult<boolean>> =>
+      ipcRenderer.invoke('config:set-notifications-enabled', enabled),
   },
 
   // Dialog operations (UX-3: migrated to the IpcResult envelope)

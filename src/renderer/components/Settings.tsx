@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, FolderOpen, Key, Info, ExternalLink, Globe, ShieldCheck } from 'lucide-react';
+import { X, FolderOpen, Key, Info, ExternalLink, Globe, ShieldCheck, Bell } from 'lucide-react';
 import { AppConfig } from '../../types';
 import { InfoButton } from './common/InfoButton';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -44,6 +44,14 @@ const Settings: React.FC<SettingsProps> = ({
   const [isSavingRemember, setIsSavingRemember] = useState(false);
   const [rememberError, setRememberError] = useState<string | null>(null);
 
+  // UX-29: native desktop notifications opt-out. Mirrors the Remember Me
+  // pattern above — seed from config, then re-resolve the authoritative value
+  // from main on open (config.notificationsEnabled may be undefined/stale;
+  // main's default is true).
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(config.notificationsEnabled !== false);
+  const [isSavingNotifications, setIsSavingNotifications] = useState(false);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
+
   // Resolve the true keychain availability + persisted consent from the main
   // process whenever the modal opens (config.rememberDevice is only the seed).
   useEffect(() => {
@@ -87,6 +95,43 @@ const Settings: React.FC<SettingsProps> = ({
 
   const handleToggleRemember = () => applyRememberConsent(!rememberDevice);
   const handleForgetDevice = () => applyRememberConsent(false);
+
+  // UX-29: resolve the authoritative notifications preference from main
+  // whenever the modal opens (config.notificationsEnabled is only the seed).
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await window.electronAPI.config.getNotificationsEnabled();
+        if (cancelled) return;
+        if (res.success) {
+          setNotificationsEnabled(res.data === true);
+        }
+      } catch (error) {
+        // Keep the seeded value on failure — non-critical setting.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen]);
+
+  const handleToggleNotifications = async () => {
+    const next = !notificationsEnabled;
+    setIsSavingNotifications(true);
+    setNotificationsError(null);
+    try {
+      const result = await window.electronAPI.config.setNotificationsEnabled(next);
+      if (!result.success) {
+        setNotificationsError(result.error || 'Could not update this setting. Please try again.');
+        return;
+      }
+      setNotificationsEnabled(result.data === true);
+    } catch (error) {
+      setNotificationsError('Could not update this setting. Please try again.');
+    } finally {
+      setIsSavingNotifications(false);
+    }
+  };
 
   const handleChangeSyncFolder = async () => {
     try {
@@ -376,6 +421,68 @@ const Settings: React.FC<SettingsProps> = ({
                       <div className="settings-field-error">{rememberError}</div>
                     )}
                   </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Notifications Section — UX-29: native OS notifications (sync
+              complete/error, upload complete, approval needed) are opt-out and
+              on by default. Reuses the Remember Me section's toggle pattern. */}
+          <div className="settings-section">
+            <div className="settings-item">
+              <div className="settings-item-header">
+                <Bell size={20} className="settings-icon" />
+                <div className="settings-item-info">
+                  <div className="settings-item-title-row">
+                    <h3>Desktop Notifications</h3>
+                    <InfoButton tooltip="Desktop notifications">
+                      <p>
+                        When this is on, ArDrive shows a native system notification
+                        when a sync finishes, an upload completes, a sync error
+                        happens, or files are waiting for your approval to upload.
+                      </p>
+                      <p>
+                        Turning this off stops all of these notifications; you can
+                        still see the same information inside the app.
+                      </p>
+                    </InfoButton>
+                  </div>
+                  <p>Get notified when syncs and uploads finish, or need your attention</p>
+                </div>
+              </div>
+              <div className="settings-item-content">
+                <label
+                  className="settings-toggle-label"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-2)',
+                    cursor: isSavingNotifications ? 'default' : 'pointer',
+                    marginBottom: 'var(--space-2)'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={notificationsEnabled}
+                    onChange={handleToggleNotifications}
+                    disabled={isSavingNotifications}
+                  />
+                  <span>Show desktop notifications</span>
+                </label>
+                <p
+                  style={{
+                    color: 'var(--text-secondary)',
+                    fontSize: '13px',
+                    margin: '0 0 var(--space-2) 0'
+                  }}
+                >
+                  {notificationsEnabled
+                    ? 'Sync, upload, error, and approval notifications are on.'
+                    : "You won't receive desktop notifications from ArDrive."}
+                </p>
+                {notificationsError && (
+                  <div className="settings-field-error">{notificationsError}</div>
                 )}
               </div>
             </div>

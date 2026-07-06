@@ -2700,6 +2700,21 @@ class ArDriveApp {
       await configManager.setGatewayFallbacks(validated);
     }));
 
+    // UX-29: native desktop notifications opt-out (device/app-level global
+    // config, like `theme`/`gatewayHost`). Defaults to true — see
+    // ConfigManager.getNotificationsEnabled. Read is synchronous on the
+    // manager but wrapped async here to match every other config handler's
+    // shape.
+    ipcMain.handle('config:get-notifications-enabled', envelopeHandler(async () => {
+      return configManager.getNotificationsEnabled();
+    }));
+
+    ipcMain.handle('config:set-notifications-enabled', envelopeHandler(async (_, enabled: unknown) => {
+      const validated = InputValidator.validateBoolean(enabled, 'enabled');
+      await configManager.setNotificationsEnabled(validated);
+      return validated;
+    }));
+
     ipcMain.handle('config:clear-drive', envelopeHandler(async () => {
       // Clear sync folder
       await configManager.setSyncFolder('');

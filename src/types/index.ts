@@ -28,6 +28,13 @@ export interface AppConfig {
    * (gone when the app quits) and never persisted to the keychain.
    */
   rememberDevice?: boolean;
+  /**
+   * UX-29: whether native OS desktop notifications (sync complete/error,
+   * upload complete, approval needed) are shown. Device/app-level global
+   * config, like `theme`/`gatewayHost`. Defaults to true (opt-out) — the
+   * ambient "it works" notifications ship on by default.
+   */
+  notificationsEnabled?: boolean;
 }
 
 export interface DriveSyncMapping {

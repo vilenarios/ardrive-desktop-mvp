@@ -194,6 +194,22 @@ export class ConfigManager {
     await this.updateProfileConfig({ rememberDevice: consent === true });
   }
 
+  // UX-29: whether native OS desktop notifications are shown. Device/app-level
+  // global config (like `theme`/`gatewayHost`) rather than per-profile — the
+  // preference is about this device's notification behavior, not the signed-in
+  // account, so it applies before any profile is active and survives profile
+  // switches. Defaults to true (opt-out): unset means notifications are ON.
+  // Synchronous so fire-and-forget notification call sites (sync-manager) can
+  // gate a notification without awaiting a config round-trip.
+  getNotificationsEnabled(): boolean {
+    return this.globalConfig.notificationsEnabled !== false;
+  }
+
+  async setNotificationsEnabled(enabled: boolean): Promise<void> {
+    this.globalConfig.notificationsEnabled = enabled === true;
+    await this.saveGlobalConfig();
+  }
+
   private async saveGlobalConfig() {
     try {
       await fs.writeFile(this.globalConfigPath, JSON.stringify(this.globalConfig, null, 2));
