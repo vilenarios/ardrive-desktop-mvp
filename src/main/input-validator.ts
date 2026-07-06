@@ -272,6 +272,18 @@ export class InputValidator {
   }
 
   /**
+   * SEC-4: validates a strict boolean flag crossing the IPC boundary (e.g. the
+   * "remember me on this device" consent toggle). Rejects any non-boolean so a
+   * truthy/falsy coercion can never flip a security-relevant flag by accident.
+   */
+  static validateBoolean(value: any, fieldName: string = 'value'): boolean {
+    if (typeof value !== 'boolean') {
+      throw new ValidationError(`${fieldName} must be a boolean`, fieldName);
+    }
+    return value;
+  }
+
+  /**
    * Validates an Arweave gateway host (SYNC-17). Hostname only — no protocol,
    * path, port, or slashes (the app supplies https/443 itself). Rejects
    * anything outside DNS hostname characters so a malicious/malformed value can

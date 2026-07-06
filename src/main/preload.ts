@@ -264,6 +264,12 @@ const api = {
       ipcRenderer.invoke('security:is-keychain-available'),
     getMethod: (): Promise<IpcResult<'keychain' | 'fallback'>> =>
       ipcRenderer.invoke('security:get-method'),
+    // SEC-4: per-profile "remember me on this device" consent (gates OS
+    // keychain persistence of the session credential).
+    getKeychainConsent: (): Promise<IpcResult<boolean>> =>
+      ipcRenderer.invoke('security:get-keychain-consent'),
+    setKeychainConsent: (consent: boolean): Promise<IpcResult<boolean>> =>
+      ipcRenderer.invoke('security:set-keychain-consent', consent),
   },
 
   // Turbo operations (UX-3: migrated to the IpcResult envelope; payload
