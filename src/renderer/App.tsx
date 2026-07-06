@@ -318,8 +318,13 @@ const App: React.FC = () => {
         timestamp: new Date().toISOString(),
         currentSyncProgress: syncProgress
       });
-      // Only set progress if it's not a duplicate complete phase
-      if (progress.phase === 'complete') {
+      // Only auto-clear a genuine, error-free completion. UX-8: main.ts's
+      // sync:manual failure handler emits { phase: 'complete', error: true }
+      // as its "sync failed" signal — auto-clearing that after 2s would hide
+      // the failure before the user can read it, leaving only a toast (easy
+      // to miss) as evidence anything went wrong. Let the modal's own
+      // Dismiss/Retry control the lifecycle for error states instead.
+      if (progress.phase === 'complete' && !progress.error) {
         // Set progress briefly to show completion, then clear
         setSyncProgress(progress);
         setTimeout(() => setSyncProgress(null), 2000);

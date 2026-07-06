@@ -54,7 +54,7 @@ Must be `done`-or-explicit-known-issue before shipping (a deferred one moves to 
 - [ ] **SYNC-6** — 2 GiB upload cap surfaced (D-014) · **SYNC-10** — streaming hashing (prereq for 2 GiB) · **SYNC-9** — offline visibility · **SYNC-11** — watcher hygiene · **SYNC-16** — (see BACKLOG).
 - [ ] **PRIV-6** — private move/rename/hide paths · **PRIV-7** — unlock password validation · **PRIV-8** — fail-closed privacy.
 - [ ] **MONEY-9** — upload-queue serialization (in progress) · **MONEY-10** — upload-time cost revalidation · ~~**MONEY-7** payment-window hardening~~ **done** · *(also done this session: MONEY-13 AR-balance NaN-during-429)*.
-- [ ] **UX finish batch:** UX-4 listener redesign · UX-5 real profile switching · UX-6 auto-login/no-keychain (w/ SEC-4) · ~~UX-7 fail-safe boot routing~~ **done** · UX-8 progress-modal error state · ~~UX-10 copy-link~~ **done** · UX-15 truthful single-drive UI · UX-18. *(Also done: UX-19 returning-user drives, UX-20 orphaned-wallets, PRIV-7 unlock password validation, SYNC-17/18 gateway.)*
+- [ ] **UX finish batch:** UX-4 listener redesign · UX-5 real profile switching · UX-6 auto-login/no-keychain (w/ SEC-4) · ~~UX-7 fail-safe boot routing~~ **done** · ~~UX-8 progress-modal error state~~ **done** · ~~UX-10 copy-link~~ **done** · UX-15 truthful single-drive UI · UX-18. *(Also done: UX-19 returning-user drives, UX-20 orphaned-wallets, PRIV-7 unlock password validation, SYNC-17/18 gateway.)*
 - [x] **SEC-5** — no plaintext JWK temp files — **done** (in-memory `JWKWallet`, no tmpdir).
 
 ## Gate 4 — Real-world verification (✅ largely done, 2026-07-04 — via turbo-gateway.com)

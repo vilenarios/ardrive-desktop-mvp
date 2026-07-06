@@ -5659,29 +5659,33 @@ label {
   font-weight: 500;
 }
 
-/* Sync Progress Modal */
+/* Sync Progress Modal (UX-8: uses DESIGN-SYSTEM.md §6.4 surface-overlay/
+ * elevation-4/overlay tokens instead of the hardcoded white/rgba() this used
+ * to have — those broke on dark theme). */
 .sync-progress-modal {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10000;
-  animation: fadeIn 0.2s ease;
+  animation: fadeIn var(--motion-base) var(--ease-out);
 }
 
 .sync-progress-content {
-  background: white;
-  border-radius: var(--radius-lg);
+  position: relative;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
   padding: var(--space-6);
   width: 90%;
   max-width: 420px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  animation: slideUp 0.3s ease;
+  box-shadow: var(--elevation-4);
+  animation: slideUp var(--motion-slow) var(--ease-out);
 }
 
 .sync-progress-header {
@@ -5689,6 +5693,34 @@ label {
   align-items: center;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
+}
+
+/* UX-8: header close button — the always-available escape hatch so a hung
+ * or failed sync can never trap the user behind this modal. Mirrors
+ * .drive-modal-close (styles/modal.css) for a consistent icon-button feel. */
+.sync-progress-close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: var(--space-1);
+  color: var(--icon-mid);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--motion-base) var(--ease-standard),
+              background-color var(--motion-base) var(--ease-standard);
+}
+
+.sync-progress-close:hover {
+  color: var(--icon-high);
+  background: var(--surface-inset);
+}
+
+.sync-progress-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .sync-progress-header h3 {
@@ -5780,26 +5812,15 @@ label {
   color: var(--gray-600);
 }
 
+/* UX-8: error-state action row — Dismiss (always) + Retry (when the caller
+ * wired one). Reuses the app-wide .button/.button.small/.button.outline
+ * classes (same pattern as DriveAndSyncSetup's SYNC-20 "Try Again" row)
+ * instead of a bespoke button style. */
 .sync-progress-footer {
   margin-top: var(--space-4);
   display: flex;
   justify-content: flex-end;
-}
-
-.sync-progress-close-button {
-  padding: var(--space-2) var(--space-4);
-  background: var(--ardrive-primary);
-  color: white;
-  border: none;
-  border-radius: var(--radius);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-
-.sync-progress-close-button:hover {
-  background: var(--ardrive-primary-hover);
+  gap: var(--space-3);
 }
 
 @keyframes fadeIn {
