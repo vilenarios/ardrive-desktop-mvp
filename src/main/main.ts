@@ -1275,37 +1275,20 @@ class ArDriveApp {
               }
               
               console.log('Attempting to list private folder with drive key');
-              
-              // For private drives with potential metadata issues, try a different approach
-              // Instead of listPrivateFolder which can fail on invalid file states,
-              // we'll try to get the folder structure first
-              try {
-                // First try the standard approach
-                entities = await arDrive.listPrivateFolder({
-                  folderId: new EntityID(drive.rootFolderId),
-                  driveKey: driveKey,
-                  maxDepth: 10,
-                  includeRoot: false,
-                  withKeys: true
-                });
-                console.log(`Successfully listed ${entities?.length || 0} entities from private folder`);
-              } catch (privateError: any) {
-                console.error('Error listing private folder:', privateError.message);
-                
-                // If we get "Invalid file state", some files have incomplete metadata
-                // This can happen with older ArDrive versions or corrupted data
-                // For now, return empty to allow the app to function
-                if (privateError.message?.includes('Invalid file state')) {
-                  console.warn('Private drive has files with invalid metadata. This may be from an older ArDrive version.');
-                  console.warn('Returning empty file list to prevent crash. Files may still sync in background.');
-                  
-                  // Return empty arrays but don't block the user from using the app
-                  entities = [];
-                } else {
-                  // Re-throw other errors
-                  throw privateError;
-                }
-              }
+
+              // core-js 4.1.0 (CORE-6) skips incomplete/invalid entities and lists
+              // the rest instead of aborting the whole private listing, so the old
+              // "Invalid file state -> return empty list" workaround is obsolete.
+              // List directly like the public path; the outer catch below still
+              // handles not-yet-propagated ("not found") drives and real errors.
+              entities = await arDrive.listPrivateFolder({
+                folderId: new EntityID(drive.rootFolderId),
+                driveKey: driveKey,
+                maxDepth: 10,
+                includeRoot: false,
+                withKeys: true
+              });
+              console.log(`Successfully listed ${entities?.length || 0} entities from private folder`);
             } else {
               // List public folder contents
               entities = await arDrive.listPublicFolder({
