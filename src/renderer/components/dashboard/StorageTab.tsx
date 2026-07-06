@@ -3,6 +3,7 @@ import { DriveInfo, AppConfig, SyncStatus, FileUpload } from '../../../types';
 import { InfoButton } from '../common/InfoButton';
 import { useModalA11y } from '../../hooks/useModalA11y';
 import { getGatewayHost } from '../../utils/gateway';
+import { VersionHistory } from './VersionHistory';
 import { 
   Folder,
   FolderOpen,
@@ -32,7 +33,8 @@ import {
   WifiOff,
   Cloud,
   Copy,
-  EyeOff
+  EyeOff,
+  History
 } from 'lucide-react';
 
 interface StorageTabProps {
@@ -118,6 +120,8 @@ export const StorageTab: React.FC<StorageTabProps> = ({
   const [selectedItemDetails, setSelectedItemDetails] = useState<FileItem | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  // FEAT-6: the file whose permanent version history is open (null = closed).
+  const [versionHistoryItem, setVersionHistoryItem] = useState<FileItem | null>(null);
 
   // A11Y-2: the file-details modal had no Escape/focus-trap and no
   // role="dialog" — reuse the shared hook used by the drive modals. Called
@@ -669,6 +673,26 @@ export const StorageTab: React.FC<StorageTabProps> = ({
     }
   };
 
+  // FEAT-6: reconstruct the absolute local path used to key file_versions
+  // rows (version-manager stores the sync-folder-absolute path). Mirrors the
+  // openFile() path assembly so the key matches what was recorded on upload.
+  // Returns null when no sync folder is configured (honest "can't locate"
+  // state in the version modal).
+  const buildAbsoluteLocalPath = (item: FileItem): string | null => {
+    if (!config.syncFolder) return null;
+    const isWindows = config.syncFolder.includes('\\') || !!config.syncFolder.match(/^[A-Z]:/);
+    const separator = isWindows ? '\\' : '/';
+    const pathParts = [config.syncFolder];
+    if (item.path && item.path !== '/') {
+      const cleanPath = item.path.startsWith('/') ? item.path.slice(1) : item.path;
+      if (cleanPath) {
+        pathParts.push(...cleanPath.split('/').filter((segment) => segment.length > 0));
+      }
+    }
+    pathParts.push(item.name);
+    return pathParts.join(separator);
+  };
+
   // Handle row click (selection or double-click)
   const handleRowClick = (item: FileItem, e: React.MouseEvent) => {
     // Don't handle if clicking on interactive elements
@@ -1063,7 +1087,21 @@ export const StorageTab: React.FC<StorageTabProps> = ({
                               )}
                             </>
                           )}
-                          <button 
+                          {item.type === 'file' && (
+                            <button
+                              className="action-menu-item"
+                              title="See every version preserved on Arweave"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setVersionHistoryItem(item);
+                                setOpenMenuId(null);
+                              }}
+                            >
+                              <History size={14} />
+                              Version history
+                            </button>
+                          )}
+                          <button
                             className="action-menu-item"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1272,6 +1310,15 @@ export const StorageTab: React.FC<StorageTabProps> = ({
       </div>
 
       {/* File Details Modal */}
+      {/* FEAT-6: permanent version history for a file (view/download any revision). */}
+      <VersionHistory
+        isOpen={!!versionHistoryItem}
+        onClose={() => setVersionHistoryItem(null)}
+        fileName={versionHistoryItem?.name || ''}
+        filePath={versionHistoryItem ? buildAbsoluteLocalPath(versionHistoryItem) : null}
+        isPrivateDrive={drive.privacy === 'private' || drive.isPrivate === true}
+      />
+
       {selectedItemDetails && (
         <div className="modal-overlay" onClick={handleFileDetailsBackdropClick}>
           <div

@@ -12,6 +12,7 @@ import type {
   DriveSyncMapping,
   FileUpload,
   FileDownload,
+  FileVersion,
   PendingUpload,
   SyncStatus,
 } from '../types';
@@ -168,6 +169,10 @@ const api = {
       ipcRenderer.invoke('sync:get-queue-status'),
     getQueuedDownloads: (limit?: number): Promise<IpcResult<any[]>> =>
       ipcRenderer.invoke('sync:get-queued-downloads', limit),
+    // FEAT-6: permanent version history — every recorded ArFS revision of a
+    // file (newest-first), for the Version history modal. Read-only.
+    getVersions: (filePath: string): Promise<IpcResult<FileVersion[]>> =>
+      ipcRenderer.invoke('files:get-versions', filePath),
   },
 
   // Upload approval queue operations (UX-3: migrated to the IpcResult envelope)

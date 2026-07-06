@@ -1,0 +1,242 @@
+/**
+ * FEAT-6 — Version history modal (permanent version history differentiator).
+ *
+ * Reuses the DESIGN-7 drive-modal shell classes (.drive-modal-overlay/panel/
+ * header/title/close/footer, .modal-banner) from modal.css and only adds the
+ * version-list specifics here. Token-only styling (DESIGN-SYSTEM.md); theme
+ * follows the app because every value is a var().
+ */
+
+.version-history-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: 82vh;
+}
+
+.version-history-subtitle {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 var(--space-4);
+}
+
+.version-history-filename {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: var(--text-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-history-permanence {
+  font-size: var(--text-body-sm);
+  color: var(--text-tertiary);
+}
+
+.version-history-private-note {
+  margin-bottom: var(--space-4);
+}
+
+.version-history-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Loading / status row */
+.version-history-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-body-sm);
+  padding: var(--space-4) 0;
+}
+
+.version-history-spin {
+  animation: version-history-spin 1s linear infinite;
+  color: var(--icon-mid);
+}
+
+@keyframes version-history-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .version-history-spin { animation: none; }
+}
+
+/* Empty / honest states */
+.version-history-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-tertiary);
+}
+
+.version-history-empty svg {
+  color: var(--icon-low);
+}
+
+.version-history-empty-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: var(--text-body);
+}
+
+.version-history-empty-desc {
+  margin: 0;
+  max-width: 42ch;
+  font-size: var(--text-body-sm);
+  line-height: 1.5;
+}
+
+.version-history-single-note {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  font-size: var(--text-body-sm);
+  line-height: 1.5;
+}
+
+/* Version list */
+.version-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.version-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.version-history-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.version-history-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.version-history-version-badge {
+  font-weight: 600;
+  font-size: var(--text-body-sm);
+  color: var(--text-primary);
+  padding: 1px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  font-variant-numeric: tabular-nums;
+}
+
+.version-history-latest-badge {
+  font-size: var(--text-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--success-fg);
+  background: var(--success-surface);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.version-history-change-badge {
+  font-size: var(--text-caption);
+  font-weight: 500;
+  color: var(--info-fg);
+  background: var(--info-surface);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.version-history-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-body-sm);
+  color: var(--text-secondary);
+}
+
+.version-history-dot {
+  color: var(--text-tertiary);
+}
+
+.version-history-tx {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+}
+
+.version-history-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.version-history-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--motion-base) var(--ease-standard),
+              background-color var(--motion-base) var(--ease-standard),
+              color var(--motion-base) var(--ease-standard);
+}
+
+.version-history-action.is-icon {
+  padding: 6px;
+}
+
+.version-history-action:hover:not(:disabled) {
+  border-color: var(--brand);
+  background: var(--brand-surface);
+  color: var(--brand);
+}
+
+.version-history-action:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.version-history-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.version-history-restore-note {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-body-sm);
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}

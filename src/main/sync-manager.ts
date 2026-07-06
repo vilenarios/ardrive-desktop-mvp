@@ -2112,6 +2112,32 @@ export class SyncManager {
     }
   }
 
+  /**
+   * FEAT-6: Resolve the drive_mappings.id for the drive currently being synced.
+   * file_versions rows MUST carry this real id so getFileVersions (which scopes
+   * rows to `mappingId IN (SELECT id FROM drive_mappings)` for the active
+   * profile) returns them, and so a version stays isolated to its own
+   * drive/profile — a version written under drive A's mappingId can never
+   * surface under drive B. Prefers the mapping for the driveId being synced
+   * (this.driveId, matching the SYNC-28 back-fill's driveId lookup), falling
+   * back to the single active mapping. Returns undefined only if no mapping is
+   * resolvable (in which case the row keeps a NULL mappingId — acceptable
+   * degradation: the version just won't appear in history, same as today).
+   */
+  private async resolveActiveMappingId(): Promise<string | undefined> {
+    try {
+      const mappings = await this.databaseManager.getDriveMappings();
+      const mapping =
+        mappings.find((m) => m.driveId === this.driveId && m.isActive) ??
+        mappings.find((m) => m.driveId === this.driveId) ??
+        mappings.find((m) => m.isActive);
+      return mapping?.id;
+    } catch (error) {
+      console.error('FEAT-6: failed to resolve mappingId for versioning:', error);
+      return undefined;
+    }
+  }
+
   private async handleNewFile(filePath: string, changeType: ChangeType = 'create') {
     console.log(`Processing new file: ${filePath}`);
     
@@ -2376,8 +2402,12 @@ export class SyncManager {
         console.error('Failed to notify approval-needed:', notifyError);
       }
 
-      // Create file version (without upload info yet, will be updated after upload)
-      await this.versionManager.createNewVersion(filePath, changeType);
+      // Create file version (without upload info yet, will be updated after upload).
+      // FEAT-6: scope the version to the drive being synced so getFileVersions
+      // (which filters `mappingId IN (SELECT id FROM drive_mappings)`) returns it
+      // — a NULL mappingId here makes the whole history UI silently empty.
+      const versionMappingId = await this.resolveActiveMappingId();
+      await this.versionManager.createNewVersion(filePath, changeType, undefined, versionMappingId);
       
       // Register this exact content in processed_files unless it's already
       // known (avoids duplicate entries; for edits this records the NEW hash
@@ -4042,8 +4072,10 @@ export class SyncManager {
       const fileName = path.basename(newPath);
       const fileStats = await fs.stat(newPath);
       
-      // Update version manager to track the move
-      await this.versionManager.handleFileMove(oldPath, newPath);
+      // Update version manager to track the move (FEAT-6: scope to its drive
+      // mapping so the moved file's new version is retrievable in history).
+      const moveMappingId = await this.resolveActiveMappingId();
+      await this.versionManager.handleFileMove(oldPath, newPath, moveMappingId);
       
       // Get the parent folder info for the new location
       const newParentPath = path.dirname(newPath);
