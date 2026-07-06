@@ -276,10 +276,28 @@ export class DatabaseManager {
     });
   }
 
+  // MONEY-10: delete an uploads (execution) row by id. Used when an approved
+  // upload is returned to the approval queue because the file changed on disk
+  // since approval — the stale execution record must go so re-approval's
+  // addUpload (a plain INSERT keyed by id) does not collide with it.
+  async removeUpload(id: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `DELETE FROM uploads WHERE id = ?`;
+
+      this.db!.run(sql, [id], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
   async getUploads(): Promise<FileUpload[]> {
     return new Promise((resolve, reject) => {
       const sql = `
-        SELECT * FROM uploads 
+        SELECT * FROM uploads
         ORDER BY createdAt DESC
       `;
       
