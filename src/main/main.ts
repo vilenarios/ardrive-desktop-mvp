@@ -30,6 +30,7 @@ import { applySyncFolderChange } from './utils/sync-folder-change';
 import { isRetryAllowed } from './utils/upload-retry-guard';
 import { TURBO_FREE_SIZE_LIMIT } from '../utils/turbo-utils';
 import { retryWithBackoff } from './sync/retry';
+import { TraySyncSnapshot, trayTooltipFor, trayMenuLabelFor } from './tray-status';
 
 // Load .env file in development
 if (process.env.NODE_ENV !== 'production') {
@@ -148,6 +149,11 @@ class ArDriveApp {
   // Cache for wallet info to reduce API calls
   private lastWalletFetch: number = 0;
   private cachedWalletInfo: any = null;
+
+  // UX-30: fallback poll so the tray never goes stale for more than this long
+  // even for state changes that don't flow through an explicit refreshTray()
+  // call site (e.g. a profile switch, or background upload progress).
+  private trayRefreshTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     this.walletManager = new SecureWalletManager();
@@ -326,6 +332,18 @@ class ArDriveApp {
 
     // Removed 30-second interval to reduce wallet balance checks
     // Tray will update only on specific events
+    //
+    // UX-30: re-added as a modest fallback poll for the ambient status
+    // center — event-driven refreshTray() calls (sync:start/stop,
+    // wallet:logout, tray's own pause/resume/sign-out actions) cover the
+    // common transitions immediately; this interval is just the backstop so
+    // the "N files syncing" count and paused/up-to-date state can't drift for
+    // more than ~15s if a state change happens through a path that doesn't
+    // call refreshTray(). getStatus()/getUploads() are already cheap local DB
+    // reads (no network calls), so this is not a balance-check-style cost.
+    this.trayRefreshTimer = setInterval(() => {
+      this.updateTrayMenu();
+    }, 15000);
   }
 
   async updateTrayMenu() {
@@ -337,6 +355,11 @@ class ArDriveApp {
       
       // For unauthenticated users, show minimal menu
       if (!isAuthenticated) {
+        const signedOutSnapshot: TraySyncSnapshot = {
+          isAuthenticated: false,
+          isActive: false,
+          pendingCount: 0
+        };
         const contextMenu = Menu.buildFromTemplate([
           {
             label: 'ArDrive Desktop',
@@ -344,7 +367,7 @@ class ArDriveApp {
           },
           { type: 'separator' },
           {
-            label: '🔒 Not signed in',
+            label: trayMenuLabelFor(signedOutSnapshot),
             enabled: false
           },
           { type: 'separator' },
@@ -363,16 +386,23 @@ class ArDriveApp {
             }
           }
         ]);
-        
+
         this.tray.setContextMenu(contextMenu);
-        this.tray.setToolTip('ArDrive Desktop - Not signed in');
+        this.tray.setToolTip(`ArDrive Desktop - ${trayTooltipFor(signedOutSnapshot)}`);
         return;
       }
-      
+
       // Get current status for authenticated users
       const config = await configManager.getConfig();
       const globalStatus = await this.syncManager.getStatus();
-      
+
+      // SYNC-7: the active mapping's folder is the single source of truth for
+      // "the folder actually being watched" — config.syncFolder is a legacy
+      // mirror that can lag behind once multiple drives exist.
+      const driveMappings = await databaseManager.getDriveMappings().catch(() => []);
+      const activeMapping = driveMappings.find((m) => m.isActive) || driveMappings[0];
+      const syncFolderPath = activeMapping?.localFolderPath || config.syncFolder;
+
       // Use cached wallet info for tray menu to avoid frequent balance checks
       let walletInfo = null;
       try {
@@ -389,15 +419,32 @@ class ArDriveApp {
         console.error('Failed to get wallet info for tray:', error);
         walletInfo = this.cachedWalletInfo; // Use cached version on error
       }
-      
-      let syncStatusLabel = '⏸ Sync Paused';
-      if (globalStatus?.isActive) {
-        const pendingCount = globalStatus.totalFiles - globalStatus.uploadedFiles;
-        if (pendingCount > 0) {
-          syncStatusLabel = `🔄 Syncing (${pendingCount} pending)`;
-        } else {
-          syncStatusLabel = '✅ Sync Active - Up to date';
-        }
+
+      // UX-30: same pendingCount math the tray always used (totalFiles minus
+      // uploadedFiles), just reduced to one of the four named ambient states
+      // through the pure helper so tooltip and menu label can't drift apart.
+      const pendingCount = Math.max(0, (globalStatus?.totalFiles ?? 0) - (globalStatus?.uploadedFiles ?? 0));
+      const statusSnapshot: TraySyncSnapshot = {
+        isAuthenticated: true,
+        isActive: !!globalStatus?.isActive,
+        pendingCount
+      };
+      const syncStatusLabel = trayMenuLabelFor(statusSnapshot);
+
+      // UX-30: recent activity — last few completed uploads, shown as
+      // disabled entries (cheap: one already-existing DB read, capped to 3).
+      let recentActivityItems: { label: string; enabled: false }[] = [];
+      try {
+        const uploads = await databaseManager.getUploads();
+        recentActivityItems = uploads
+          .filter((u) => u.status === 'completed')
+          .slice(0, 3)
+          .map((u) => {
+            const name = u.fileName.length > 34 ? `${u.fileName.slice(0, 31)}...` : u.fileName;
+            return { label: `   ⬆ ${name}`, enabled: false as const };
+          });
+      } catch (error) {
+        console.error('Failed to load recent activity for tray:', error);
       }
 
       // Build dynamic menu
@@ -451,17 +498,28 @@ class ArDriveApp {
           label: walletInfo ? `💰 Balance: ${parseFloat(walletInfo.balance).toFixed(2)} AR` : '💰 Loading balance...',
           enabled: false
         },
-        
+
+        // UX-30: recent activity (last few completed uploads), if any
+        ...(recentActivityItems.length > 0
+          ? [
+              { type: 'separator' as const },
+              { label: 'Recent Activity', enabled: false },
+              ...recentActivityItems
+            ]
+          : []),
+        { type: 'separator' },
+
         // Quick Actions
         {
+          // UX-30: was config.syncFolder (a legacy mirror); now the active
+          // drive mapping's folder, matching what sync:start actually watches.
           label: '📁 Open Sync Folder',
           click: async () => {
-            // Open the sync folder
-            if (config.syncFolder) {
-              shell.openPath(config.syncFolder);
+            if (syncFolderPath) {
+              shell.openPath(syncFolderPath);
             }
           },
-          enabled: !!config.syncFolder
+          enabled: !!syncFolderPath
         },
         {
           label: '📤 Upload Files...',
@@ -491,6 +549,27 @@ class ArDriveApp {
         },
         { type: 'separator' },
         {
+          // UX-30: mirrors the wallet:logout IPC handler (stop sync + drop
+          // wallet-bearing state, SEC-3), then shows and reloads the window so
+          // the renderer re-runs its normal boot path and lands on
+          // wallet-setup/profile-management — the same place a real app
+          // restart after logout would land. No new logout engine invented.
+          label: '🚪 Sign Out',
+          click: async () => {
+            try {
+              await this.syncManager.stopAndClearAllState();
+              await this.walletManager.logout();
+            } catch (trayError) {
+              console.error('Tray sign-out failed:', trayError);
+            }
+            this.mainWindow?.show();
+            this.mainWindow?.focus();
+            this.mainWindow?.webContents.reload();
+            await this.updateTrayMenu();
+          }
+        },
+        { type: 'separator' },
+        {
           label: '❌ Quit ArDrive',
           click: () => {
             this.isQuitting = true;
@@ -502,23 +581,15 @@ class ArDriveApp {
       const contextMenu = Menu.buildFromTemplate(menuTemplate);
       this.tray.setContextMenu(contextMenu);
       
-      // Update tooltip with current status
-      let tooltip = 'ArDrive Desktop';
-      if (globalStatus?.isActive) {
-        const pendingCount = globalStatus.totalFiles - globalStatus.uploadedFiles;
-        if (pendingCount > 0) {
-          tooltip += `\n🔄 Syncing ${pendingCount} file${pendingCount === 1 ? '' : 's'}`;
-        } else {
-          tooltip += '\n✅ Up to date';
-        }
-      } else {
-        tooltip += '\n⏸ Sync paused';
-      }
-      
+      // Update tooltip with current status — reuses the same statusSnapshot
+      // (and therefore the same trayMenuLabelFor()) as the menu label above,
+      // so the two can never disagree.
+      let tooltip = `ArDrive Desktop\n${trayMenuLabelFor(statusSnapshot)}`;
+
       if (walletInfo) {
         tooltip += `\n💰 ${parseFloat(walletInfo.balance).toFixed(2)} AR`;
       }
-      
+
       this.tray.setToolTip(tooltip);
 
     } catch (error) {
@@ -633,6 +704,7 @@ class ArDriveApp {
       // wallet session and database are torn down.
       await this.syncManager.stopAndClearAllState();
       await this.walletManager.logout();
+      this.refreshTray(); // UX-30: reflect "Not signed in" immediately
       return true;
     }));
 
@@ -641,6 +713,7 @@ class ArDriveApp {
       // wallet session and database are torn down.
       await this.syncManager.stopAndClearAllState();
       await this.walletManager.logout();
+      this.refreshTray(); // UX-30: reflect "Not signed in" immediately
       return true;
     }));
 
@@ -1923,15 +1996,19 @@ class ArDriveApp {
       
       // Set ArDrive instance and start sync with drive mapping
       this.syncManager.setArDrive(arDrive, privateKeyData);
-      return await this.syncManager.startSync(
-        primaryMapping.driveId, 
-        primaryMapping.rootFolderId, 
+      const startResult = await this.syncManager.startSync(
+        primaryMapping.driveId,
+        primaryMapping.rootFolderId,
         primaryMapping.driveName
       );
+      this.refreshTray(); // UX-30: reflect the now-active/syncing state immediately
+      return startResult;
     }));
 
     ipcMain.handle('sync:stop', envelopeHandler(async () => {
-      return await this.syncManager.stopSync();
+      const stopResult = await this.syncManager.stopSync();
+      this.refreshTray(); // UX-30: reflect the now-paused state immediately
+      return stopResult;
     }));
 
     ipcMain.handle('sync:status', envelopeHandler(async () => {
@@ -3167,7 +3244,14 @@ class ArDriveApp {
 
   async shutdown(): Promise<void> {
     console.log('ArDriveApp - Starting graceful shutdown...');
-    
+
+    // UX-30: stop the tray's fallback poll so it doesn't keep firing (and
+    // touching a torn-down DB/syncManager) after the app starts quitting.
+    if (this.trayRefreshTimer) {
+      clearInterval(this.trayRefreshTimer);
+      this.trayRefreshTimer = null;
+    }
+
     try {
       // Stop legacy sync manager
       if (this.syncManager) {
