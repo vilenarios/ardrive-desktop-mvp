@@ -42,6 +42,7 @@ Acceptance: password reaches the keychain only after explicit opt-in ✓; deleti
 Done 2026-07-04 (branch fix/SEC-5-jwk-tempfile, Opus security qa-gate PASS): all 3 sites (seed import, JWK-file import, login/loadWallet) now `new JWKWallet(walletJson)` in memory — verified core-js 4.0.0 `readJWKFile(path)` is exactly `new JWKWallet(JSON.parse(readFileSync(path)))`, so this is the same construction minus the disk round-trip. `grep readJWKFile|tmpdir → zero in src`; `secureDeleteFile` remains only for the encrypted `wallet.enc`; `git diff -w` shows no logic change beyond temp-file removal; in-memory key verified carried (private key matches); net removes a `console.log` of the temp path. Full suite 358 green, build ok; behavioral test with negative control.
 Fix: construct the wallet object from the decrypted JSON in memory (bypass `readJWKFile`'s path requirement).
 Acceptance: no wallet material is written under os.tmpdir() during import or login.
+Reinforced 2026-07-06 (branch feat/wallet-safety, wallet-safety lane): added two independent SEC-5-pattern suites. `tests/unit/main/seed-import-derivation-sec.test.ts` drives the REAL ardrive-core derivation — a known 12-word BIP-39 test mnemonic derives the EXACT expected Arweave address, deterministically, with no seed/private-key material logged; invalid + 24-word phrases fail closed (no crash, no leak, no persistence). `tests/unit/main/wallet-export-noleak-sec.test.ts` proves `wallet:export` requires the correct password (wrong password → no data) and returns the secret in-memory only — never to a temp file, a console channel, or the audit log (redacted address + type only). Both use throwaway/sentinel material, never real secrets.
 
 ### SEC-6 · P1 · Phase 4 · `todo`
 **Upgrade Electron to a supported major.** Evidence: §6.6. Includes: drag-drop `file.path` shim (WalletSetup.tsx:89, breaks >31), CI Node 18→20+, re-verify keytar/sqlite3 native builds.
@@ -74,9 +75,10 @@ Fix: separate `exportComplete` from `revealed`; secrets masked until explicit re
 Acceptance: after export, seed phrase, private key, and plain JWK render masked; reveal toggles.
 Done 2026-07-03 (1411460 + 6936567, qa-gate PASS — component driven end-to-end, mutation-checked, DOM-vector leak probe): 7 behavioral tests; no reveal-state carryover path exists; suite 122+1 green. QA notes: Copy stays ungated behind reveal (deliberate — explicit action); clipboard-timer issue filed to UX-11.
 
-### SEC-13 · P2 · Track D · `todo`
+### SEC-13 · P2 · Track D · `done`
 **Make seed-confirmation real.** Evidence: §4.5 (completeSetup stub; wallet committed pre-confirmation; orphan profiles on Back).
 Fix: either commit wallet only after confirmation, or drop the placebo checkbox and treat generate as commit (and de-dupe orphan profiles).
+Done via UX-20 (deferred persistence) + VERIFIED 2026-07-06 (branch feat/wallet-safety, wallet-safety lane): the checkbox is no longer a placebo — `wallet:create-new`/`generateNewWallet` only PREPARE the account in memory, and `completeGeneratedWalletSetup` is the real (and only) persist step, run solely on confirmation, so a wallet can never be committed pre-confirmation and Back-and-retry leaves no orphan/divergent seed (proven by `tests/unit/main/wallet-create-defer-persist-ux20.test.ts`). Backup gate is now MANDATORY end-to-end and behaviorally covered: `WalletSetup` shows the revealable recovery phrase + address with honest "ONLY way to recover / lose it = lose your files forever" copy, the finalize button is `disabled` until `hasConfirmedSeedPhrase`, and `handleCompleteWalletCreation` now also hard-returns unless confirmed (defense-in-depth for future refactors). New `tests/unit/components/wallet-backup-gate-sec.test.tsx` (5 tests) asserts phrase-shown + honest-copy, disabled-until-confirmed submit, no-persist-while-gate-closed, finalize-once-after-confirm, and confirm reset on Back. typecheck/lint(0 err)/build/full suite (764 pass / 1 skip) green.
 
 ---
 
