@@ -3270,6 +3270,33 @@ export class SyncManager {
     // Emit completion progress event
     this.emitUploadProgress(upload.id, 100, 'completed');
 
+    // SYNC-28: back-fill the on-chain data-tx id onto the file_versions row that
+    // createNewVersion wrote at QUEUE time (arweaveId/turboId were null then, as
+    // no upload existed yet). This unblocks the version-history UI (FEAT-6),
+    // which links View/Download to this tx id. Covers BOTH the normal (:2776)
+    // and retry (:2842) paths since both route through processUploadResult.
+    // Non-critical to upload success — the upload is already recorded — so a
+    // failure here is logged, not thrown.
+    if (dataTxId) {
+      try {
+        // New records are always Turbo (D-010/MONEY-1); only an explicit legacy
+        // 'ar' routes to the arweaveId column. undefined -> 'turbo'.
+        const versionMethod: 'ar' | 'turbo' = upload.uploadMethod === 'ar' ? 'ar' : 'turbo';
+        const updated = await this.databaseManager.updateFileVersionTxId(
+          upload.localPath,
+          dataTxId,
+          { method: versionMethod }
+        );
+        if (!updated) {
+          console.warn(
+            `SYNC-28: no unpopulated latest file_versions row for ${upload.localPath} — tx id ${dataTxId} not linked to a version`
+          );
+        }
+      } catch (versionTxError) {
+        console.error('SYNC-28: failed to back-fill file version tx id:', versionTxError);
+      }
+    }
+
     // UX-29: ambient "it works" confirmation for a completed upload.
     notificationService.notifyUploadComplete(upload.fileName);
 

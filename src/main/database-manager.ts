@@ -749,6 +749,68 @@ export class DatabaseManager {
     });
   }
 
+  /**
+   * SYNC-28: Back-fill the on-chain data-tx id onto the file_versions row that
+   * createNewVersion wrote at QUEUE time (before the upload existed, so its
+   * arweaveId/turboId were null). Called from processUploadResult once the
+   * data-tx id is known — this is what lets the version-history UI (FEAT-6)
+   * link View/Download to an actual transaction.
+   *
+   * WHICH ROW (clobber-safety): targets the isLatest = 1 row for this filePath
+   * whose tx-id columns are BOTH still null. Consequences:
+   *   - It can only ever touch the CURRENT latest version, never a demoted
+   *     older revision (isLatest = 0) — so an older revision's tx id can never
+   *     be overwritten.
+   *   - The `arweaveId IS NULL AND turboId IS NULL` guard makes a repeat call
+   *     (e.g. the retry path re-entering processUploadResult) a no-op instead
+   *     of rewriting an already-populated row.
+   * Rows are scoped by filePath (an absolute local path unique to a mapping
+   * within a profile) inside the active profile's isolated DB, so no
+   * cross-mapping/cross-profile clobber is possible.
+   *
+   * Assumption (documented, SYNC-28): the version a given upload corresponds
+   * to is the latest not-yet-populated row for its filePath. There is no
+   * persisted upload->version link, so in the rare interleaving where a second
+   * edit mints version N+1 before version N's upload result is processed, N's
+   * tx id would land on N+1's row. In practice the approval queue processes an
+   * upload before the next edit's version row is created, so this holds.
+   *
+   * The column written matches the payment rail: 'turbo' -> turboId,
+   * 'ar' -> arweaveId; uploadMethod is set alongside so the row is internally
+   * consistent (the UI reads the column matching uploadMethod).
+   *
+   * @returns true if a row was updated, false if there was no matching
+   *          unpopulated latest row.
+   */
+  async updateFileVersionTxId(
+    filePath: string,
+    txId: string,
+    options: { method: 'ar' | 'turbo' }
+  ): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      // `column` is derived from a fixed ternary, never user input — no injection.
+      const column = options.method === 'turbo' ? 'turboId' : 'arweaveId';
+      const sql = `
+        UPDATE file_versions
+        SET ${column} = ?, uploadMethod = ?
+        WHERE filePath = ?
+          AND isLatest = 1
+          AND arweaveId IS NULL
+          AND turboId IS NULL
+      `;
+
+      this.db!.run(sql, [txId, options.method, filePath], function (err) {
+        if (err) {
+          reject(err);
+        } else {
+          // sqlite3 exposes affected-row count as `this.changes` on the
+          // statement context (hence the non-arrow callback).
+          resolve(this.changes > 0);
+        }
+      });
+    });
+  }
+
   // File Operations Tracking
   async addFileOperation(operation: {
     id: string;

@@ -41,6 +41,7 @@ export class MockDatabaseManager {
   public addFolder = vi.fn();
   public updateFolderArweaveId = vi.fn();
   public addFileVersion = vi.fn();
+  public updateFileVersionTxId = vi.fn();
   public addFileOperation = vi.fn();
   public getFileVersions = vi.fn();
   public getFileOperations = vi.fn();
@@ -76,6 +77,9 @@ export class MockDatabaseManager {
     this.updateDriveMetadataHidden.mockResolvedValue(undefined);
     this.addFolder.mockResolvedValue(undefined);
     this.updateFolderArweaveId.mockResolvedValue(undefined);
+    // SYNC-28: default to "row updated" so processUploadResult's back-fill
+    // call resolves cleanly in tests that don't care about version tx ids.
+    this.updateFileVersionTxId.mockResolvedValue(true);
   }
 
   reset() {

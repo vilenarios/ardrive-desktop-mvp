@@ -451,6 +451,107 @@ describe('SyncManager', () => {
     });
   });
 
+  // SYNC-28: processUploadResult must back-fill the completed upload's data-tx
+  // id onto the file_versions row created at queue time, so version history
+  // (FEAT-6) can link View/Download to a real transaction. Both the normal
+  // (:2776) and retry (:2842) paths route through processUploadResult, so
+  // exercising it directly covers both.
+  describe('per-version tx id back-fill (SYNC-28)', () => {
+    beforeEach(() => {
+      syncManager['driveId'] = testDriveId;
+      syncManager['rootFolderId'] = testRootFolderId;
+    });
+
+    const makeUpload = (uploadMethod?: 'ar' | 'turbo') =>
+      ({
+        id: 'upload-1',
+        driveId: testDriveId,
+        localPath: `${testSyncPath}/doc.txt`,
+        fileName: 'doc.txt',
+        fileSize: 1024,
+        status: 'uploading',
+        progress: 0,
+        uploadMethod,
+        createdAt: new Date(),
+      }) as any;
+
+    const fakeResult = {
+      created: [
+        {
+          type: 'file',
+          entityId: { toString: () => 'file-entity-id' },
+          dataTxId: { toString: () => 'data-tx-id' },
+          metadataTxId: { toString: () => 'meta-tx-id' },
+        },
+      ],
+      fees: {},
+    };
+
+    it('back-fills the Turbo data-tx id (turboId column) onto the file version', async () => {
+      const upload = makeUpload('turbo');
+      syncManager.addToUploadQueue(upload);
+
+      await syncManager['processUploadResult'](upload, fakeResult);
+
+      expect(mockDatabaseManager.updateFileVersionTxId).toHaveBeenCalledWith(
+        `${testSyncPath}/doc.txt`,
+        'data-tx-id',
+        { method: 'turbo' }
+      );
+    });
+
+    it('routes a legacy AR upload to the arweaveId column (method: ar)', async () => {
+      const upload = makeUpload('ar');
+      syncManager.addToUploadQueue(upload);
+
+      await syncManager['processUploadResult'](upload, fakeResult);
+
+      expect(mockDatabaseManager.updateFileVersionTxId).toHaveBeenCalledWith(
+        `${testSyncPath}/doc.txt`,
+        'data-tx-id',
+        { method: 'ar' }
+      );
+    });
+
+    it('defaults an unset uploadMethod to Turbo (current Turbo-only beta)', async () => {
+      const upload = makeUpload(undefined);
+      syncManager.addToUploadQueue(upload);
+
+      await syncManager['processUploadResult'](upload, fakeResult);
+
+      expect(mockDatabaseManager.updateFileVersionTxId).toHaveBeenCalledWith(
+        `${testSyncPath}/doc.txt`,
+        'data-tx-id',
+        { method: 'turbo' }
+      );
+    });
+
+    it('does NOT back-fill a version when the upload was skipped (no created entities)', async () => {
+      const upload = makeUpload('turbo');
+      syncManager.addToUploadQueue(upload);
+
+      await syncManager['processUploadResult'](upload, { created: [], fees: {} });
+
+      expect(mockDatabaseManager.updateFileVersionTxId).not.toHaveBeenCalled();
+    });
+
+    it('a back-fill failure never breaks a successful upload', async () => {
+      const upload = makeUpload('turbo');
+      syncManager.addToUploadQueue(upload);
+      mockDatabaseManager.updateFileVersionTxId.mockRejectedValueOnce(new Error('db locked'));
+
+      await expect(
+        syncManager['processUploadResult'](upload, fakeResult)
+      ).resolves.not.toThrow();
+
+      // Upload still completes and is recorded
+      expect(upload.status).toBe('completed');
+      expect(mockDatabaseManager.addUpload).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'upload-1', status: 'completed', dataTxId: 'data-tx-id' })
+      );
+    });
+  });
+
   describe('Upload cancellation — qa-gate fix round (MONEY-2)', () => {
     beforeEach(() => {
       // These tests drive the upload pipeline directly (no startSync), so
