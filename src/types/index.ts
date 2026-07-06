@@ -96,6 +96,13 @@ export interface FileUpload {
   transactionId?: string; // Legacy field for backward compatibility
   fileId?: string;        // ArDrive File ID for sharing links
   fileKey?: string;       // File key for private files
+  // SYNC-26: the EXISTING on-chain ArFS fileId this upload should revise. Set
+  // only when re-uploading an EDIT of a file already on Arweave — it is threaded
+  // into ardrive-core-js (wrappedFile.existingId) so the edit becomes a REVISION
+  // of the same fileId (new dataTx + metadata) instead of a brand-new file
+  // entity. Absent for genuinely new files (they mint a fresh fileId). Transient
+  // (in-memory only; not persisted as an uploads column).
+  existingArfsFileId?: string;
   error?: string;
   createdAt: Date;
   completedAt?: Date;
