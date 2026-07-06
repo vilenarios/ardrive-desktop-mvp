@@ -24,6 +24,9 @@
 //        hidden state (local delete → hide) in the Permaweb view. Preserved
 //        across metadata re-syncs (the upsert's DO UPDATE SET omits it), and
 //        reconciled against core truth on a forced refresh.
+//   6  — sync_state table (D-026): persists ardrive-core-js's serialized
+//        DriveSyncState per drive so an unchanged re-sync fetches only the
+//        delta since the last synced block (incremental delta-resync).
 //
 // Rules for adding a migration:
 //   - NEVER edit an existing migration (databases in the wild have already
@@ -295,6 +298,18 @@ export const MIGRATIONS: readonly Migration[] = [
       'isHidden column on drive_metadata_cache (SYNC-5 delete->ArFS hide)',
     sql: `
           ALTER TABLE drive_metadata_cache ADD COLUMN isHidden BOOLEAN DEFAULT 0;
+`,
+  },
+  {
+    version: 6,
+    description:
+      'sync_state table for incremental delta-resync (D-026): drive_id PK + serialized DriveSyncState',
+    sql: `
+          CREATE TABLE IF NOT EXISTS sync_state (
+            drive_id TEXT PRIMARY KEY,
+            state TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          );
 `,
   },
 ];
