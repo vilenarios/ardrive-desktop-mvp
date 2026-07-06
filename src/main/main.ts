@@ -2066,6 +2066,16 @@ class ArDriveApp {
       await this.syncManager.forceDownloadExistingFiles();
     }));
 
+    // FEAT-6: permanent version history. Returns every recorded ArFS revision
+    // of a file (newest-first, scoped to the active profile by
+    // getFileVersions) so the renderer can list them and view/download any
+    // prior version from the configured gateway. Read-only — this handler
+    // never uploads or spends. Wraps databaseManager.getFileVersions.
+    ipcMain.handle('files:get-versions', envelopeHandler(async (_, filePath: string) => {
+      const validatedPath = InputValidator.validateFilePath(filePath);
+      return await databaseManager.getFileVersions(validatedPath);
+    }));
+
     // Sync preference operations
     ipcMain.handle('sync:set-file-preference', envelopeHandler(async (_, fileId: string, preference: 'auto' | 'cloud_only') => {
       await databaseManager.updateFileSyncPreference(fileId, preference);
