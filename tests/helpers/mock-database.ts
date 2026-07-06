@@ -19,6 +19,7 @@ export class MockDatabaseManager {
   public getUploads = vi.fn();
   public addUpload = vi.fn();
   public updateUpload = vi.fn();
+  public removeUpload = vi.fn();
   public addPendingUpload = vi.fn();
   public getPendingUploads = vi.fn();
   public removePendingUpload = vi.fn();

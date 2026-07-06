@@ -19,6 +19,9 @@ import { notificationService } from './notification-service';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
 import { retryWithBackoff } from './sync/retry';
 import { resolveDrivePrivacyOrThrow } from './sync/drive-privacy';
+// MONEY-14 single source for the Turbo free-tier boundary (107520 bytes).
+// MONEY-10 uses it to flag an approved upload that grew past it before execution.
+import { TURBO_FREE_SIZE_LIMIT } from '../utils/turbo-utils';
 import {
   fetchTxDataWithFailover,
   queryMetadataWithResilience,
@@ -642,7 +645,141 @@ export class SyncManager {
     console.log(`Upload ${upload.id} cancelled before any paid work started`);
     return true;
   }
-  
+
+  /**
+   * MONEY-10 spend checkpoint: re-validate an approved file's size against the
+   * on-disk bytes we are about to upload. The user approved a specific size —
+   * the cost shown and OK'd was computed from it. Between approval and this
+   * execution the file can change (the user edits it). Uploading whatever is on
+   * disk NOW would let a file that grew after approval upload at the LARGER
+   * size, which can cross the Turbo free-tier boundary (<=TURBO_FREE_SIZE_LIMIT
+   * → >limit) or simply cost more than approved — an UNAPPROVED SPEND.
+   *
+   * Tolerance = exact match (0 bytes). Any difference between the approved size
+   * and the current size returns the item to the approval queue:
+   *   - Grew while paid → costs more than approved.
+   *   - Crossed the free-tier boundary (free → paid) → the core money bug: an
+   *     outright unapproved charge.
+   *   - Shrank / changed within the free tier → cheaper or still free, but the
+   *     on-disk bytes no longer match what the user reviewed; re-approving on any
+   *     material change is the safe default (and only re-prompts when the file
+   *     genuinely changed after approval, so it does not flap on stable files).
+   *
+   * Handling:
+   *   - Deleted / unreadable → cancel the upload (nothing to upload); mark the
+   *     execution record failed with a clear note; do NOT re-queue.
+   *   - Size changed → drop the in-flight execution record and re-queue a fresh
+   *     awaiting_approval pending upload at the NEW size (with a re-approve note
+   *     and a freshly computed cost) so the user re-confirms.
+   *
+   * Returns true when the upload was handled here (caller must stop before any
+   * wrap/upload); false to proceed with the upload at the approved size. Runs
+   * before SYNC-26 (revision fileId) and PRIV-8 (privacy routing), so it never
+   * weakens them — it only decides whether this upload happens at all.
+   */
+  private async revalidateApprovedFileSize(upload: FileUpload): Promise<boolean> {
+    // MONEY-2 takes precedence: an upload with a pending cancellation must be
+    // finalized as CANCELLED, not re-queued for approval. Defer to the existing
+    // cancellation checkpoints (uploadFileWithArDriveCore / uploadFile's catch),
+    // which stop before any spend — so returning false here never uploads.
+    if (this.uploadQueueManager.isCancellationRequested(upload.id)) {
+      return false;
+    }
+
+    const approvedSize = upload.fileSize;
+
+    let currentSize: number;
+    try {
+      const stats = await fs.stat(upload.localPath);
+      if (!stats.isFile()) {
+        // Something that is not a regular file now sits at this path — treat it
+        // as gone (we approved a file, not a directory/device).
+        throw new Error('path is no longer a regular file');
+      }
+      currentSize = stats.size;
+    } catch (statError) {
+      // Deleted / moved / unreadable since approval — cancel cleanly, never crash.
+      const note =
+        'File no longer exists on disk — upload cancelled (nothing was uploaded)';
+      console.warn(
+        `MONEY-10: cannot re-stat "${upload.fileName}" (${upload.id}) before upload: ` +
+          `${statError instanceof Error ? statError.message : String(statError)}. Cancelling.`
+      );
+      upload.status = 'failed';
+      upload.error = note;
+      await this.databaseManager.updateUpload(upload.id, { status: 'failed', error: note });
+      this.emitUploadProgress(upload.id, 0, 'failed', note);
+      this.uploadQueueManager.removeFromQueue(upload.id);
+      return true;
+    }
+
+    // Unchanged — safe to upload at exactly the approved size.
+    if (currentSize === approvedSize) {
+      return false;
+    }
+
+    const wasFree = approvedSize <= TURBO_FREE_SIZE_LIMIT;
+    const nowFree = currentSize <= TURBO_FREE_SIZE_LIMIT;
+    const crossedFreeBoundary = wasFree && !nowFree;
+
+    const note =
+      `File changed since approval — re-approve to upload at the new size ` +
+      `(${approvedSize} → ${currentSize} bytes)` +
+      (crossedFreeBoundary
+        ? ' — now exceeds the free-tier limit and will cost credits'
+        : '');
+
+    console.warn(
+      `MONEY-10: "${upload.fileName}" (${upload.id}) changed since approval — ` +
+        `${approvedSize} → ${currentSize} bytes` +
+        (crossedFreeBoundary ? ' (crossed the free-tier boundary)' : '') +
+        `. Returning to approval queue; not uploading at the new size.`
+    );
+
+    // Recompute the cost estimate for the NEW size so the re-approval shows the
+    // real (possibly higher) cost the user must confirm.
+    const costs = await this.costCalculator.calculateUploadCosts(currentSize);
+
+    // Drop the in-flight execution: remove it from the in-memory queue AND delete
+    // its uploads row so re-approval's addUpload (a plain INSERT keyed by id) does
+    // not collide with a stale record.
+    this.uploadQueueManager.removeFromQueue(upload.id);
+    await this.databaseManager.removeUpload(upload.id);
+
+    // Re-queue as a fresh awaiting_approval pending upload at the NEW size.
+    const requeued: Omit<PendingUpload, 'createdAt'> = {
+      id: upload.id,
+      driveId: upload.driveId,
+      localPath: upload.localPath,
+      fileName: upload.fileName,
+      fileSize: currentSize,
+      estimatedCost: costs.estimatedCost,
+      // MONEY-6: a legit 0 quote (free) must not coerce to "estimate unavailable".
+      estimatedTurboCost: costs.estimatedTurboCost ?? undefined,
+      recommendedMethod: costs.recommendedMethod,
+      hasSufficientTurboBalance: costs.hasSufficientTurboBalance,
+      conflictType: 'content_conflict',
+      conflictDetails: note,
+      status: 'awaiting_approval',
+      // SYNC-26: preserve the revision target so re-approval still uploads this as
+      // a revision of the same on-chain file, not a brand-new entity.
+      arfsFileId: upload.existingArfsFileId
+    };
+    await this.databaseManager.addPendingUpload(requeued);
+
+    // Reflect the outcome on the in-memory record and refresh the approval UI.
+    upload.status = 'pending';
+    upload.error = note;
+    this.notifyRenderer('sync:pending-uploads-updated');
+    try {
+      const stillPending = await this.databaseManager.getPendingUploads();
+      notificationService.notifyApprovalNeeded(stillPending.length);
+    } catch (notifyError) {
+      console.error('MONEY-10: failed to notify approval-needed after re-queue:', notifyError);
+    }
+    return true;
+  }
+
   // Emit upload progress event
   private emitUploadProgress(uploadId: string, progress: number, status: 'uploading' | 'completed' | 'failed', error?: string): void {
     this.progressTracker.emitUploadProgress(uploadId, progress, status, error);
@@ -2529,6 +2666,17 @@ export class SyncManager {
     }
 
     try {
+      // MONEY-10: re-validate the file's size against what the user approved
+      // BEFORE any upload work (before we even mark it 'uploading' or wrap it).
+      // An upload is approved at a specific size (the cost the user OK'd was
+      // computed from it); the file can change on disk between approval and now.
+      // If it grew/shrank — or is gone — do NOT upload at the new size: re-queue
+      // for approval, or cancel cleanly. Folders are metadata-only (size 0) and
+      // are exempt. Returns true when handled here (nothing more to upload).
+      if (!isFolder && (await this.revalidateApprovedFileSize(upload))) {
+        return;
+      }
+
       // Update status to uploading
       console.log(`Setting upload status to 'uploading' for ${itemName}`);
       upload.status = 'uploading';
