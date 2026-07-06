@@ -336,6 +336,12 @@ Done 2026-07-05 (branch feat/ux30-tray-status): tooltip + the disabled status li
 ### UX-32 · P2 · Post-beta · `idea`
 **Silent free-tier auto-sync (reconcile cost model with "just works").** Today every upload needs approval (cost control). Compromise: auto-upload FREE (<105 KiB) files silently (opt-in), and only surface the approval queue when an upload actually costs money. Keeps money control where it matters while making the common case frictionless. Acceptance: free-tier changes sync without a prompt (when enabled); anything with a cost still requires explicit approval.
 
+### UX-33 · P1 · Beta · `todo`
+**Surface the manifest URL after deploy.** Found by the manifest-deploy UAT (2026-07-05): creating a manifest works and resolves as a browsable site, but the app gives the user NO way to retrieve the resulting URL — the clipboard-copy was removed in a refactor, leaving only a toast + console.log, and `OverviewTab.tsx:580`'s comment claiming a clipboard-copy still happens is stale. A deploy feature whose output URL you can't get is effectively broken. Fix: on success, show the manifest URL with copy + open actions (reuse the copy-link/permaweb pattern), and fix/remove the stale comment. Acceptance: after creating a manifest the user can copy and open the site URL in-app.
+
+### SYNC-29 · P2 · Post-beta · `todo`
+**Manifest download-side resolves index, not raw JSON.** Found alongside the manifest UAT: `DownloadManager.downloadManifestFile` does `GET /<txid>`, but ar.io gateways resolve a manifest tx's own id through its path-manifest index (returns the index file, e.g. an image), not the raw 918-byte manifest JSON — verified live. SYNC-18 follow-up. Fix: fetch the manifest JSON via the raw/by-id path (or the gateway's raw endpoint) when the app needs the manifest structure itself. Low priority (only affects re-reading a manifest's own JSON, not normal downloads).
+
 ### PRIV-0 · P0 · Phase 1 · `wont-fix`
 **Feature-flag private drives off for beta.** Obsolete: D-010 (2026-07-03) put private drives IN the beta — they stay enabled and get fixed (PRIV-1..7 rephased onto the critical path) instead of hidden.
 
