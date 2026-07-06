@@ -299,6 +299,9 @@ DONE 2026-07-05 (branch test/operation-detectors, Opus). Added 37 deterministic 
 ### SYNC-27 · P2 · Beta · `todo`
 **Define copy semantics.** Found by live round-2: a copied file is correctly classified `copy` but produces no new ArFS file entity (deduped by content hash), so a user who copies a file locally sees no corresponding new permaweb entry. Decide intended semantics: (a) a copy uploads as a new independent file (new fileId, same bytes — costs an upload), or (b) it's intentionally deduped and the UI reflects "same content, already stored." Acceptance: the behavior is deliberate and the UI is truthful about it (no silent no-op that looks like a failed sync).
 
+### UX-28 · P2 · Beta-polish · `todo`
+**Persistent global sync indicator.** Found by the live UI-during-sync observation (UAT-UI-DURING-SYNC, 2026-07-05): the during-sync UX is otherwise beta-ready (setup modal + per-file status transitions + Download Queue drains live + responsive + honest copy), but the ONLY place overall progress is visible is the Download Queue tab's badge — the default Overview tab shows nothing while a sync runs, and the setup modal exits with a silent hand-off (no "downloading in background" cue). Fix (cheap, high-polish → "Dropbox-grade"): a persistent header/status-bar "Syncing N files…" indicator visible from any tab, + a hand-off toast when the setup modal closes into a background download. Acceptance: during an active sync, overall progress is visible without opening the Download Queue tab.
+
 ### PRIV-0 · P0 · Phase 1 · `wont-fix`
 **Feature-flag private drives off for beta.** Obsolete: D-010 (2026-07-03) put private drives IN the beta — they stay enabled and get fixed (PRIV-1..7 rephased onto the critical path) instead of hidden.
 
