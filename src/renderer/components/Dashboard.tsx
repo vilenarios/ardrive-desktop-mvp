@@ -39,6 +39,11 @@ interface DashboardProps {
   uploads: FileUpload[];
   onLogout: () => void;
   onDriveDeleted: () => void;
+  // UX-5: App fully reloads its profile-scoped state (wallet/drives/dashboard)
+  // for the newly-active profile after a switch, and routes "Add Profile" to
+  // new-profile onboarding without a window reload.
+  onProfileSwitched?: () => void;
+  onAddProfile?: () => void;
   onSyncProgressClear?: () => void;
   onRefreshUploads?: () => Promise<void>;
   // MONEY-6: pulls fresh walletInfo via the IPC return value (the
@@ -61,6 +66,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   uploads,
   onLogout,
   onDriveDeleted,
+  onProfileSwitched,
+  onAddProfile,
   onSyncProgressClear,
   onRefreshUploads,
   onRefreshWalletInfo,
@@ -370,8 +377,11 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const handleAddProfile = () => {
-    // Navigate to wallet setup for adding new profile
-    window.location.reload(); // This will trigger the app's profile selection logic
+    // UX-5: hand off to App, which stops the current profile's sync and routes
+    // to new-profile onboarding. The old body was window.location.reload(),
+    // which re-ran initializeApp against the still-active profile and bounced
+    // straight back to this dashboard — the add-profile reload loop.
+    onAddProfile?.();
   };
 
   // Drive switching handler
@@ -795,7 +805,6 @@ const Dashboard: React.FC<DashboardProps> = ({
             onShowWalletExport={() => setShowWalletExport(true)}
             onLogout={onLogout}
             onSwitchProfile={handleSwitchProfile}
-            onAddProfile={handleAddProfile}
             profileCount={profileCount}
           />
         </div>
@@ -1052,9 +1061,14 @@ const Dashboard: React.FC<DashboardProps> = ({
       {showProfileSwitcher && (
         <ProfileSwitcher
           currentProfile={currentProfile}
-          onProfileSwitch={(profileId) => {
+          onProfileSwitch={() => {
             setShowProfileSwitcher(false);
-            // The profile switch will trigger app reload via main process
+            // UX-5: the main process has switched the active profile (old sync
+            // stopped, wallet/keys/DB cleared). Tell App to fully reload the
+            // renderer for the new profile so no stale data from the old one
+            // remains. (Previously this was a no-op with a comment claiming the
+            // main process reloads the app — it does not.)
+            onProfileSwitched?.();
           }}
           onAddProfile={() => {
             setShowProfileSwitcher(false);

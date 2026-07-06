@@ -50,6 +50,11 @@ const mockElectronAPI = {
   onWalletInfoUpdated: vi.fn(),
   removeWalletInfoUpdatedListener: vi.fn(),
   removeSyncProgressListener: vi.fn(),
+  // UX-5: startSyncMonitoring is now idempotent — it tears down its four
+  // listeners before re-registering, so these removers are exercised on boot.
+  removeUploadProgressListener: vi.fn(),
+  removeDriveUpdateListener: vi.fn(),
+  removeAllListeners: vi.fn(),
 };
 
 Object.defineProperty(window, 'electronAPI', {

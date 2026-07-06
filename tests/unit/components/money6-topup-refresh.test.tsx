@@ -145,6 +145,9 @@ const mockElectronAPI = {
   onDownloadProgress: vi.fn(),
   removeDownloadProgressListener: vi.fn(),
   removeUploadProgressListener: vi.fn(),
+  // UX-5: startSyncMonitoring now clears its listeners before re-registering.
+  removeDriveUpdateListener: vi.fn(),
+  removeAllListeners: vi.fn(),
 };
 
 Object.defineProperty(window, 'electronAPI', {

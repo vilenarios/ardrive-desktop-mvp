@@ -302,9 +302,25 @@ const App: React.FC = () => {
     }
   };
 
+  // UX-5: startSyncMonitoring registers four main->renderer listeners and runs
+  // on every (re)initialization — first boot, drive selection, AND a profile
+  // switch. Without removing the previous set first, each re-init STACKS another
+  // live listener still closing over the prior profile's state (a cross-profile
+  // leak + duplicated work). Clearing them makes startSyncMonitoring idempotent.
+  const removeSyncMonitoringListeners = () => {
+    window.electronAPI.removeAllListeners('sync:status-update');
+    window.electronAPI.removeSyncProgressListener();
+    window.electronAPI.removeUploadProgressListener();
+    window.electronAPI.removeDriveUpdateListener();
+  };
+
   const startSyncMonitoring = () => {
     console.log('🔴 [RENDERER] startSyncMonitoring called at:', new Date().toISOString());
-    
+
+    // UX-5: drop any listeners registered for a previous profile/session before
+    // registering this profile's set, so nothing keeps pointing at old state.
+    removeSyncMonitoringListeners();
+
     // Listen for sync status updates
     window.electronAPI.onSyncStatusUpdate((status) => {
       setSyncStatus(status);
@@ -647,6 +663,48 @@ const App: React.FC = () => {
     setAppState('wallet-setup');
   };
 
+  // UX-5: "Add Profile" from the dashboard. The OLD handler was
+  // window.location.reload(), which just re-ran initializeApp against the
+  // still-active current profile and bounced straight back to the dashboard —
+  // the "add-profile reload loop"; the new profile's onboarding was never
+  // reachable. Route into the normal new-profile onboarding instead, and stop
+  // the current profile's sync first: its watcher/engine holds its own wallet
+  // reference (§4.9) and would otherwise keep running once the pending import
+  // makes the new profile active (SEC-3 isolation).
+  const handleAddProfile = async () => {
+    try {
+      await window.electronAPI.sync.stop();
+    } catch (error) {
+      console.error('Failed to stop sync before adding a profile:', error);
+    }
+    setAppState('wallet-setup');
+  };
+
+  // UX-5: called after ProfileSwitcher's profiles.switch() succeeds. The main
+  // process has already stopped the old profile's sync and cleared its wallet /
+  // drive keys / database (profiles:switch -> stopAndClearAllState +
+  // switchProfile, SEC-3), but the renderer still holds the PREVIOUS profile's
+  // wallet, drives, active drive, uploads and sync status. Reset ALL
+  // profile-scoped state and re-run the boot sequence so the UI reflects ONLY
+  // the now-active profile — no stale data, and (via the idempotent
+  // startSyncMonitoring) no listeners left pointing at the old profile's state.
+  const handleProfileSwitched = async () => {
+    removeSyncMonitoringListeners();
+    setWalletInfo(null);
+    setCurrentProfile(null);
+    setDrive(null);
+    setDrives([]);
+    setSyncStatus(null);
+    setSyncProgress(null);
+    setUploads([]);
+    setSelectedPrivateDrive(null);
+    setShowPrivateDriveUnlock(false);
+    setIsReturningUser(false);
+    setBootError(null);
+    setAppState('loading');
+    await initializeApp();
+  };
+
   const handlePrivateDriveUnlock = async (password: string, persistKey: boolean): Promise<{ success: boolean; error?: string }> => {
     if (!selectedPrivateDrive) return { success: false, error: 'No drive selected.' };
 
@@ -889,6 +947,8 @@ const App: React.FC = () => {
             toast={toast}
             onLogout={handleLogout}
             onDriveDeleted={handleDriveDeleted}
+            onProfileSwitched={handleProfileSwitched}
+            onAddProfile={handleAddProfile}
             onSyncProgressClear={() => setSyncProgress(null)}
             onRefreshWalletInfo={refreshWalletInfo}
             onRefreshUploads={async () => {
