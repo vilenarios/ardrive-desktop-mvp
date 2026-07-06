@@ -604,6 +604,13 @@ export class DatabaseManager {
   // File Version Management
   async addFileVersion(version: {
     id: string;
+    // FEAT-6: the drive_mappings.id this version belongs to. MUST be a real id
+    // in the active profile's drive_mappings, otherwise getFileVersions (which
+    // scopes rows to `mappingId IN (SELECT id FROM drive_mappings)`) will drop
+    // the row and the version-history UI shows nothing. It also keeps a version
+    // isolated to its own drive/profile. The sync engine threads this from the
+    // driveId currently being synced (see SyncManager.resolveActiveMappingId).
+    mappingId?: string;
     fileHash: string;
     fileName: string;
     filePath: string;
@@ -619,21 +626,22 @@ export class DatabaseManager {
     return new Promise((resolve, reject) => {
       // First, mark any existing versions as not latest
       const updateSql = `UPDATE file_versions SET isLatest = 0 WHERE filePath = ? AND isLatest = 1`;
-      
+
       this.db!.run(updateSql, [version.filePath], (updateErr) => {
         if (updateErr) {
           reject(updateErr);
           return;
         }
-        
+
         // Insert new version
         const insertSql = `
-          INSERT INTO file_versions (id, fileHash, fileName, filePath, relativePath, fileSize, arweaveId, turboId, version, parentVersion, changeType, uploadMethod, isLatest)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+          INSERT INTO file_versions (id, mappingId, fileHash, fileName, filePath, relativePath, fileSize, arweaveId, turboId, version, parentVersion, changeType, uploadMethod, isLatest)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         `;
-        
+
         this.db!.run(insertSql, [
           version.id,
+          version.mappingId ?? null,
           version.fileHash,
           version.fileName,
           version.filePath,

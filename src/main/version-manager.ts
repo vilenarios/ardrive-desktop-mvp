@@ -98,13 +98,18 @@ export class VersionManager {
   }
 
   async createNewVersion(
-    filePath: string, 
+    filePath: string,
     changeType: ChangeType,
     uploadInfo?: {
       arweaveId?: string;
       turboId?: string;
       uploadMethod?: 'ar' | 'turbo';
-    }
+    },
+    // FEAT-6: the drive_mappings.id this file belongs to. The caller (SyncManager)
+    // knows the drive being synced and threads its mappingId here so the
+    // file_versions row is scoped to the right drive/profile — otherwise
+    // getFileVersions drops the NULL-mappingId row and the history UI is empty.
+    mappingId?: string
   ): Promise<FileVersion> {
     try {
       const fileHash = await this.calculateFileHash(filePath);
@@ -136,7 +141,8 @@ export class VersionManager {
 
       await this.databaseManager.addFileVersion({
         ...newVersion,
-        changeType: changeType as 'create' | 'update' | 'rename' | 'move'
+        changeType: changeType as 'create' | 'update' | 'rename' | 'move',
+        mappingId
       });
 
       // Record the operation
@@ -238,12 +244,12 @@ export class VersionManager {
     }
   }
 
-  async handleFileMove(fromPath: string, toPath: string): Promise<void> {
+  async handleFileMove(fromPath: string, toPath: string, mappingId?: string): Promise<void> {
     try {
       const fileHash = await this.calculateFileHash(toPath);
-      
-      // Create a new version for the move
-      await this.createNewVersion(toPath, 'move');
+
+      // Create a new version for the move (FEAT-6: scoped to its drive mapping)
+      await this.createNewVersion(toPath, 'move', undefined, mappingId);
 
       // Record the move operation
       await this.recordFileOperation({
@@ -264,12 +270,12 @@ export class VersionManager {
     }
   }
 
-  async handleFileRename(oldPath: string, newPath: string): Promise<void> {
+  async handleFileRename(oldPath: string, newPath: string, mappingId?: string): Promise<void> {
     try {
       const fileHash = await this.calculateFileHash(newPath);
-      
-      // Create a new version for the rename
-      await this.createNewVersion(newPath, 'rename');
+
+      // Create a new version for the rename (FEAT-6: scoped to its drive mapping)
+      await this.createNewVersion(newPath, 'rename', undefined, mappingId);
 
       // Record the rename operation
       await this.recordFileOperation({

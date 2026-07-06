@@ -190,4 +190,25 @@ describe('VersionHistory (FEAT-6)', () => {
     expect(within(items[0]).getByRole('button', { name: /view version 3/i })).toBeDisabled();
     expect(screen.getByText(/private drive/i)).toBeInTheDocument();
   });
+
+  it('D2: copy-link is gated exactly like View/Download — enabled on public, disabled on private', async () => {
+    // Public drive with a tx id: copy the permanent link is offered.
+    getVersions.mockResolvedValue({ success: true, data: threeVersions });
+    const { unmount } = render(<VersionHistory {...baseProps} />);
+    let items = await screen.findAllByRole('listitem');
+    expect(
+      within(items[0]).getByRole('button', { name: /copy permanent link to version 3/i })
+    ).toBeEnabled();
+    unmount();
+
+    // Private drive: the gateway URL would resolve to ciphertext, so a
+    // "permanent link" must NOT be copyable — gated the same as View/Download,
+    // not left enabled while View/Download are honestly disabled.
+    getVersions.mockResolvedValue({ success: true, data: threeVersions });
+    render(<VersionHistory {...baseProps} isPrivateDrive={true} />);
+    items = await screen.findAllByRole('listitem');
+    expect(
+      within(items[0]).getByRole('button', { name: /copy permanent link to version 3/i })
+    ).toBeDisabled();
+  });
 });

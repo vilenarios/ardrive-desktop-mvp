@@ -290,10 +290,10 @@ export const VersionHistory: React.FC<VersionHistoryProps> = ({
                         <button
                           type="button"
                           className="version-history-action is-icon"
-                          disabled={!txId}
-                          title={txId ? "Copy this version's permanent link" : disabledReason}
+                          disabled={!canRetrieve}
+                          title={canRetrieve ? "Copy this version's permanent link" : disabledReason}
                           aria-label={`Copy permanent link to version ${version.version}`}
-                          onClick={() => txId && copyLink(version, txId)}
+                          onClick={() => canRetrieve && txId && copyLink(version, txId)}
                         >
                           {copiedId === version.id ? <Check size={14} /> : <LinkIcon size={14} />}
                         </button>
