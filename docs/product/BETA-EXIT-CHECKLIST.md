@@ -22,18 +22,18 @@ Beta scope = Phases 1–4 + the design foundation. Tracks A–E are explicitly *
 - **Milestone 4 — "Sustainable to iterate":** 🟡 INFRA-2/7 done; CI-gating (INFRA-3) and test-money (INFRA-9) in progress.
 - **Design foundation & polish:** ✅ DESIGN-1/2/3 (tokens/theme + onboarding) **and DESIGN-4/5/6/7 + the full DESIGN-8 sweep done** — every user-visible surface tokenized in light+dark, trust bugs removed, modal a11y + info-bubbles + the Gateway settings UI landed (483 tests). Residual design-system debt → DESIGN-9 (GA-track). Caveat: static-verified; live-display walkthrough pending (UAT).
 
-**Rough completion:** the critical path is now **the open P0s (UX-3 envelope, INFRA-3 CI) + the Milestone-2 P1 sync/privacy/money correctness batch**. On-chain verification (Gate 4) — previously the single biggest risk — is now **largely done** against Phil's capped test wallet via turbo-gateway.com (2026-07-04): private round-trip, hide→verify→restore, and a real capped Turbo payment all proven. The remaining top risk is the **live-Electron UI walkthrough** (Gate 5) — the app has only ever been static-verified in this headless environment.
+**Rough completion (2026-07-05):** **all beta P0s are done.** The critical path is now: **(1)** the **D-026 ≥web sync** ship — core-js 4.1.0 (snapshot consumption + incremental + robustness) is merged upstream and the desktop pin lane has *proven it in-app* (a 752-entity drive lists in **3.7s** via snapshots; `listPrivateFolder` completes); pin merge + Phil's npm-publish finalize it. **(2)** the remaining **M2 P1 sync/privacy/money correctness** items (PRIV-8 ✅, UX-8 ✅, SYNC-24 ✅ done this session; MONEY-9/10, SYNC-9, PRIV-6, SEC-4, UX-15 in flight/queued). **(3)** the owner-gated items: **live-Electron UI walkthrough** (Gate 5), the **supervised paid-rails** pass, and brand sign-off. On-chain verification (Gate 4) is now broad: read/download (incl. **full recursive drive download** — 15/15 files, folders preserved, bytes valid), private v1+v2 unlock, hide→restore, gateway self-heal, and **live rename fileId-reuse** all proven; only two file-level metadata executions remain gated on gateway indexing timing (not logic).
 
 ---
 
 ## Gate 1 — Zero open P0 blockers
 
-Every P0 in beta scope must be `done` and QA-gated. Currently open:
+Every P0 in beta scope must be `done` and QA-gated. **Status 2026-07-05: all beta P0s are now done — zero open P0 blockers.**
 
 - [x] **PRIV-4** (Phase 3) — drive-key persistence — **done** 2026-07-04: opt-in per drive, encrypted at rest (scrypt + AES-256-GCM, session-password), **no plaintext key on disk**; session restore wired. (Superseded the parked WIP.)
-- [ ] **UX-3** (Phase 3) — unified IPC envelope (D-005) enforced across handlers. *Unblocks the SEC-2/SEC-4 raw-shape debt.*
-- [ ] **INFRA-3** (Phase 4) — CI gates PRs (unit + integration + smoke) — *in progress.*
-- [ ] **CORE-4** (Track C, blocks nothing now) — hide/unhide upstream PR #270 merged to core-js `master`; desktop consumes a pinned commit today, so this is *functionally satisfied for beta* — downgrade to "nice-to-have upstream merge" unless Phil wants the pin off a fork before shipping.
+- [x] **UX-3** (Phase 3) — unified IPC envelope (D-005) — **done** 2026-07-05: all 97 main.ts handlers return the `IpcResult` envelope, type-enforced at the preload boundary; zero raw/`safeIpcHandler` handlers remain; boolean/void trap hand-audited across call sites. Clears the SEC-2/SEC-4 raw-shape debt.
+- [x] **INFRA-3** (Phase 4) — CI quality gate — **done** 2026-07-05: a required `quality` job (typecheck src + tests, lint, `vitest --run`) gates the build matrix; the old continue-on-error test step is gone. *One open decision (not a blocker): add Linux packaging to the matrix vs. drop Linux from beta docs.*
+- [x] **CORE-4** (Track C) — hide/unhide — **done**: shipped in core-js **4.1.0** (PR #274, merged to `master`); the desktop pins 4.1.0 via git-ref (D-026 pin lane). Fully satisfied for beta.
 
 > All other P0s (SEC-1/2/3, MONEY-1/2/3/4, SYNC-1/2/3/4/5/7, PRIV-1/2/3, UX-1/2, INFRA-1/2) are `done` + gated.
 
@@ -51,8 +51,9 @@ Each milestone's ROADMAP exit criteria must be exercised, not just coded:
 Must be `done`-or-explicit-known-issue before shipping (a deferred one moves to KNOWN-ISSUES with a documented workaround):
 
 - [x] **SYNC-13** — download-eviction feedback loop — **done** (Opus gate PASS, 2026-07-03).
-- [ ] **SYNC-6** — 2 GiB upload cap surfaced (D-014) · **SYNC-10** — streaming hashing (prereq for 2 GiB) · **SYNC-9** — offline visibility · **SYNC-11** — watcher hygiene · **SYNC-16** — (see BACKLOG).
-- [ ] **PRIV-6** — private move/rename/hide paths · **PRIV-7** — unlock password validation · **PRIV-8** — fail-closed privacy.
+- [x] **SYNC-24** — File+Folder OperationDetector coverage + the money/history fixes — **done** 2026-07-05: 40 detector tests; F1 (move-re-uploading-as-copy) + F2 (folder-identity) fixed, F3 documented limitation. *New findings filed: SYNC-26 (edit→new-fileId, P1), SYNC-27 (copy semantics, P2).*
+- [ ] **SYNC-6** — 2 GiB upload cap surfaced (D-014) · **SYNC-10** — streaming hashing (prereq for 2 GiB) · **SYNC-9** — offline visibility · **SYNC-11** — watcher hygiene · **SYNC-16** — (see BACKLOG) · **SYNC-26** — edit→revision fileId threading.
+- [x] **PRIV-8** — fail-closed privacy — **done** 2026-07-05: unresolved drive privacy throws before any ArFS call/spend; also closed 4 move/rename paths that leaked private→public unchecked. · [x] **PRIV-7** — unlock password validation — **done**. · [ ] **PRIV-6** — private move/rename/hide paths (route through the encrypted ArFS methods; PRIV-8 currently blocks them safely).
 - [ ] **MONEY-9** — upload-queue serialization (in progress) · **MONEY-10** — upload-time cost revalidation · ~~**MONEY-7** payment-window hardening~~ **done** · *(also done this session: MONEY-13 AR-balance NaN-during-429)*.
 - [ ] **UX finish batch:** UX-4 listener redesign · UX-5 real profile switching · UX-6 auto-login/no-keychain (w/ SEC-4) · ~~UX-7 fail-safe boot routing~~ **done** · ~~UX-8 progress-modal error state~~ **done** · ~~UX-10 copy-link~~ **done** · UX-15 truthful single-drive UI · UX-18. *(Also done: UX-19 returning-user drives, UX-20 orphaned-wallets, PRIV-7 unlock password validation, SYNC-17/18 gateway.)*
 - [x] **SEC-5** — no plaintext JWK temp files — **done** (in-memory `JWKWallet`, no tmpdir).
