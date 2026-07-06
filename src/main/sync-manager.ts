@@ -23,6 +23,16 @@ import {
   queryMetadataWithResilience,
 } from './sync/gateway-failover';
 
+// SYNC-26: ArFS entity IDs (fileIds) are RFC-4122 UUIDs. core-js's EID()
+// constructor throws on anything else, so we validate before threading a
+// recorded id into an upload as a revision hint. This also guards against a
+// dataTxId (base64url, not a UUID) that some legacy processed_files rows stored
+// in the arweaveId column as a fallback — those must NOT be passed as a fileId.
+const ARFS_ENTITY_ID_REGEX = /^[a-f\d]{8}-([a-f\d]{4}-){3}[a-f\d]{12}$/i;
+function isValidArfsFileId(id: string | undefined | null): id is string {
+  return typeof id === 'string' && ARFS_ENTITY_ID_REGEX.test(id);
+}
+
 interface SyncProgress {
   phase?: string;
   stage?: string;
@@ -2139,8 +2149,30 @@ export class SyncManager {
         return;
       }
       
+      // SYNC-26: when this is an edit of a file already on-chain, resolve the
+      // EXISTING ArFS fileId so the upload can be threaded as a REVISION (same
+      // fileId, new dataTx + metadata) rather than minting an unrelated new file
+      // entity. We resolve it HERE — before the new-content processed_files row
+      // is written below — because getFileByPath returns the newest record for
+      // the path, and after that write the newest record would be this edit
+      // (with no fileId yet). If no valid recorded fileId exists (e.g. the
+      // original upload never completed), we leave it undefined and fall back to
+      // a normal new upload.
+      let existingArfsFileId: string | undefined;
       if (isEdit) {
         console.log(`✏️ Edited file detected (known path, new content) — queueing as a new revision: ${filePath}`);
+        try {
+          const existingRecord = await this.databaseManager.getFileByPath(filePath);
+          const candidateFileId = existingRecord?.arfsFileId || existingRecord?.arweaveId;
+          if (isValidArfsFileId(candidateFileId)) {
+            existingArfsFileId = candidateFileId;
+            console.log(`  - Threading existing ArFS fileId for revision: ${existingArfsFileId}`);
+          } else {
+            console.log(`  - No valid recorded fileId for ${fileName} — will upload as a new file (fallback)`);
+          }
+        } catch (lookupError) {
+          console.warn(`  - Could not resolve existing fileId for edit, uploading as new file:`, lookupError);
+        }
       }
 
       // Double check if this file was recently downloaded. SYNC-13: pass the
@@ -2282,7 +2314,12 @@ export class SyncManager {
         hasSufficientTurboBalance,
         conflictType,
         conflictDetails,
-        status: 'awaiting_approval'
+        status: 'awaiting_approval',
+        // SYNC-26: revision target (the on-chain fileId being edited). Undefined
+        // for genuinely new files. operationType stays a normal 'upload', so this
+        // does NOT route through the metadata-op path — it is a real data upload
+        // that reuses the fileId.
+        arfsFileId: existingArfsFileId
       };
 
       // Before adding the file, ensure all parent folders are in the queue
@@ -2457,6 +2494,27 @@ export class SyncManager {
     }
   }
 
+  /**
+   * SYNC-26: thread an existing on-chain ArFS fileId onto a wrapped file so
+   * ardrive-core-js uploads it as a REVISION of that same file (reuses the
+   * fileId; new dataTx + metadata) instead of minting a new file entity.
+   * No-op when the upload is not an edit (no recorded fileId) or the recorded
+   * id is not a valid ArFS entity id — in which case the file uploads as a new
+   * entity (the fallback for files whose original upload never completed).
+   */
+  private applyRevisionFileId(
+    wrappedFile: { existingId?: unknown },
+    upload: FileUpload
+  ): void {
+    if (!isValidArfsFileId(upload.existingArfsFileId)) {
+      return;
+    }
+    wrappedFile.existingId = EID(upload.existingArfsFileId);
+    console.log(
+      `SYNC-26: uploading "${upload.fileName}" as a REVISION of existing fileId ${upload.existingArfsFileId}`
+    );
+  }
+
   private async uploadFileWithArDriveCore(upload: FileUpload) {
     const isFolder = upload.fileSize === 0 && upload.localPath.endsWith(upload.fileName);
     const itemName = upload.fileName;
@@ -2596,7 +2654,20 @@ export class SyncManager {
       
       // Wrap file for upload using ArDrive Core
       const wrappedFile = wrapFileOrFolder(upload.localPath);
-      
+
+      // SYNC-26: if this upload is an EDIT of a file already on Arweave, thread
+      // the existing fileId so ardrive-core-js writes a REVISION of that same
+      // ArFS file (reuses fileId, new dataTx + metadata) instead of minting a
+      // new file entity. core-js keys revisions off wrappedFile.existingId
+      // (arfsdao.prepareFile: `fileId = wrappedFile.existingId ?? EID(uuid())`).
+      // Relying on core's name-based conflict auto-detection alone is fragile —
+      // it misses when the just-uploaded original is not yet indexed, breaking
+      // the revision chain (SYNC-26 live repro: fileId changed on edit). Setting
+      // it here (BEFORE the private/public branch below) makes the revision
+      // deterministic for BOTH public and private drives without touching the
+      // PRIV-8 privacy routing. Absent id => normal new upload (fallback).
+      this.applyRevisionFileId(wrappedFile, upload);
+
       // Get drive mapping to check if private
       const mappings = await this.databaseManager.getDriveMappings();
       const mapping = mappings.find(m => m.driveId === this.driveId);
@@ -2684,6 +2755,8 @@ export class SyncManager {
             
             // Re-wrap the file and get target folder
             const retryWrappedFile = wrapFileOrFolder(upload.localPath);
+            // SYNC-26: the retry is still the same edit — keep it a revision
+            this.applyRevisionFileId(retryWrappedFile, upload);
             const retryTargetFolderId = await this.getTargetFolderId(upload.localPath, upload.id);
             
             // Build retry options

@@ -2221,6 +2221,10 @@ class ArDriveApp {
         dataTxId: undefined,
         metadataTxId: undefined,
         transactionId: undefined,
+        // SYNC-26: carry the revision target through to the upload engine so an
+        // edit reuses its existing fileId (ArFS revision) instead of minting a
+        // new file. Undefined for genuinely new files.
+        existingArfsFileId: pendingUpload.arfsFileId,
         error: undefined,
         completedAt: undefined,
         createdAt: new Date()
@@ -2228,7 +2232,7 @@ class ArDriveApp {
 
       await databaseManager.addUpload(upload);
       await databaseManager.removePendingUpload(uploadId);
-      
+
       // Add to sync manager
       this.syncManager.addToUploadQueue(upload);
 
@@ -2402,6 +2406,9 @@ class ArDriveApp {
             dataTxId: undefined,
             metadataTxId: undefined,
             transactionId: undefined,
+            // SYNC-26: carry the revision target so an approved-all edit also
+            // reuses its existing fileId (ArFS revision) rather than a new file.
+            existingArfsFileId: pendingUpload.arfsFileId,
             error: undefined,
             completedAt: undefined,
             createdAt: new Date()
