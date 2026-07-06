@@ -177,6 +177,16 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
   };
 
   const handleCompleteWalletCreation = async () => {
+    // SEC (wallet-safety): the backup step is MANDATORY. Persistence of the
+    // account (and thus reaching the dashboard) must never happen until the
+    // user has explicitly confirmed they saved their recovery phrase. The
+    // submit button below is already disabled until `hasConfirmedSeedPhrase`,
+    // but this guard makes the invariant hold at the handler level too, so a
+    // future refactor that changes the button can't silently reopen a bypass.
+    if (!hasConfirmedSeedPhrase) {
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
