@@ -214,11 +214,21 @@ describe('FolderOperationDetector — classification', () => {
   // 3. Content / similarity boundaries + documented limitations
   // ---------------------------------------------------------------------------
   describe('content boundaries and limitations', () => {
-    it('LIMITATION: renamed+moved NON-empty folder -> new (folder identity lost)', async () => {
-      // Because the delete snapshot has empty children/contentHash, a folder
-      // renamed AND moved that still has contents fails both the contentMatch
-      // and the childrenSimilarity>80 test -> classified 'new'. The old ArFS
-      // folderId is not carried forward. Flagged to the coordinator.
+    it('SYNC-24 F3 (kept as known limitation): renamed+moved NON-empty folder -> new (safe fail)', async () => {
+      // A folder renamed AND moved (BOTH parent and name differ) that still has
+      // contents fails contentMatch and childrenSimilarity>80, so it classifies
+      // as 'new' and the ArFS folderId is not carried forward.
+      //
+      // SYNC-24 (F3) DECISION: kept as a known limitation, ON PURPOSE. The delete
+      // snapshot is content-blind (onFolderDelete records empty children/hash —
+      // the folder is already gone), so there is NO signal to verify that this
+      // new folder is the same one that was deleted. Carrying the folderId here
+      // would pair any lone delete with any lone create whose parent+name both
+      // differ — reintroducing exactly the wrong-folderId corruption that F2
+      // fixes. Per the F2 principle (a wrong folderId corrupts identity; a 'new'
+      // is merely suboptimal), 'new' is the correct fail-safe. Note that a plain
+      // rename (same parent) OR a plain move (same name) DO carry the folderId —
+      // only the both-differ case with changed content stays 'new'.
       await detector.onFolderDelete('/root/old', 'folder-id-8');
       setFolder('/archive/renamed', [{ name: 'keep.txt', isFile: true, size: 3 }]);
 
@@ -259,21 +269,52 @@ describe('FolderOperationDetector — classification', () => {
   // 4. Concurrent / cross-matching behavior
   // ---------------------------------------------------------------------------
   describe('concurrent operations', () => {
-    it('LIMITATION: a new folder cross-matches the FIRST pending delete in the same parent', async () => {
+    it('SYNC-24 F2: a new folder that could match MULTIPLE same-parent deletes -> new (no wrong folderId)', async () => {
       // Two folders deleted in the same parent within one window. A single new
-      // folder in that parent is paired with whichever delete was recorded
-      // first (Map insertion order), because same-parent+different-name always
-      // yields 'rename' and onFolderAdd returns on the first non-'new' match.
-      // With no content in the delete snapshot the detector cannot tell which
-      // folder the new one actually corresponds to. Flagged to the coordinator.
+      // folder in that parent (different name from both) is genuinely ambiguous:
+      // the content-blind detector cannot tell which deleted folder it came from
+      // — or whether it came from either. Previously it was paired with whichever
+      // delete was recorded FIRST (Map insertion order), assigning a possibly
+      // WRONG ArFS folderId and corrupting identity. SYNC-24 (F2) fails safe to
+      // 'new' instead: no folderId is carried, so nothing is corrupted.
       await detector.onFolderDelete('/root/alpha', 'id-alpha');
       await detector.onFolderDelete('/root/beta', 'id-beta');
       setFolder('/root/gamma', [{ name: 'z.txt', isFile: true, size: 1 }]);
 
       const result = await detector.onFolderAdd('/root/gamma');
 
+      expect(result!.type).toBe('new');
+      expect(result!.oldPath).toBeUndefined();
+      expect(result!.oldArweaveFolderId).toBeUndefined();
+    });
+
+    it('SYNC-24 F2: with 2+ candidates, a UNIQUE exact-name (move) match still wins', async () => {
+      // Two deletes BOTH classify as real ops against the new folder '/root/beta':
+      //   - '/root/alpha' (same parent, different name)  -> rename candidate
+      //   - '/other/beta' (different parent, SAME name)   -> move candidate
+      // Ambiguity is resolved by the exact-name signal: a move keeps the folder
+      // name, so '/root/beta' is the move of '/other/beta', not a rename of
+      // '/root/alpha'. The unique exact-name candidate wins.
+      await detector.onFolderDelete('/root/alpha', 'id-alpha'); // rename candidate
+      await detector.onFolderDelete('/other/beta', 'id-beta'); // move candidate (exact name)
+      setFolder('/root/beta', [{ name: 'z.txt', isFile: true, size: 1 }]);
+
+      const result = await detector.onFolderAdd('/root/beta');
+
+      expect(result!.type).toBe('move');
+      expect(result!.oldPath).toBe('/other/beta');
+      expect(result!.oldArweaveFolderId).toBe('id-beta');
+    });
+
+    it('SYNC-24 F2: exactly ONE same-parent rename candidate is still an unambiguous rename', async () => {
+      // The fix must not over-correct: a single candidate is unambiguous, so a
+      // real rename still carries its folderId forward (no needless re-create).
+      await detector.onFolderDelete('/root/alpha', 'id-alpha');
+      setFolder('/root/gamma', [{ name: 'z.txt', isFile: true, size: 1 }]);
+
+      const result = await detector.onFolderAdd('/root/gamma');
+
       expect(result!.type).toBe('rename');
-      // Attributed to the first-recorded delete, not necessarily the right one.
       expect(result!.oldPath).toBe('/root/alpha');
       expect(result!.oldArweaveFolderId).toBe('id-alpha');
     });

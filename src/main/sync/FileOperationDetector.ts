@@ -38,8 +38,21 @@ interface FileMetadata {
   mtime: number;
 }
 
+// SYNC-24 (F1): a copy decision that has been DEFERRED until the detection
+// window resolves. An add whose hash matches a still-present file is only a
+// genuine copy if the source stays; if the source is unlinked within the
+// window it was really a move (add-before-unlink ordering).
+interface PendingCopyResolution {
+  sourcePath: string;
+  hash: string;
+  timeout: NodeJS.Timeout;
+  resolve: (detection: FileOperationDetection) => void;
+  copyDetection: FileOperationDetection;
+}
+
 export class FileOperationDetector {
   private pendingDeletes = new Map<string, PendingFileOperation>();
+  private pendingCopies = new Map<string, PendingCopyResolution>();
   private recentOperations = new Map<string, FileOperationDetection>();
   private fileMetadataCache = new Map<string, FileMetadata>();
   private hashCache = new Map<string, string>();
@@ -74,7 +87,15 @@ export class FileOperationDetector {
     if (arfsFileId) {
       console.log(`FileOperationDetector: File has ArDrive ID: ${arfsFileId}`);
     }
-    
+
+    // SYNC-24 (F1): if this unlink is the source of a still-pending copy
+    // decision, the add-before-unlink pair is actually a MOVE. Resolve the
+    // deferred add as a move (reuse the fileId, no re-upload) and do NOT also
+    // record a delete for this path — the content lives on at the new path.
+    if (this.resolvePendingCopyAsMove(filePath, arfsFileId)) {
+      return;
+    }
+
     // Clear any existing pending delete for this path
     this.clearPendingDelete(filePath);
     
@@ -178,7 +199,16 @@ export class FileOperationDetector {
       
       // Method 3: Check if this might be a copy (same hash exists elsewhere)
       const copyDetection = await this.detectCopy(filePath, newFileHash);
-      if (copyDetection) return copyDetection;
+      if (copyDetection) {
+        // SYNC-24 (F1): do NOT commit to 'copy' eagerly. An add whose hash
+        // matches a still-present file is ambiguous when the add arrives before
+        // the unlink: it's a genuine COPY only if the source stays, but a MOVE
+        // if the source is unlinked within the detection window. Firing 'copy'
+        // immediately makes sync-manager re-upload the content (spend) and lose
+        // the move's fileId. Defer the decision: resolve as 'move' if the source
+        // path is unlinked in-window, otherwise 'copy' once the window elapses.
+        return await this.resolveCopyOrMove(filePath, newFileHash, copyDetection);
+      }
       
       // No match found - this is a new file
       return {
@@ -337,8 +367,107 @@ export class FileOperationDetector {
         reason: `File with same hash exists at: ${activeFiles[0].localPath}`
       };
     }
-    
+
     return null;
+  }
+
+  /**
+   * SYNC-24 (F1): defer a copy candidate until the detection window resolves.
+   * Returns a promise that settles as:
+   *   - 'move'  if the copy's source path is unlinked within the window
+   *             (add-before-unlink move — resolved by resolvePendingCopyAsMove)
+   *   - 'copy'  once the window elapses with the source still present
+   * The genuine-copy path is unchanged in outcome, only in timing.
+   */
+  private resolveCopyOrMove(
+    addedPath: string,
+    hash: string,
+    copyDetection: FileOperationDetection
+  ): Promise<FileOperationDetection> {
+    const sourcePath = copyDetection.oldPath as string;
+
+    return new Promise<FileOperationDetection>((resolve) => {
+      const timeout = setTimeout(() => {
+        // Window elapsed and the source was never unlinked -> genuine copy.
+        this.pendingCopies.delete(addedPath);
+        console.log(
+          `FileOperationDetector: Copy confirmed for ${addedPath} (source ${sourcePath} still present after window)`
+        );
+        resolve(copyDetection);
+      }, this.DETECTION_WINDOW_MS);
+
+      this.pendingCopies.set(addedPath, {
+        sourcePath,
+        hash,
+        timeout,
+        resolve,
+        copyDetection,
+      });
+    });
+  }
+
+  /**
+   * SYNC-24 (F1): if a still-pending copy decision's source is being unlinked,
+   * reclassify it as a move and resolve the deferred onFileAdd promise. Returns
+   * true when a pending copy was consumed (so onFileDelete can skip recording a
+   * separate delete for that source).
+   */
+  private resolvePendingCopyAsMove(sourcePath: string, arfsFileId?: string): boolean {
+    for (const [addedPath, pendingCopy] of this.pendingCopies) {
+      if (pendingCopy.sourcePath !== sourcePath) continue;
+
+      clearTimeout(pendingCopy.timeout);
+      this.pendingCopies.delete(addedPath);
+
+      const oldName = path.basename(sourcePath);
+      const newName = path.basename(addedPath);
+      const oldDir = path.dirname(sourcePath);
+      const newDir = path.dirname(addedPath);
+
+      let type: 'move' | 'rename';
+      let reason: string;
+      if (oldDir === newDir) {
+        type = 'rename';
+        reason = `File renamed from '${oldName}' to '${newName}' (add observed before unlink)`;
+      } else if (oldName === newName) {
+        type = 'move';
+        reason = `File moved from '${oldDir}' to '${newDir}' (add observed before unlink)`;
+      } else {
+        type = 'move'; // move with rename
+        reason = `File moved from '${sourcePath}' to '${addedPath}' (add observed before unlink)`;
+      }
+
+      const detection: FileOperationDetection = {
+        type,
+        oldPath: sourcePath,
+        newPath: addedPath,
+        hash: pendingCopy.hash,
+        // The unlink event carries the source's ArFS fileId; reuse it so the
+        // consumer does a metadata-only move instead of a fresh upload.
+        oldArfsFileId: arfsFileId,
+        reason,
+      };
+
+      console.log(
+        `FileOperationDetector: Reclassified deferred copy as ${type} — ${sourcePath} -> ${addedPath}`
+      );
+      pendingCopy.resolve(detection);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * SYNC-24 (F1): resolve every outstanding deferred copy as a plain copy and
+   * drop its timer. Used on teardown/drive-switch so no onFileAdd promise is
+   * left pending forever.
+   */
+  private flushPendingCopies(): void {
+    for (const [, pendingCopy] of this.pendingCopies) {
+      clearTimeout(pendingCopy.timeout);
+      pendingCopy.resolve(pendingCopy.copyDetection);
+    }
+    this.pendingCopies.clear();
   }
 
   /**
@@ -472,7 +601,11 @@ export class FileOperationDetector {
       clearTimeout(pending.timeout);
     }
     this.pendingDeletes.clear();
-    
+
+    // SYNC-24 (F1): settle any deferred copy decisions so their onFileAdd
+    // promises never hang. With no source unlink observed they resolve as copy.
+    this.flushPendingCopies();
+
     // Clear recent operations
     this.recentOperations.clear();
     
@@ -574,6 +707,7 @@ export class FileOperationDetector {
       clearTimeout(pending.timeout);
     }
     this.pendingDeletes.clear();
+    this.flushPendingCopies();
     this.recentOperations.clear();
     this.fileMetadataCache.clear();
     this.hashCache.clear();

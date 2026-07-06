@@ -165,7 +165,15 @@ describe('FileOperationDetector — classification', () => {
       ]);
       statMap.set('/sync/dir/duplicate.txt', fileStat(50));
 
-      const result = await detectAdd('/sync/dir/duplicate.txt', 'hash-D');
+      // SYNC-24 (F1): the copy decision is now DEFERRED until the detection
+      // window elapses (so an add-before-unlink move can be caught). With no
+      // unlink of the source, it settles as 'copy' — the outcome is unchanged,
+      // only the timing, so we advance past the window here.
+      const result = await detectAdd(
+        '/sync/dir/duplicate.txt',
+        'hash-D',
+        DETECTION_WINDOW_MS + 300
+      );
 
       // MONEY/HISTORY: a copy must NOT read as 'new' (it isn't fresh content)
       // and must NOT read as 'move' (it must not steal the original's fileId).
@@ -243,12 +251,45 @@ describe('FileOperationDetector — classification', () => {
       expect(result!.type).toBe('rename');
     });
 
-    it('ordering: add BEFORE unlink -> detector reports COPY (original still in DB) [documented quirk]', async () => {
+    it('ordering: add BEFORE unlink, source unlinked in-window -> MOVE (reuses fileId, no re-upload) [SYNC-24 F1]', async () => {
       // If the OS/chokidar surfaces the new file before the unlink of the old
-      // one, there is no pending delete yet. The old file is still present in
-      // the DB with the same hash, so detectCopy fires. Downstream this is a
-      // move being surfaced as a copy — ordering-sensitive behavior worth
-      // pinning. (See findings: add-before-unlink is not treated as a move.)
+      // one, there is no pending delete yet, so detectCopy first sees a copy
+      // candidate (source still in the DB). SYNC-24 (F1): that decision is now
+      // DEFERRED. When the source path is unlinked within the detection window,
+      // the pair is correctly reclassified as a MOVE — the ArFS fileId rides
+      // along (carried by the unlink) so the consumer does a metadata-only move
+      // instead of re-uploading the content and orphaning history.
+      (db as any).getFilesByHash = vi.fn().mockResolvedValue([
+        {
+          id: 'hash-P',
+          localPath: '/sync/a/report.txt',
+          fileName: 'report.txt',
+          fileHash: 'hash-P',
+          fileSize: 5,
+        },
+      ]);
+      statMap.set('/sync/b/report.txt', fileStat(5));
+
+      // The add fires first and reaches the (now deferred) copy decision...
+      const addPromise = detector.onFileAdd('/sync/b/report.txt', 'hash-P');
+      await vi.advanceTimersByTimeAsync(250); // settle + register the pending copy
+      // ...then, still inside the window, the source is unlinked (different dir,
+      // same name -> a move).
+      await detector.onFileDelete('/sync/a/report.txt', 'hash-P', ARFS_ID);
+
+      const result = await addPromise;
+
+      expect(result!.type).toBe('move');
+      expect(result!.oldPath).toBe('/sync/a/report.txt');
+      expect(result!.newPath).toBe('/sync/b/report.txt');
+      // MONEY/HISTORY: the fileId is carried forward -> metadata-only, cost 0.
+      expect(result!.oldArfsFileId).toBe(ARFS_ID);
+    });
+
+    it('ordering: add BEFORE unlink, source STAYS -> COPY once window elapses (genuine copy preserved) [SYNC-24 F1]', async () => {
+      // The disambiguator is purely whether the source is unlinked in-window.
+      // Here it never is (a real duplicate), so the deferred decision settles as
+      // 'copy' — a genuine copy must NEVER be reclassified as a move.
       (db as any).getFilesByHash = vi.fn().mockResolvedValue([
         {
           id: 'hash-P',
@@ -260,10 +301,16 @@ describe('FileOperationDetector — classification', () => {
       ]);
       statMap.set('/sync/dir/b.txt', fileStat(5));
 
-      const result = await detectAdd('/sync/dir/b.txt', 'hash-P');
+      const result = await detectAdd(
+        '/sync/dir/b.txt',
+        'hash-P',
+        DETECTION_WINDOW_MS + 300
+      );
 
       expect(result!.type).toBe('copy');
       expect(result!.oldPath).toBe('/sync/dir/a.txt');
+      // A copy never steals the original's identity.
+      expect(result!.oldArfsFileId).toBeUndefined();
     });
 
     it('multiple concurrent ops in one window are grouped by HASH, not cross-matched', async () => {
@@ -414,7 +461,13 @@ describe('FileOperationDetector — classification', () => {
       ]);
       statMap.set('/sync/dir/source-copy.bin', fileStat(8));
 
-      const result = await detectAdd('/sync/dir/source-copy.bin', 'hash-CP');
+      // SYNC-24 (F1): copy is decided after the window (deferred); advance past
+      // it. The source is never unlinked, so it stays a copy.
+      const result = await detectAdd(
+        '/sync/dir/source-copy.bin',
+        'hash-CP',
+        DETECTION_WINDOW_MS + 300
+      );
 
       expect(result!.type).toBe('copy');
       // A copy detection has no oldArfsFileId — the original keeps its identity.
