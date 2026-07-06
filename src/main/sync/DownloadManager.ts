@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
-import { ArDrive, EID, FolderID } from 'ardrive-core-js';
+import { ArDrive, EID, FolderID, DriveSyncState, IncrementalSyncResult } from 'ardrive-core-js';
 import { DatabaseManager } from '../database-manager';
 import { IFileStateManager, ISyncProgressTracker } from './interfaces';
 // FileHashVerifier no longer needed - we get hash from streaming download
@@ -9,6 +9,7 @@ import { StreamingDownloader } from './StreamingDownloader';
 import { BrowserWindow } from 'electron';
 import { driveKeyManager } from '../drive-key-manager';
 import { runWithGatewayFailover } from './gateway-failover';
+import { incrementalSyncService } from './incremental-sync-service';
 
 export class DownloadManager {
   private isDownloading = false;
@@ -257,7 +258,7 @@ export class DownloadManager {
     }
 
     console.log('Syncing drive metadata to cache...');
-    
+
     if (!this.driveId) {
       console.error('No drive ID available');
       return;
@@ -271,8 +272,242 @@ export class DownloadManager {
       return;
     }
 
+    const isPrivate = mapping.drivePrivacy === 'private';
+    // Resolve the drive key up front. A locked private drive has no key: both the
+    // incremental AND the full path need it, so we let the full path throw the
+    // canonical 'Private drive is locked' (PRIV-5) rather than silently no-op.
+    const driveKey: any = isPrivate ? driveKeyManager.getDriveKey(this.driveId) : null;
+    const canIncremental = incrementalSyncService.isReady() && (!isPrivate || !!driveKey);
+
+    // D-026: incremental delta-resync. Only when a prior sync state exists — a
+    // first sync (or any doubt) falls back to the proven full listing below.
+    if (canIncremental) {
+      let priorState: DriveSyncState | undefined;
+      try {
+        priorState = await incrementalSyncService.loadState(this.driveId);
+      } catch (error) {
+        console.warn('[IncrementalSync] Failed to load prior sync state; using full listing:', error);
+        priorState = undefined;
+      }
+
+      if (priorState) {
+        try {
+          const result = isPrivate
+            ? await incrementalSyncService.syncPrivateDrive(this.driveId, driveKey, priorState)
+            : await incrementalSyncService.syncPublicDrive(this.driveId, priorState);
+
+          const applied = await this.applyIncrementalDelta(mapping, result);
+          if (applied) {
+            await incrementalSyncService.persistState(this.driveId, priorState, result.newSyncState);
+            console.log(
+              `[IncrementalSync] ${this.driveId}: delta applied — ${result.entities.length} changed entity(ies), ` +
+              `${result.stats.fromNetwork} network reads, ${result.stats.totalProcessed} processed`
+            );
+            if (!this.silent) {
+              this.progressTracker.emitSyncProgress({
+                phase: 'metadata',
+                description: 'Drive up to date'
+              });
+            }
+            return;
+          }
+
+          // Delta touched folder structure (rename/move) or had unreachable
+          // entities → a full re-list is the only way to keep descendant paths
+          // correct. Reuse core's already-computed sync state (no extra traversal).
+          console.log(`[IncrementalSync] ${this.driveId}: structural change in delta → full re-list`);
+          await this.fullSyncDriveMetadata(mapping);
+          await incrementalSyncService.persistState(this.driveId, priorState, result.newSyncState);
+          return;
+        } catch (error) {
+          // Never regress correctness: any incremental failure → full listing.
+          console.warn(`[IncrementalSync] ${this.driveId}: incremental sync failed, falling back to full listing:`, error);
+          // fall through
+        }
+      }
+    }
+
+    // Full listing path: first sync, no prior state, incremental unavailable, or
+    // fallback. After it succeeds, establish/refresh the sync state so the NEXT
+    // sync can go incremental.
+    await this.fullSyncDriveMetadata(mapping);
+    if (canIncremental) {
+      try {
+        await this.establishSyncState(this.driveId, isPrivate, driveKey);
+      } catch (error) {
+        console.warn(`[IncrementalSync] ${this.driveId}: failed to establish sync state (next sync will full-list):`, error);
+      }
+    }
+  }
+
+  /**
+   * D-026: after a first full listing (or a fallback), capture and persist the
+   * drive's DriveSyncState so subsequent syncs can resume incrementally. This
+   * lists the drive once via core's incremental sync with NO prior state (full
+   * traversal from genesis) purely to compute the state — it is read-only and
+   * runs at most once per drive (every later sync takes the incremental path).
+   */
+  private async establishSyncState(
+    driveId: string,
+    isPrivate: boolean,
+    driveKey: any
+  ): Promise<void> {
+    const result = isPrivate
+      ? await incrementalSyncService.syncPrivateDrive(driveId, driveKey)
+      : await incrementalSyncService.syncPublicDrive(driveId);
+    await incrementalSyncService.persistState(driveId, undefined, result.newSyncState);
+    console.log(
+      `[IncrementalSync] ${driveId}: established initial sync state @ block ` +
+      `${result.newSyncState.lastSyncedBlockHeight} (${result.entities.length} entities)`
+    );
+  }
+
+  /**
+   * D-026: apply an incremental delta to the metadata cache WITHOUT clearing it.
+   * Returns true if the delta was safely applied; false if the caller must fall
+   * back to a full re-list (structural folder change or unreachable entities,
+   * where descendant paths could otherwise go stale). Never drops entities: it
+   * only upserts the changed ones, leaving unchanged rows exactly as they were.
+   */
+  private async applyIncrementalDelta(
+    mapping: any,
+    result: IncrementalSyncResult
+  ): Promise<boolean> {
+    // Ownership/permission changes make previously-known entities unreachable;
+    // only a full re-list reflects removals correctly.
+    if (result.changes?.unreachable && result.changes.unreachable.length > 0) {
+      return false;
+    }
+
+    const changed = result.entities;
+    if (!changed || changed.length === 0) {
+      // Nothing new since the reorg look-back window — no cache mutation needed.
+      return true;
+    }
+
+    // Build folderId -> {name, parentFolderId} from existing DB folders, then
+    // overlay delta folders (a delta revision wins). Used to reconstruct paths.
+    const existing = await this.databaseManager.getDriveMetadata(mapping.id);
+    const existingByFileId = new Map<string, any>();
+    const folderById = new Map<string, { name: string; parentFolderId?: string }>();
+    for (const row of existing) {
+      const fid = String(row.fileId);
+      existingByFileId.set(fid, row);
+      if (row.type === 'folder') {
+        folderById.set(fid, {
+          name: row.name,
+          parentFolderId: row.parentFolderId ? String(row.parentFolderId) : undefined
+        });
+      }
+    }
+    for (const e of changed) {
+      if (e.entityType === 'folder') {
+        folderById.set(String(e.entityId), {
+          name: e.name,
+          parentFolderId: e.parentFolderId ? String(e.parentFolderId) : undefined
+        });
+      }
+    }
+
+    const rootFolderId = this.rootFolderId ? String(this.rootFolderId) : undefined;
+
+    // Full relative path of a folder (its containing dir + its own name); '' at
+    // the drive root. Throws on an unknown/cyclic parent so the caller falls back
+    // to a full listing rather than writing a wrong path.
+    const folderFullPath = (folderId: string, seen: Set<string> = new Set()): string => {
+      if (rootFolderId && folderId === rootFolderId) return '';
+      if (seen.has(folderId)) throw new Error(`cycle resolving folder path at ${folderId}`);
+      seen.add(folderId);
+      const info = folderById.get(folderId);
+      if (!info) throw new Error(`unknown parent folder ${folderId}`);
+      const parentPath = info.parentFolderId ? folderFullPath(info.parentFolderId, seen) : '';
+      return parentPath ? `${parentPath}/${info.name}` : info.name;
+    };
+    // The directory that CONTAINS an entity = the full path of its parent folder.
+    const containingDirOf = (parentFolderId: string | undefined): string =>
+      parentFolderId ? folderFullPath(String(parentFolderId)) : '';
+
+    // Validation pass: a folder rename/move (folder already in DB but with a new
+    // containing path or name) shifts the paths of its unchanged, not-in-delta
+    // descendants → a full re-list is required to keep them correct.
+    for (const e of changed) {
+      if (e.entityType !== 'folder') continue;
+      const prior = existingByFileId.get(String(e.entityId));
+      if (!prior) continue; // brand-new folder → safe to add
+      let containingDir: string;
+      try {
+        containingDir = containingDirOf(e.parentFolderId ? String(e.parentFolderId) : undefined);
+      } catch {
+        return false;
+      }
+      if (String(prior.path ?? '') !== containingDir || String(prior.name) !== e.name) {
+        return false;
+      }
+    }
+
+    // Apply pass: upsert every changed entity with a reconstructed path. Upsert
+    // is keyed on fileId, so a changed revision updates its row in place; nothing
+    // is deleted, so unchanged entities survive untouched.
+    for (const e of changed) {
+      let containingDir: string;
+      try {
+        containingDir = containingDirOf(e.parentFolderId ? String(e.parentFolderId) : undefined);
+      } catch {
+        return false;
+      }
+
+      const isFile = e.entityType === 'file';
+      const fileId = String(e.entityId);
+      const prior = existingByFileId.get(fileId);
+
+      let localFileExists = false;
+      let syncStatus = prior?.syncStatus || 'pending';
+      if (isFile && this.syncFolderPath) {
+        const localPath = path.join(this.syncFolderPath, containingDir, e.name);
+        try {
+          await fs.access(localPath);
+          localFileExists = true;
+          if (syncStatus !== 'synced' && syncStatus !== 'cloud_only') {
+            syncStatus = 'synced';
+          }
+        } catch {
+          localFileExists = false;
+          if (syncStatus === 'synced') {
+            syncStatus = 'cloud_only';
+          }
+        }
+      }
+
+      await this.databaseManager.upsertDriveMetadata({
+        mappingId: mapping.id,
+        fileId,
+        parentFolderId: e.parentFolderId ? String(e.parentFolderId) : undefined,
+        name: e.name,
+        path: containingDir,
+        type: isFile ? 'file' : 'folder',
+        size: isFile ? this.extractNumericSize((e as any).size) : undefined,
+        lastModifiedDate: this.getUnixTimeAsNumber((e as any).lastModifiedDate),
+        dataTxId: isFile && (e as any).dataTxId ? String((e as any).dataTxId) : undefined,
+        // Incremental entities carry the metadata tx id (`txId`); the recursive
+        // listPublicFolder path cannot, so this is strictly more information.
+        metadataTxId: (e as any).txId ? String((e as any).txId) : undefined,
+        contentType: isFile ? (e as any).dataContentType : undefined,
+        localFileExists,
+        syncStatus
+      });
+    }
+
+    return true;
+  }
+
+  /**
+   * Full metadata listing (the pre-D-026 behavior): clear the cache and rebuild
+   * it from a recursive ArDrive folder walk. Used for first syncs and as the
+   * incremental fallback. `mapping` is already resolved by the caller.
+   */
+  private async fullSyncDriveMetadata(mapping: any): Promise<void> {
     const mappingId = mapping.id;
-    
+
     try {
       // Get existing sync status before clearing
       const existingMetadata = await this.databaseManager.getDriveMetadata(mappingId);
@@ -927,29 +1162,11 @@ export class DownloadManager {
       // Process files (filter to get only files)
       const files = folderContents.filter(item => item.entityType === 'file');
       for (const file of files) {
-        // CRITICAL FIX: ArDrive core might return size as a BigNumber-like object
-        // that needs special handling to get the actual byte value
+        // ArDrive core returns size as a ByteCount / BigNumber-like object that
+        // needs special handling to get the actual byte value (shared helper).
         const fileSize: any = file.size;
-        let numericSize: number;
-        
-        if (fileSize && typeof fileSize === 'object') {
-          // Handle ByteCount object
-          const sizeObj = fileSize as any;
-          // Try different methods to extract the numeric value
-          if (typeof sizeObj.toNumber === 'function') {
-            numericSize = sizeObj.toNumber();
-          } else if (typeof sizeObj.valueOf === 'function') {
-            numericSize = sizeObj.valueOf();
-          } else if (sizeObj._hex) {
-            // ethers.js BigNumber format
-            numericSize = parseInt(sizeObj._hex, 16);
-          } else {
-            numericSize = 0;
-          }
-        } else {
-          numericSize = Number(fileSize) || 0;
-        }
-        
+        const numericSize: number = this.extractNumericSize(fileSize);
+
         // Log size details for debugging
         if (this.DEBUG && (file.name.includes('video') || file.name.includes('movie') || numericSize > 10 * 1024 * 1024)) {
           console.log(`Large file metadata - ${file.name}:`, {
@@ -1127,6 +1344,21 @@ export class DownloadManager {
     if (typeof time === 'number') return time;
     if (time.unixTime) return time.unixTime;
     return undefined;
+  }
+
+  /**
+   * Extract a byte count as a plain number from ardrive-core-js's ByteCount
+   * (or BigNumber-like) values, which cross as objects. Shared by the full
+   * recursive listing and the incremental delta path.
+   */
+  private extractNumericSize(size: any): number {
+    if (size && typeof size === 'object') {
+      if (typeof size.toNumber === 'function') return size.toNumber();
+      if (typeof size.valueOf === 'function') return Number(size.valueOf()) || 0;
+      if (size._hex) return parseInt(size._hex, 16);
+      return 0;
+    }
+    return Number(size) || 0;
   }
 
   private isManifestFile(fileData: any): boolean {
