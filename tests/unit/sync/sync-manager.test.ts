@@ -47,6 +47,12 @@ vi.mock('electron', () => ({
   app: {
     getPath: vi.fn(() => '/mock/user-data'),
   },
+  // UX-29: sync-manager.ts now imports notification-service.ts, which checks
+  // Notification.isSupported() before doing anything else — false here means
+  // every notify* call short-circuits without needing a configManager mock.
+  Notification: {
+    isSupported: vi.fn(() => false),
+  },
 }));
 
 vi.mock('fs/promises', () => ({

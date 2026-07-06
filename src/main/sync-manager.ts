@@ -15,6 +15,7 @@ import { DownloadManager } from './sync/DownloadManager';
 import { FolderOperationDetector, OperationDetection } from './sync/FolderOperationDetector';
 import { FileOperationDetector, FileOperationDetection } from './sync/FileOperationDetector';
 import { driveKeyManager } from './drive-key-manager';
+import { notificationService } from './notification-service';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
 import { retryWithBackoff } from './sync/retry';
 import { resolveDrivePrivacyOrThrow } from './sync/drive-privacy';
@@ -278,6 +279,11 @@ export class SyncManager {
       return true;
     } catch (error) {
       console.error('Failed to start sync:', error);
+      // UX-29: sync failing to start has no other user-facing signal besides
+      // this console.error and the rejected promise the caller may or may not
+      // surface — a native notification makes the failure visible even when
+      // nothing is watching the UI (e.g. silent auto-sync at launch).
+      notificationService.notifySyncError(error instanceof Error ? error.message : 'Failed to start sync');
       this.syncState = 'idle';
       this.isActive = false;
       // PRIV-5 (qa-gate finding): a failed start must not leave the failed
@@ -336,9 +342,34 @@ export class SyncManager {
       phase: 'complete',
       description: 'Metadata sync complete. Files downloading in background.'
     }, silent);
-    
+
+    // UX-29: mirror the renderer-progress silent gate — a silent (background
+    // auto-)sync shouldn't pop a notification every time the app launches.
+    if (!silent) {
+      notificationService.notifySyncComplete(await this.getKnownFileCountForNotification());
+    }
+
     console.log('✅ Metadata sync completed, files queued for background download');
     console.log('🚀 Users can now upload files while downloads continue in background');
+  }
+
+  // UX-29: best-effort file count for the "sync complete" notification. Reads
+  // the drive's currently-known file entries (read-only, no side effects) —
+  // an honest, DB-backed number even though downloadMissingFilesWithProgress()
+  // only QUEUES files for background download rather than blocking on them
+  // (see the 'downloading in background' wording above).
+  private async getKnownFileCountForNotification(): Promise<number> {
+    if (!this.driveId) return 0;
+    try {
+      const mappings = await this.databaseManager.getDriveMappings();
+      const mapping = mappings.find(m => m.driveId === this.driveId);
+      if (!mapping) return 0;
+      const metadata = await this.databaseManager.getDriveMetadata(mapping.id);
+      return metadata.filter((item) => item.type === 'file').length;
+    } catch (error) {
+      console.error('Failed to compute file count for sync-complete notification:', error);
+      return 0;
+    }
   }
 
   // NEW: Start file watcher only after sync complete
@@ -394,6 +425,9 @@ export class SyncManager {
 
     this.watcher.on('error', (error) => {
       console.error('File watcher error:', error);
+      // UX-29: the watcher dying mid-session silently stops sync with no other
+      // signal to the user — surface it.
+      notificationService.notifySyncError(error instanceof Error ? error.message : 'File watcher error');
     });
   }
 
@@ -660,7 +694,11 @@ export class SyncManager {
       phase: 'complete',
       description: 'Sync complete. Files downloading in background.'
     });
-    
+
+    // UX-29: this path is always a user-triggered manual sync (never silent),
+    // so always notify.
+    notificationService.notifySyncComplete(await this.getKnownFileCountForNotification());
+
     // Wait a bit more to ensure all database transactions are complete
     await new Promise(resolve => setTimeout(resolve, 100));
   }
@@ -2324,9 +2362,20 @@ export class SyncManager {
 
       // Before adding the file, ensure all parent folders are in the queue
       await this.ensureParentFoldersInQueue(filePath);
-      
+
       await this.databaseManager.addPendingUpload(pendingUpload);
-      
+
+      // UX-29: this file is a real cost-bearing upload candidate (it has a
+      // cost estimate, unlike the free metadata-only hide/rename/move pending
+      // ops elsewhere in this file) and just landed on the approval queue —
+      // let the user know without requiring the app window to be open.
+      try {
+        const stillPending = await this.databaseManager.getPendingUploads();
+        notificationService.notifyApprovalNeeded(stillPending.length);
+      } catch (notifyError) {
+        console.error('Failed to notify approval-needed:', notifyError);
+      }
+
       // Create file version (without upload info yet, will be updated after upload)
       await this.versionManager.createNewVersion(filePath, changeType);
       
@@ -3220,7 +3269,10 @@ export class SyncManager {
     
     // Emit completion progress event
     this.emitUploadProgress(upload.id, 100, 'completed');
-    
+
+    // UX-29: ambient "it works" confirmation for a completed upload.
+    notificationService.notifyUploadComplete(upload.fileName);
+
     // Add the uploaded file to local cache immediately
     try {
       const driveMappings = await this.databaseManager.getDriveMappings();
