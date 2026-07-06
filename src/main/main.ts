@@ -1968,14 +1968,9 @@ class ArDriveApp {
     }));
 
 
-    ipcMain.handle('files:get-uploads-by-mapping', async (_, mappingId: string) => {
-      try {
-        return await databaseManager.getUploadsByDrive(mappingId); // TODO: Rename parameter from mappingId to driveId
-      } catch (error) {
-        console.error('Failed to get uploads by mapping:', error);
-        throw error;
-      }
-    });
+    ipcMain.handle('files:get-uploads-by-mapping', envelopeHandler(async (_, mappingId: string) => {
+      return await databaseManager.getUploadsByDrive(mappingId); // TODO: Rename parameter from mappingId to driveId
+    }));
 
     // File operations
     ipcMain.handle('files:get-uploads', envelopeHandler(async () => {
@@ -2112,11 +2107,11 @@ class ArDriveApp {
     }));
 
     // Upload approval queue operations
-    ipcMain.handle('uploads:get-pending', async () => {
+    ipcMain.handle('uploads:get-pending', envelopeHandler(async () => {
       return await databaseManager.getPendingUploads();
-    });
+    }));
 
-    ipcMain.handle('uploads:approve', async (_, uploadId: string) => {
+    ipcMain.handle('uploads:approve', envelopeHandler(async (_, uploadId: string) => {
       // Move from pending to actual upload queue
       const pendingUploads = await databaseManager.getPendingUploads();
       const pendingUpload = pendingUploads.find(u => u.id === uploadId);
@@ -2236,14 +2231,14 @@ class ArDriveApp {
       
       // Add to sync manager
       this.syncManager.addToUploadQueue(upload);
-      
-      return true;
-    });
 
-    ipcMain.handle('uploads:reject', async (_, uploadId: string) => {
+      return true;
+    }));
+
+    ipcMain.handle('uploads:reject', envelopeHandler(async (_, uploadId: string) => {
       await databaseManager.updatePendingUploadStatus(uploadId, 'rejected');
       return true;
-    });
+    }));
 
     // SYNC-5: queue an ArFS "unhide" operation for a previously-hidden entity.
     // Routed through the approval queue like hide (it also writes a paid
@@ -2296,7 +2291,7 @@ class ArDriveApp {
       }
     }));
 
-    ipcMain.handle('uploads:approve-all', async () => {
+    ipcMain.handle('uploads:approve-all', envelopeHandler(async () => {
       const pendingUploads = await databaseManager.getPendingUploads();
 
       // Uploads are signed with the wallet — require one to be loaded.
@@ -2439,14 +2434,14 @@ class ArDriveApp {
         totalCount: pendingUploads.length,
         errors: errors.length > 0 ? errors : undefined
       };
-    });
+    }));
 
-    ipcMain.handle('uploads:reject-all', async () => {
+    ipcMain.handle('uploads:reject-all', envelopeHandler(async () => {
       await databaseManager.clearAllPendingUploads();
       return true;
-    });
+    }));
     
-    ipcMain.handle('uploads:cancel', async (_, uploadId: string) => {
+    ipcMain.handle('uploads:cancel', envelopeHandler(async (_, uploadId: string) => {
       try {
         // MONEY-2: cancel in the queue FIRST — pending items are removed
         // before any spend; in-flight items get a cancellation request
@@ -2496,9 +2491,9 @@ class ArDriveApp {
         console.error('Failed to cancel upload:', error);
         throw error;
       }
-    });
-    
-    ipcMain.handle('uploads:retry', async (_, uploadId: string) => {
+    }));
+
+    ipcMain.handle('uploads:retry', envelopeHandler(async (_, uploadId: string) => {
       try {
         // Get the upload from database
         const uploads = await databaseManager.getUploads();
@@ -2543,9 +2538,9 @@ class ArDriveApp {
         console.error('Failed to retry upload:', error);
         throw error;
       }
-    });
-    
-    ipcMain.handle('uploads:retry-all', async () => {
+    }));
+
+    ipcMain.handle('uploads:retry-all', envelopeHandler(async () => {
       try {
         // Get all failed uploads that pass retry admission (MONEY-2)
         const uploads = await databaseManager.getUploads();
@@ -2582,7 +2577,7 @@ class ArDriveApp {
         console.error('Failed to retry all uploads:', error);
         throw error;
       }
-    });
+    }));
 
     // Config operations
     ipcMain.handle('config:get', envelopeHandler(async () => {

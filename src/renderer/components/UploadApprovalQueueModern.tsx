@@ -255,7 +255,16 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
 
   const handleCancelUpload = async (uploadId: string) => {
     try {
-      await window.electronAPI.uploads.cancel(uploadId);
+      // UX-3: the envelope resolves {success:false} instead of throwing, so
+      // check success before clearing UI state — a failed cancel must not
+      // visually drop the item as if it had succeeded. (A successful call that
+      // returns data:false — already-completed/not-found — still proceeds, as
+      // it did before the envelope, since nothing was left to cancel.)
+      const result = await window.electronAPI.uploads.cancel(uploadId);
+      if (!result.success) {
+        console.error('Failed to cancel upload:', result.error);
+        return;
+      }
 
       setUploadingFiles(prev => {
         const newMap = new Map(prev);

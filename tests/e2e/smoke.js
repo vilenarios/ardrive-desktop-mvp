@@ -423,7 +423,9 @@ async function main() {
       // Ground truth first: the pending-upload record via the real preload IPC.
       const pending = await waitUntil(
         async () => {
-          const rows = await page.evaluate(() => window.electronAPI.uploads.getPending());
+          // UX-3 (D-005): uploads:get-pending returns the IpcResult envelope.
+          const res = await page.evaluate(() => window.electronAPI.uploads.getPending());
+          const rows = res && res.success ? res.data : [];
           return Array.isArray(rows) && rows.find((r) => r.fileName === junkName);
         },
         { timeout: QUEUE_TIMEOUT, interval: 3_000, description: `${junkName} in pending uploads` }

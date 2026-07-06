@@ -162,7 +162,7 @@ describe('Dashboard toast feedback (UX-1)', () => {
       success: true,
       data: [driveA, otherDrive],
     });
-    mockElectronAPI.uploads.getPending.mockResolvedValue([]);
+    mockElectronAPI.uploads.getPending.mockResolvedValue({ success: true, data: [] }); // UX-3: enveloped
     mockElectronAPI.files.getDownloads.mockResolvedValue([]);
     mockElectronAPI.files.getQueueStatus.mockResolvedValue({ queued: 0, active: 0, total: 0 });
     mockElectronAPI.profiles.list.mockResolvedValue([]);

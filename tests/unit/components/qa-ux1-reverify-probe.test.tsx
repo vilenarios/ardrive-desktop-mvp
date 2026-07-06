@@ -151,7 +151,7 @@ describe('QA re-verify probe: Dashboard toasts with REAL IPC shapes (698316f)', 
       success: true,
       data: [driveA, otherDrive],
     });
-    mockElectronAPI.uploads.getPending.mockResolvedValue([]);
+    mockElectronAPI.uploads.getPending.mockResolvedValue({ success: true, data: [] }); // UX-3: enveloped
     mockElectronAPI.files.getDownloads.mockResolvedValue([]);
     mockElectronAPI.files.getQueueStatus.mockResolvedValue({ queued: 0, active: 0, total: 0 });
     mockElectronAPI.profiles.list.mockResolvedValue([{ id: 'p1', name: 'P1', address: 'addr' }]);

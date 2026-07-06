@@ -12,6 +12,7 @@ import type {
   DriveSyncMapping,
   FileUpload,
   FileDownload,
+  PendingUpload,
   SyncStatus,
 } from '../types';
 import type { ExportResult } from './wallet-export-manager';
@@ -169,24 +170,31 @@ const api = {
       ipcRenderer.invoke('sync:get-queued-downloads', limit),
   },
 
-  // Upload approval queue operations
+  // Upload approval queue operations (UX-3: migrated to the IpcResult envelope)
   uploads: {
-    getPending: () =>
+    getPending: (): Promise<IpcResult<PendingUpload[]>> =>
       ipcRenderer.invoke('uploads:get-pending'),
-    // Turbo-only (D-010): 'turbo' is the only accepted upload method
-    approve: (uploadId: string, uploadMethod?: 'turbo') =>
+    // Turbo-only (D-010): 'turbo' is the only accepted upload method.
+    // The inner data is a legacy mixed shape (a plain `true` for a queued
+    // upload, or an already-processed/metadata-operation summary object);
+    // no caller reads it — they only need `.success` to know the request ran.
+    approve: (uploadId: string, uploadMethod?: 'turbo'): Promise<IpcResult<
+      boolean
+      | { alreadyProcessed: true; status: string }
+      | { success: true; operationType: string }
+    >> =>
       ipcRenderer.invoke('uploads:approve', uploadId, uploadMethod),
-    reject: (uploadId: string) =>
+    reject: (uploadId: string): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('uploads:reject', uploadId),
-    approveAll: () =>
+    approveAll: (): Promise<IpcResult<{ approvedCount: number; totalCount: number; errors?: string[] }>> =>
       ipcRenderer.invoke('uploads:approve-all'),
-    rejectAll: () =>
+    rejectAll: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('uploads:reject-all'),
-    cancel: (uploadId: string) =>
+    cancel: (uploadId: string): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('uploads:cancel', uploadId),
-    retry: (uploadId: string) =>
+    retry: (uploadId: string): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('uploads:retry', uploadId),
-    retryAll: () =>
+    retryAll: (): Promise<IpcResult<number>> =>
       ipcRenderer.invoke('uploads:retry-all'),
   },
 
@@ -375,9 +383,9 @@ const api = {
       ipcRenderer.invoke('multi-sync:status'),
   },
 
-  // Enhanced file operations
+  // Enhanced file operations (UX-3: migrated to the IpcResult envelope)
   multiFiles: {
-    getUploadsByDrive: (driveId: string) =>
+    getUploadsByDrive: (driveId: string): Promise<IpcResult<FileUpload[]>> =>
       ipcRenderer.invoke('files:get-uploads-by-mapping', driveId), // TODO: Rename IPC channel
   },
 

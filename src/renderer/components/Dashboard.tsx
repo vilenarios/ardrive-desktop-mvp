@@ -141,8 +141,12 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const loadPendingUploads = async () => {
     try {
-      const pending = await window.electronAPI.uploads.getPending();
-      setPendingUploads(pending);
+      const result = await window.electronAPI.uploads.getPending();
+      if (result.success) {
+        setPendingUploads(result.data);
+      } else {
+        console.error('Failed to load pending uploads:', result.error);
+      }
     } catch (err) {
       console.error('Failed to load pending uploads:', err);
     }
@@ -538,7 +542,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleApproveUpload = async (uploadId: string, uploadMethod?: 'turbo', metadata?: any) => {
     try {
       // TODO: Handle metadata parameter when API supports it
-      await window.electronAPI.uploads.approve(uploadId, uploadMethod);
+      // UX-3: the envelope resolves {success:false} instead of throwing, so the
+      // catch below no longer fires on a handler error — check success here.
+      const result = await window.electronAPI.uploads.approve(uploadId, uploadMethod);
+      if (!result.success) {
+        console.error('Failed to approve upload:', result.error);
+      }
       // Don't reload pending uploads immediately - let upload progress events handle state updates
       // The file should remain visible with progress indicators until completion
     } catch (err) {
@@ -548,7 +557,12 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleRejectUpload = async (uploadId: string) => {
     try {
-      await window.electronAPI.uploads.reject(uploadId);
+      // UX-3: envelope resolves {success:false} instead of throwing.
+      const result = await window.electronAPI.uploads.reject(uploadId);
+      if (!result.success) {
+        console.error('Failed to reject upload:', result.error);
+        return;
+      }
       await loadPendingUploads();
     } catch (err) {
       console.error('Failed to reject upload:', err);
@@ -558,15 +572,23 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleApproveAll = async () => {
     try {
       const result = await window.electronAPI.uploads.approveAll();
-      
-      // Handle the new response format (UX-9: surface via toast, not window.alert)
-      if (result.errors && result.errors.length > 0) {
-        const errorMessage = `Only ${result.approvedCount} of ${result.totalCount} files were approved. ${result.errors.join(' ')}`;
-        toast?.error(errorMessage);
-      } else if (result.approvedCount > 0) {
-        console.log(`Successfully approved ${result.approvedCount} uploads`);
+
+      // UX-3: envelope resolves {success:false} instead of throwing — surface
+      // the failure the same way the old catch did, then unwrap the summary.
+      if (!result.success) {
+        toast?.error(`Failed to approve uploads: ${result.error}`);
+        return;
       }
-      
+
+      const { approvedCount, totalCount, errors } = result.data;
+      // Handle the new response format (UX-9: surface via toast, not window.alert)
+      if (errors && errors.length > 0) {
+        const errorMessage = `Only ${approvedCount} of ${totalCount} files were approved. ${errors.join(' ')}`;
+        toast?.error(errorMessage);
+      } else if (approvedCount > 0) {
+        console.log(`Successfully approved ${approvedCount} uploads`);
+      }
+
       // Don't reload pending uploads immediately - let upload progress events handle state updates
       // The files should remain visible with progress indicators until completion
     } catch (err) {
@@ -577,7 +599,12 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handleRejectAll = async () => {
     try {
-      await window.electronAPI.uploads.rejectAll();
+      // UX-3: envelope resolves {success:false} instead of throwing.
+      const result = await window.electronAPI.uploads.rejectAll();
+      if (!result.success) {
+        console.error('Failed to reject all uploads:', result.error);
+        return;
+      }
       await loadPendingUploads();
     } catch (err) {
       console.error('Failed to reject all uploads:', err);
