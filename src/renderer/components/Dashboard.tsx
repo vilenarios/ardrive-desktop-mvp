@@ -1060,15 +1060,21 @@ const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {/* Sync Progress Modal */}
+      {/* Sync Progress Modal.
+          UX-8: onClose now also covers the user manually dismissing a failed
+          sync (header close button, Escape, backdrop-click, or the footer
+          Dismiss button) — not just the auto-close-on-complete case the
+          comment below originally described. onRetry re-runs the same
+          manual-sync handler the "Sync Now" button uses. */}
       {syncProgress && (
         <SyncProgressDisplay
           progress={syncProgress}
           onClose={() => {
-            // Clear sync progress when modal is closed
-            // This will be called by the component when phase is 'complete'
+            // Clear sync progress when the modal is closed, whether that
+            // close was automatic (phase 'complete') or user-initiated.
             onSyncProgressClear?.();
           }}
+          onRetry={handleSync}
         />
       )}
 

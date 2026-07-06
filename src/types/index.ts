@@ -180,12 +180,18 @@ export interface ConflictResolution {
 }
 
 export interface SyncProgress {
-  phase: 'starting' | 'metadata' | 'folders' | 'files' | 'verification' | 'complete';
+  phase: 'starting' | 'metadata' | 'folders' | 'files' | 'verification' | 'complete' | 'error';
   description: string;
   currentItem?: string;
   itemsProcessed?: number;
   estimatedRemaining?: number;
   progress?: number; // Optional real-time progress percentage (0-100)
+  // UX-8: present when the sync operation failed, so the progress modal can
+  // show an honest error instead of an infinite/silently-vanishing spinner.
+  // main.ts's `sync:manual` error path already emits the legacy shorthand
+  // `{ phase: 'complete', error: true }` (message is in `description`);
+  // renderer-side failure handlers set `phase: 'error'` with a real message.
+  error?: string | boolean;
 }
 
 export interface FileDownload {

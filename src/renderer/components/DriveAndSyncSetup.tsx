@@ -89,8 +89,10 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
       // Also update the simple progress text for fallback
       setSetupProgress(progress.description);
       
-      // Hide sync progress modal when complete
-      if (progress.phase === 'complete') {
+      // Hide sync progress modal when complete. UX-8: never auto-hide an
+      // error completion — it must stay up (dismissible) until the user
+      // reads it and acts, not vanish silently after 2s.
+      if (progress.phase === 'complete' && !progress.error) {
         setTimeout(() => {
           setSyncProgress(null);
         }, 2000); // Show complete state for 2 seconds
@@ -183,6 +185,9 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
     setLoading(true);
     setError(null);
     setSetupProgress('');
+    // UX-8: clear any stale error left on the sync-progress modal by a prior
+    // failed attempt so Retry starts from a clean slate.
+    setSyncProgress(null);
 
     try {
       // Check wallet is loaded first
@@ -298,9 +303,18 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
       // a "Try Again" affordance (idempotent — see provisionedRef above).
       console.error('Setup error:', err);
       const rawMessage = err instanceof Error ? err.message : 'Setup failed';
-      setError(toFriendlySetupError(rawMessage));
+      const friendlyMessage = toFriendlySetupError(rawMessage);
+      setError(friendlyMessage);
       setSetupProgress('');
       setLoading(false);
+      // UX-8: sync:start (e.g. inside the "Starting sync engine…" step) never
+      // emits a compensating progress event on failure, so the sync-progress
+      // modal below was left frozen on its last phase forever — no error, no
+      // way to dismiss it, completely hiding the "Try Again" banner above.
+      // Only step in if that modal was actually showing (i.e. a sync-progress
+      // event had already arrived); transition the SAME modal to its error
+      // state instead of leaving stale progress in place.
+      setSyncProgress(prev => (prev ? { phase: 'error', description: friendlyMessage, error: friendlyMessage } : null));
     }
   };
 
@@ -765,10 +779,16 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
         </div>
       </div>
       
-      {/* Sync Progress Modal during initial setup */}
+      {/* Sync Progress Modal during initial setup.
+          UX-8: this used to render with no onClose at all — a sync:start
+          failure left it frozen on its last phase with zero way to dismiss
+          it. Now it always has a close/dismiss path, and Retry re-runs the
+          same idempotent handleSetup the inline "Try Again" banner uses. */}
       {syncProgress && syncProgress.phase !== 'complete' && (
-        <SyncProgressDisplay 
+        <SyncProgressDisplay
           progress={syncProgress}
+          onClose={() => setSyncProgress(null)}
+          onRetry={handleSetup}
         />
       )}
     </div>
