@@ -8,9 +8,17 @@ interface SyncFolderSetupProps {
   onSetupComplete: () => void;
   onBack?: () => void;
   onSkipSetup?: () => void;
+  // UX-28: optional so existing callers/tests that don't pass it keep
+  // working — the hand-off toast below is a no-op (via `toast?.info`) when
+  // it's absent, never a crash.
+  toast?: {
+    success: (message: string) => void;
+    error: (message: string) => void;
+    info: (message: string) => void;
+  };
 }
 
-const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplete, onBack, onSkipSetup }) => {
+const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplete, onBack, onSkipSetup, toast }) => {
   const [syncFolder, setSyncFolder] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,16 +93,34 @@ const SyncFolderSetup: React.FC<SyncFolderSetupProps> = ({ drive, onSetupComplet
       
       // Go to dashboard immediately - sync will start in background
       onSetupComplete();
-      
+
       // Start sync in background after navigating to dashboard
       setTimeout(async () => {
         try {
           await window.electronAPI.sync.start();
+
+          // UX-28: this hand-off used to be completely silent — the user
+          // lands on the dashboard with a download already under way and no
+          // cue anything is happening. sync.start() only resolves once the
+          // full-drive listing (and download queueing) is done, so the
+          // queue's live total is already accurate at this point — reuse the
+          // same files:get-queue-status count the Download Queue tab shows,
+          // never a fabricated number. No toast if there's nothing to
+          // download (e.g. a brand-new/empty drive).
+          try {
+            const queueStatusResult = await window.electronAPI.files.getQueueStatus();
+            const total = queueStatusResult.success ? queueStatusResult.data?.total ?? 0 : 0;
+            if (total > 0) {
+              toast?.info(`Downloading ${total} file${total === 1 ? '' : 's'} in the background`);
+            }
+          } catch (queueErr) {
+            console.error('Failed to fetch download queue status for hand-off toast:', queueErr);
+          }
         } catch (err) {
           console.error('Failed to start sync:', err);
         }
       }, 100);
-      
+
     } catch (err) {
       console.error('Setup error:', err);
       setError(err instanceof Error ? err.message : 'Setup failed');

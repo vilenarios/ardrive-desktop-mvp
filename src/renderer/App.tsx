@@ -924,11 +924,12 @@ const App: React.FC = () => {
 
       case 'sync-setup':
         return drive ? (
-          <SyncFolderSetup 
-            drive={drive} 
+          <SyncFolderSetup
+            drive={drive}
             onSetupComplete={handleDriveSetupComplete}
             onBack={() => setAppState('welcome-back')}
             onSkipSetup={handleSkipSetup}
+            toast={toast}
           />
         ) : (
           <DriveAndSyncSetup onSetupComplete={handleDriveSetupComplete} />

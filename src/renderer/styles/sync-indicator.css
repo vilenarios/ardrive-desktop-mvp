@@ -1,0 +1,52 @@
+/* UX-28: persistent global sync indicator — a compact chip in the dashboard
+ * header (visible from every tab) reporting live sync state. Tokens per
+ * docs/product/DESIGN-SYSTEM.md; state names/colors mirror the tray's
+ * ambient status center (UX-30, src/main/tray-status.ts) via
+ * src/renderer/utils/syncIndicatorStatus.ts so the header chip and the tray
+ * tooltip never disagree.
+ */
+.sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.sync-indicator-syncing {
+  color: var(--ardrive-primary);
+  border-color: var(--ardrive-primary);
+  background: var(--ardrive-primary-50);
+}
+
+.sync-indicator-up-to-date {
+  color: var(--success-fg);
+  border-color: var(--success);
+  background: var(--success-surface);
+}
+
+.sync-indicator-paused {
+  color: var(--icon-mid);
+  border-color: var(--border);
+  background: var(--surface-inset);
+}
+
+.sync-indicator-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+@media (max-width: 768px) {
+  .sync-indicator-label {
+    max-width: 120px;
+  }
+}
