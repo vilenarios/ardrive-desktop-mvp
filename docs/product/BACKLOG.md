@@ -302,6 +302,26 @@ DONE 2026-07-05 (branch test/operation-detectors, Opus). Added 37 deterministic 
 ### UX-28 · P2 · Beta-polish · `todo`
 **Persistent global sync indicator.** Found by the live UI-during-sync observation (UAT-UI-DURING-SYNC, 2026-07-05): the during-sync UX is otherwise beta-ready (setup modal + per-file status transitions + Download Queue drains live + responsive + honest copy), but the ONLY place overall progress is visible is the Download Queue tab's badge — the default Overview tab shows nothing while a sync runs, and the setup modal exits with a silent hand-off (no "downloading in background" cue). Fix (cheap, high-polish → "Dropbox-grade"): a persistent header/status-bar "Syncing N files…" indicator visible from any tab, + a hand-off toast when the setup modal closes into a background download. Acceptance: during an active sync, overall progress is visible without opening the Download Queue tab.
 
+<!-- Consumer-grade UX cluster (OneDrive/iCloud parity) — Phil, 2026-07-05. Framing: match the ambient "it just works + always tells you what's happening" polish, AND lean into what ArDrive does BETTER (permanent version history, privacy, proof). Cheap Tier-1 (UX-28/29) are beta-polish; the rest post-beta. -->
+
+### UX-29 · P2 · Beta-polish · `todo`
+**Desktop notifications (currently NONE).** No native OS notifications exist (`src/main/` has zero `Notification` usage). Add native notifications for the ambient "it works" feel: upload complete / sync finished / sync error / approval needed / private-drive unlock reminder. Cheapest high-impact modern-app win. Respect an opt-out in Settings. Acceptance: completing a sync or hitting an error raises a clickable native OS notification.
+
+### UX-30 · P2 · Post-beta · `todo`
+**Ambient tray status center.** The tray exists (createTray/context-menu/tooltip, main.ts:316+) but is static. Upgrade it to a live status center like OneDrive's menu-bar icon: tooltip + menu show "Up to date" / "Syncing N files…" / "Paused", recent activity, and quick actions (pause/resume, open folder, open app, sign-out). Pairs with UX-28 (in-app) + UX-31 (pause/resume).
+
+### UX-31 · P2 · Post-beta · `todo`
+**User-triggered pause/resume sync.** A paused *state* is shown (Dashboard sync-status-widget is-paused) but there's no user control to pause/resume. Add first-class pause/resume (app + tray), plus optional wifi-only/bandwidth. Acceptance: the user can pause syncing and resume it; state is clear and persists across the session.
+
+### FEAT-6 · P1 · Track A (post-beta) · `idea`
+**Version history UI (lean on ArFS revisions).** ArFS already versions files; SYNC-26 makes the desktop thread the fileId so edits are true revisions. Surface it: per-file "History" showing each revision (time, size, tx) with view/restore. THE differentiator — **permanent version history: every version preserved on Arweave forever** (vs OneDrive's 30-day window). Depends on SYNC-26 + a revision-listing path. Acceptance: a file with multiple revisions shows them all and can restore/download any prior version.
+
+### FEAT-7 · P1 · Track A (post-beta) · `idea`
+**Files-on-demand / storage optimization (iCloud "Optimize Storage").** Show the WHOLE drive (already listable fast via snapshots) while downloading files only on open; "free up space" evicts local bytes but keeps the entry + can re-download; per-item "always keep on this device." The permaweb view + download queue + SYNC-13 eviction are a partial foundation. High value for large drives. Deepest form (native Finder/Explorer status-overlay icons via Windows Cloud Files / macOS File Provider APIs) is a GA/v2 goal.
+
+### UX-32 · P2 · Post-beta · `idea`
+**Silent free-tier auto-sync (reconcile cost model with "just works").** Today every upload needs approval (cost control). Compromise: auto-upload FREE (<105 KiB) files silently (opt-in), and only surface the approval queue when an upload actually costs money. Keeps money control where it matters while making the common case frictionless. Acceptance: free-tier changes sync without a prompt (when enabled); anything with a cost still requires explicit approval.
+
 ### PRIV-0 · P0 · Phase 1 · `wont-fix`
 **Feature-flag private drives off for beta.** Obsolete: D-010 (2026-07-03) put private drives IN the beta — they stay enabled and get fixed (PRIV-1..7 rephased onto the critical path) instead of hidden.
 
