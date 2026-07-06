@@ -67,6 +67,35 @@
   white-space: nowrap;
 }
 
+/* UX-15: only one drive syncs at a time in this beta (D-010). This pill is
+ * the truth signal for "which drive is actually the one that syncs" — shown
+ * on the trigger for the active drive, and per-row inside the dropdown for
+ * every mapped drive (active = "Syncing", everything else = "Not syncing").
+ * Per DESIGN-SYSTEM.md §6.8: pill padding, status pair = -surface bg + -fg
+ * text; text itself (not just color) carries the meaning.
+ */
+.drive-selector-sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.drive-selector-sync-badge.is-syncing {
+  background: var(--success-surface);
+  color: var(--success-fg);
+}
+
+.drive-selector-sync-badge.is-not-syncing {
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+}
+
 .drive-selector-chevron {
   flex-shrink: 0;
   transition: transform var(--motion-base) var(--ease-standard);
@@ -98,6 +127,21 @@
   max-width: 360px;
   /* reuse the existing dropdown-fade-in keyframe (styles.css, user-menu) */
   animation: dropdown-fade-in var(--motion-moderate) var(--ease-out);
+}
+
+/* UX-15: explains the one-drive-at-a-time model right where multiple
+ * drives are listed together — the only surface in the app that shows
+ * more than one drive at once. */
+.drive-selector-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .drive-selector-option {

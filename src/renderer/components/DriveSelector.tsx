@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check, Plus, HardDrive, Lock, Globe, Star } from 'lucide-react';
+import { ChevronDown, Check, Plus, HardDrive, Lock, Globe, Star, RefreshCw } from 'lucide-react';
 import { DriveInfo, DriveInfoWithStatus } from '../../types';
 import { PrivateDriveUnlockModal } from './PrivateDriveUnlockModal';
 import { InfoButton } from './common/InfoButton';
@@ -139,6 +139,17 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
           <span className="drive-selector-button-name" title={currentDrive?.name || undefined}>
             {isLoading ? 'Loading...' : (currentDrive?.name || 'Select Drive')}
           </span>
+          {/* UX-15: per D-010, only one drive syncs at a time in this beta.
+              This trigger only ever shows the *active* drive, but nothing
+              said so explicitly — a user could easily assume every drive
+              they've added is syncing in the background. This badge is the
+              always-visible (no dropdown open required) truth signal. */}
+          {!isLoading && currentDrive && (
+            <span className="drive-selector-sync-badge is-syncing">
+              <RefreshCw size={10} />
+              Syncing
+            </span>
+          )}
         </span>
         <ChevronDown
           size={16}
@@ -148,14 +159,30 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
 
       {isOpen && !isLoading && (
         <div className="drive-selector-dropdown">
+          {/* UX-15: per D-010, this beta syncs exactly one drive at a time —
+              every other mapped drive stays connected (its ArFS metadata is
+              reachable) but its local folder is not watched or synced. Say
+              so plainly, right where multiple drives are shown together. */}
+          <div className="drive-selector-dropdown-header">
+            <span>Your Drives</span>
+            <InfoButton tooltip="One drive syncs at a time in this beta; others stay connected. Simultaneous sync is coming." />
+          </div>
+
           {drives.map((drive) => {
             const isActive = currentDrive?.id === drive.id;
+            const isLockedPrivate = drive.privacy === 'private' && drive.isLocked;
             const remembered = isDriveRemembered(drive);
+            const optionLabel = isActive
+              ? `${drive.name}, currently syncing`
+              : isLockedPrivate
+                ? `${drive.name}, locked and not syncing. Unlock to sync this drive instead.`
+                : `${drive.name}, not syncing. Select to sync this drive instead — only one drive syncs at a time.`;
             return (
               <React.Fragment key={drive.id}>
                 <button
                   className={`drive-selector-option ${isActive ? 'is-active' : ''}`}
                   onClick={() => handleDriveClick(drive)}
+                  aria-label={optionLabel}
                 >
                   {isActive ? (
                     <Check size={16} className="drive-selector-option-check" />
@@ -169,6 +196,21 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
                       <span className="drive-selector-option-fingerprint">
                         {drive.emojiFingerprint}
                       </span>
+                    )}
+                  </span>
+                  {/* UX-15: the truth signal for THIS row — active vs. every
+                      other mapped drive, which is connected but not syncing. */}
+                  <span
+                    className={`drive-selector-sync-badge ${isActive ? 'is-syncing' : 'is-not-syncing'}`}
+                    aria-hidden="true"
+                  >
+                    {isActive ? (
+                      <>
+                        <RefreshCw size={10} />
+                        Syncing
+                      </>
+                    ) : (
+                      'Not syncing'
                     )}
                   </span>
                   {drive.privacy === 'private' ? (

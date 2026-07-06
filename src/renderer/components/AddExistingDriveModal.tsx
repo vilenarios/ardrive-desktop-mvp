@@ -167,13 +167,18 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
               alignItems: 'flex-start',
               gap: 'var(--space-1)'
             }}>
+              {/* UX-15: adding a drive maps it, but the mapping starts inactive
+                  (isActive: false below) — only the app's one active drive
+                  actually syncs (D-010). Saying "will be synced" here was
+                  simply false for any drive beyond the first. */}
               <span>
-                Select a drive to add to this device. It will be synced to a subfolder in
-                your current sync location, and files will sync both ways between the two.
+                Select a drive to add to this device. A local subfolder will be created for it
+                in your current sync location. Only one drive syncs at a time in this beta, so
+                this drive stays connected but won&apos;t sync unless you switch to it.
               </span>
               {/* INFO-8 / COPY-6: what a drive actually is, and that the local
                   folder mirrors it bidirectionally, was explained nowhere. */}
-              <InfoButton tooltip="A drive is your own permanent storage space on Arweave — like a top-level folder that lives on the network forever. This local folder is just a mirror of it: files sync both ways, so a local delete or a remote change can propagate to the other side." />
+              <InfoButton tooltip="A drive is your own permanent storage space on Arweave — like a top-level folder that lives on the network forever. This local folder is just a mirror of it: files sync both ways, so a local delete or a remote change can propagate to the other side. In this beta, that mirroring only happens for whichever one drive is currently active." />
             </div>
 
             <div className="drive-list">
@@ -217,10 +222,14 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
             </div>
 
             {/* Selected Drive Info */}
+            {/* UX-15: "Will be synced to" overstated it — the mapping is
+                created inactive, so nothing syncs here until this drive is
+                made the active one. "Local folder" is what's actually and
+                unconditionally true the moment this action completes. */}
             {selectedDrive && currentSyncFolder && (
               <div className="modal-banner is-neutral" style={{ marginBottom: 'var(--space-4)' }}>
                 <FolderOpen size={16} />
-                <span>Will be synced to: <strong>{currentSyncFolder}/{selectedDrive.name}</strong></span>
+                <span>Local folder: <strong>{currentSyncFolder}/{selectedDrive.name}</strong></span>
               </div>
             )}
           </>
