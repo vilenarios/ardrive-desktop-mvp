@@ -33,6 +33,12 @@ import { getGatewayConfig } from '../gateway';
 import { databaseManager } from '../database-manager';
 import { SqliteSyncStateStore } from './sqlite-sync-state-store';
 
+// SYNC-30: head-room added to the drive's known-entity count when deriving
+// core's `stopAfterKnownCount`. Absorbs the handful of entities that may be
+// added between capturing a sync state and the next resync, so the early-stop
+// still cannot trip inside the look-back window.
+const STOP_AFTER_KNOWN_COUNT_BUFFER = 100;
+
 class IncrementalSyncService {
   private wallet: Wallet | null = null;
   private arDrive: ArDrive | null = null;
@@ -124,6 +130,7 @@ class IncrementalSyncService {
     this.logLookBack(driveId, priorState);
     return this.getArDrive().syncPublicDrive(EID(driveId), undefined, {
       syncState: priorState,
+      stopAfterKnownCount: this.stopAfterKnownCountFor(priorState),
     });
   }
 
@@ -136,7 +143,44 @@ class IncrementalSyncService {
     this.logLookBack(driveId, priorState);
     return this.getArDrive().syncPrivateDrive(EID(driveId), driveKey, undefined, {
       syncState: priorState,
+      stopAfterKnownCount: this.stopAfterKnownCountFor(priorState),
     });
+  }
+
+  /**
+   * SYNC-30: choose core's `stopAfterKnownCount` for a resumed incremental sync.
+   *
+   * core scans the 240-block reorg look-back window newest-first and early-stops
+   * after it sees `stopAfterKnownCount` already-known entities OF A SINGLE TYPE
+   * (default 10), dropping the rest of the in-window entities from the fetch and
+   * reporting them `unreachable`. DownloadManager treats any `unreachable > 0` as
+   * "fall back to a full re-list", so with the default any drive holding >10
+   * unchanged entities of one type in the trailing 240-block window fell back to
+   * a full listing on EVERY sync — the incremental fast path never engaged for
+   * actively-used drives (and it paid for a delta query on top).
+   *
+   * The look-back window is bounded (240 blocks) and the GraphQL query is already
+   * scoped to it, so scanning the whole in-window delta is bounded work — never
+   * more than the full re-list it replaces, and without the recursive folder
+   * traversal. We raise the threshold above the drive's total known-entity count
+   * (+buffer) so the early-stop cannot trip INSIDE the window: the per-type
+   * counter can never exceed the drive's total known-entity count.
+   *
+   * SAFETY (no-dropped-entities invariant): a higher `stopAfterKnownCount` only
+   * ever causes core to fetch MORE entities, never fewer, so it cannot drop an
+   * entity from the result. A genuinely-gone in-window entity (reorged out /
+   * ownership or permission change) is still absent from the fetch and still
+   * correctly reported `unreachable`, so the full-list fallback still fires for
+   * real structural changes.
+   *
+   * Returns undefined for a first/genesis listing (no prior state): nothing is
+   * known yet, so the early-stop can never trip and core's default is harmless.
+   */
+  private stopAfterKnownCountFor(priorState?: DriveSyncState): number | undefined {
+    if (!priorState) {
+      return undefined;
+    }
+    return priorState.entityStates.size + STOP_AFTER_KNOWN_COUNT_BUFFER;
   }
 
   private logLookBack(driveId: string, priorState?: DriveSyncState): void {

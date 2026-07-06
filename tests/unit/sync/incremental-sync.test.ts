@@ -88,10 +88,30 @@ const deltaFolder = (id: string, parentId: string, name: string) => ({
   blockHeight: 1500000,
 });
 
+// A realistic reorg look-back window: an actively-used drive has MANY unchanged
+// entities inside the trailing 240 blocks (SYNC-30). Empty-map fixtures hid the
+// early-stop bug — core used to early-stop after 10 known entities and report the
+// rest `unreachable`, forcing a full re-list every sync. With the fix
+// (stopAfterKnownCount raised above the known-entity count) a large window still
+// yields unreachable === 0, so these fixtures carry a >10-entity window by
+// default to stay honest about what an active drive actually returns.
+const windowOfSize = (n: number) => {
+  const m = new Map<string, any>();
+  for (let i = 0; i < n; i++) {
+    m.set(`w${i}`, { entityId: eid(`w${i}`), blockHeight: 1500000 });
+  }
+  return m;
+};
+
 const incResult = (entities: any[], over: any = {}) => ({
   entities,
   changes: { added: [], modified: [], unreachable: over.unreachable ?? [] },
-  newSyncState: { driveId: DRIVE_ID, lastSyncedBlockHeight: 1500000, entityStates: new Map() },
+  newSyncState: {
+    driveId: DRIVE_ID,
+    lastSyncedBlockHeight: 1500000,
+    // >10 unchanged in-window entities — the exact shape that used to fall back.
+    entityStates: over.entityStates ?? windowOfSize(over.windowSize ?? 15),
+  },
   stats: { totalProcessed: entities.length, fromNetwork: entities.length, fromCache: 0, lowestBlockHeight: 0, highestBlockHeight: 0 },
 });
 
@@ -221,16 +241,43 @@ describe('D-026: incremental delta-resync in syncDriveMetadata', () => {
     );
   });
 
-  it('unchanged re-sync (empty delta) mutates nothing', async () => {
+  it('SYNC-30: an active drive with a large (>10-entity) look-back window still takes the fast path (unreachable=0) — mutates nothing', async () => {
+    // Realistic active drive: 15 unchanged entities inside the trailing 240
+    // blocks. Pre-fix core early-stopped after 10 and reported the other 5
+    // `unreachable`, forcing a full re-list on EVERY sync; with the raised
+    // stopAfterKnownCount the delta comes back empty with unreachable=[].
     (db.getDriveMetadata as any).mockResolvedValue([dbFile(FILE_1, 'a.txt', '', ROOT, 'dtx-1')]);
-    svc.loadState.mockResolvedValue({ lastSyncedBlockHeight: 1500000, entityStates: new Map() });
-    svc.syncPublicDrive.mockResolvedValue(incResult([])); // nothing changed
+    svc.loadState.mockResolvedValue({ lastSyncedBlockHeight: 1500000, entityStates: windowOfSize(15) });
+    const result = incResult([], { windowSize: 15 }); // >10 in-window, nothing changed
+    expect(result.newSyncState.entityStates.size).toBeGreaterThan(10);
+    expect(result.changes.unreachable.length).toBe(0);
+    svc.syncPublicDrive.mockResolvedValue(result);
 
     await dm.syncDriveMetadata();
 
+    // FAST path: no folder-by-folder re-listing, no cache clear, no writes.
     expect(recursiveReadCount()).toBe(0);
     expect(db.clearDriveMetadataCache).not.toHaveBeenCalled();
     expect(db.upsertDriveMetadata).not.toHaveBeenCalled();
+    expect(svc.persistState).toHaveBeenCalled();
+  });
+
+  it('falls back to a full re-list when core reports genuinely unreachable entities (ownership/permission change/reorg)', async () => {
+    // A stored in-window entity is now truly absent from the re-fetch — a real
+    // removal, NOT the early-stop artifact. unreachable>0 must force a full
+    // re-list so the removal is reflected. (The raised stopAfterKnownCount never
+    // masks this: a genuinely-gone entity is still absent from the fetch.)
+    (db.getDriveMetadata as any).mockResolvedValue([dbFile(FILE_1, 'a.txt', '', ROOT, 'dtx-1')]);
+    svc.loadState.mockResolvedValue({ lastSyncedBlockHeight: 1500000, entityStates: windowOfSize(15) });
+    svc.syncPublicDrive.mockResolvedValue(
+      incResult([], { unreachable: [{ entityId: eid(FILE_2), blockHeight: 1500000 }] })
+    );
+
+    await dm.syncDriveMetadata();
+
+    // Genuine unreachable → full re-list (clear + recursive read).
+    expect(db.clearDriveMetadataCache).toHaveBeenCalledWith('mapping-1');
+    expect(recursiveReadCount()).toBe(2);
     expect(svc.persistState).toHaveBeenCalled();
   });
 
