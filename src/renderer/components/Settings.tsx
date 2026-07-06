@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, FolderOpen, Key, Info, ExternalLink, Globe } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, FolderOpen, Key, Info, ExternalLink, Globe, ShieldCheck } from 'lucide-react';
 import { AppConfig } from '../../types';
 import { InfoButton } from './common/InfoButton';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -36,6 +36,57 @@ const Settings: React.FC<SettingsProps> = ({
   const [isSavingGateway, setIsSavingGateway] = useState(false);
   const [gatewayError, setGatewayError] = useState<string | null>(null);
   const [gatewaySaved, setGatewaySaved] = useState(false);
+
+  // SEC-4: "remember me on this device" (OS keychain) consent. `null` = still
+  // resolving whether a secure keychain is even available on this device.
+  const [keychainAvailable, setKeychainAvailable] = useState<boolean | null>(null);
+  const [rememberDevice, setRememberDevice] = useState<boolean>(config.rememberDevice === true);
+  const [isSavingRemember, setIsSavingRemember] = useState(false);
+  const [rememberError, setRememberError] = useState<string | null>(null);
+
+  // Resolve the true keychain availability + persisted consent from the main
+  // process whenever the modal opens (config.rememberDevice is only the seed).
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const availRes = await window.electronAPI.security.isKeychainAvailable();
+        const consentRes = await window.electronAPI.security.getKeychainConsent();
+        if (cancelled) return;
+        setKeychainAvailable(availRes.success ? availRes.data === true : false);
+        if (consentRes.success) {
+          setRememberDevice(consentRes.data === true);
+        }
+      } catch (error) {
+        if (!cancelled) setKeychainAvailable(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen]);
+
+  // Enabling persists the login to the OS keychain; disabling (or "Forget this
+  // device") durably clears it. The main process is the source of truth for the
+  // resulting state, so reflect exactly what it returns.
+  const applyRememberConsent = async (next: boolean) => {
+    setIsSavingRemember(true);
+    setRememberError(null);
+    try {
+      const result = await window.electronAPI.security.setKeychainConsent(next);
+      if (!result.success) {
+        setRememberError(result.error || 'Could not update this setting. Please try again.');
+        return;
+      }
+      setRememberDevice(result.data === true);
+    } catch (error) {
+      setRememberError('Could not update this setting. Please try again.');
+    } finally {
+      setIsSavingRemember(false);
+    }
+  };
+
+  const handleToggleRemember = () => applyRememberConsent(!rememberDevice);
+  const handleForgetDevice = () => applyRememberConsent(false);
 
   const handleChangeSyncFolder = async () => {
     try {
@@ -239,6 +290,93 @@ const Settings: React.FC<SettingsProps> = ({
                     Reset to Default
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Remember Me / Keychain Section — SEC-4: keychain persistence of
+              the login is opt-in per profile, with honest copy about what's
+              stored and a way to clear it. */}
+          <div className="settings-section">
+            <div className="settings-item">
+              <div className="settings-item-header">
+                <ShieldCheck size={20} className="settings-icon" />
+                <div className="settings-item-info">
+                  <div className="settings-item-title-row">
+                    <h3>Remember Me on This Device</h3>
+                    <InfoButton tooltip="Remember me on this device">
+                      <p>
+                        When this is on, ArDrive saves your login for this profile in
+                        this device&apos;s secure system keychain — the OS-protected store
+                        used for saved credentials — so you don&apos;t have to type your
+                        password every time you open the app.
+                      </p>
+                      <p>
+                        What&apos;s stored stays on this device and is never uploaded
+                        anywhere. It&apos;s removed automatically when you sign out, switch
+                        profiles, delete this profile, or turn this setting off.
+                      </p>
+                    </InfoButton>
+                  </div>
+                  <p>Keep your login on this device so you don&apos;t have to retype your password</p>
+                </div>
+              </div>
+              <div className="settings-item-content">
+                {keychainAvailable === false ? (
+                  <div
+                    className="settings-field-note"
+                    style={{ color: 'var(--text-secondary)', fontSize: '13px' }}
+                  >
+                    Not available on this device — your operating system&apos;s secure
+                    keychain isn&apos;t accessible, so your login can&apos;t be securely
+                    remembered here. You&apos;ll enter your password each time you open
+                    ArDrive.
+                  </div>
+                ) : (
+                  <>
+                    <label
+                      className="settings-toggle-label"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 'var(--space-2)',
+                        cursor: (isSavingRemember || keychainAvailable === null) ? 'default' : 'pointer',
+                        marginBottom: 'var(--space-2)'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={rememberDevice}
+                        onChange={handleToggleRemember}
+                        disabled={isSavingRemember || keychainAvailable === null}
+                      />
+                      <span>Remember my login on this device</span>
+                    </label>
+                    <p
+                      style={{
+                        color: rememberDevice ? 'var(--success-fg, var(--text-secondary))' : 'var(--text-secondary)',
+                        fontSize: '13px',
+                        margin: '0 0 var(--space-2) 0'
+                      }}
+                    >
+                      {rememberDevice
+                        ? 'Your login is remembered on this device.'
+                        : "Your login isn't saved. You'll enter your password each time you open ArDrive."}
+                    </p>
+                    {rememberDevice && (
+                      <button
+                        className="settings-button-secondary"
+                        onClick={handleForgetDevice}
+                        disabled={isSavingRemember}
+                      >
+                        {isSavingRemember ? 'Working...' : 'Forget this device'}
+                      </button>
+                    )}
+                    {rememberError && (
+                      <div className="settings-field-error">{rememberError}</div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </div>

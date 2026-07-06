@@ -885,9 +885,12 @@ export class SecureWalletManager {
         // full wallet clear leaves no encrypted key file behind.
         driveKeyManager.setProfile(this.currentProfileId);
         await driveKeyManager.clearPersistedStorage().catch(() => {});
+        // SEC-4: a complete wallet clear must also forget any remembered
+        // session credential in the OS keychain for this profile.
+        await this.forgetDeviceForProfile(this.currentProfileId);
       }
 
-      // Clear memory
+      // Clear memory (also runs clearSessionPassword)
       this.clearInMemoryWallet();
       
       console.log('All wallet data cleared');
@@ -1103,6 +1106,80 @@ export class SecureWalletManager {
   }
 
   /**
+   * SEC-4: whether the user has opted the ACTIVE profile in to "remember me on
+   * this device" (persisting the session credential in the OS keychain).
+   * Per-profile; defaults to false. Never throws — a config read failure reads
+   * as "not remembered".
+   */
+  async getKeychainConsent(): Promise<boolean> {
+    try {
+      return await configManager.getKeychainConsent();
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * SEC-4: opt the ACTIVE profile in/out of "remember me on this device".
+   *
+   * Enabling requires a real OS keychain (the weak encrypted-file fallback must
+   * never hold a login credential — audit §4.2) and persists the current
+   * session credential to the keychain immediately. Disabling (revocation)
+   * durably clears the keychain entry and keeps the credential in encrypted
+   * memory only for the remainder of the session. Returns the effective state.
+   * Never logs or returns the credential itself.
+   */
+  async setKeychainConsent(consent: boolean): Promise<boolean> {
+    if (!this.currentProfileId) {
+      throw new Error('No active profile');
+    }
+
+    if (consent && !keychainService.isKeychainAvailable()) {
+      throw new Error('A secure device keychain is not available on this device');
+    }
+
+    // Persist the consent first so storeSessionPassword() below observes it.
+    await configManager.setKeychainConsent(consent);
+
+    // Re-apply the storage policy to the live session credential so the new
+    // consent takes effect right away (promote to keychain, or wipe it).
+    const sessionPassword = await this.getSessionPassword();
+    try {
+      if (sessionPassword) {
+        // storeSessionPassword() honors the freshly-persisted consent:
+        // consent=true -> keychain; consent=false -> encrypted memory + the
+        // keychain entry for this profile is proactively deleted.
+        await this.storeSessionPassword(sessionPassword);
+      } else if (!consent) {
+        // No live credential to move, but ensure nothing durable is left.
+        const keychainAccount = `wallet-${this.currentProfileId}`;
+        await keychainService.deletePassword(keychainAccount).catch(() => {});
+      }
+      return consent;
+    } finally {
+      if (sessionPassword) {
+        this.clearPassword(sessionPassword);
+      }
+    }
+  }
+
+  /**
+   * SEC-4: durably remove any remembered credential held in the OS keychain for
+   * a SPECIFIC profile, independent of the active session. Used on profile
+   * deletion / complete wallet clear so a device credential is never orphaned
+   * outside its (now-deleted) profile directory. Safe no-op when nothing is
+   * stored.
+   */
+  async forgetDeviceForProfile(profileId: string): Promise<void> {
+    try {
+      const keychainAccount = `wallet-${profileId}`;
+      await keychainService.deletePassword(keychainAccount);
+    } catch (error) {
+      console.error('[SECURITY] Failed to clear keychain credential for profile');
+    }
+  }
+
+  /**
    * Atomically updates all managers to use the new profile
    * Implements rollback on failure to prevent inconsistent state
    */
@@ -1166,43 +1243,60 @@ export class SecureWalletManager {
       if (!this.currentProfileId) {
         throw new Error('No active profile for password storage');
       }
-      
+
       const keychainAccount = `wallet-${this.currentProfileId}`;
-      
-      // Try to store in OS keychain first
-      if (keychainService.isKeychainAvailable()) {
+
+      // SEC-4: durable keychain persistence is OPT-IN, per profile. Only when
+      // the user has consented ("remember me on this device") AND a real OS
+      // keychain is available do we persist the session credential so it
+      // survives an app restart. Without consent the credential lives only in
+      // encrypted memory (below) and is gone when the app quits. The weak
+      // encrypted-file fallback must never hold a login credential (audit
+      // §4.2), so we gate on isKeychainAvailable() rather than letting
+      // keychain-service silently fall back to that file.
+      const consented = await this.getKeychainConsent();
+
+      if (consented && keychainService.isKeychainAvailable()) {
         try {
           await keychainService.setPassword(keychainAccount, password);
-          console.log('[SECURITY] Session password stored in OS keychain');
-          
-          // Clear any in-memory storage since we're using keychain
-          this.clearSessionPassword();
-          
+          console.log('[SECURITY] Session credential persisted to OS keychain (remember-me on)');
+
+          // Drop the in-memory copy WITHOUT deleting the keychain entry we
+          // just wrote (clearSessionPassword() would delete it — see its note).
+          this.clearInMemorySessionPasswordBuffers();
+
           // Clear the original password from the parameter (best effort)
           this.clearPassword(password);
           return;
         } catch (keychainError) {
-          console.error('[SECURITY] OS keychain storage failed, falling back to memory:', keychainError);
-          // Continue with memory fallback
+          console.error('[SECURITY] OS keychain storage failed, holding credential in memory only');
+          // Continue with in-memory storage below
+        }
+      } else {
+        // No consent (or no secure keychain): never leave a durable credential
+        // behind. Proactively wipe any keychain entry for this profile so a
+        // previously-remembered credential can't outlive a revoked opt-in.
+        if (keychainService.isKeychainAvailable()) {
+          await keychainService.deletePassword(keychainAccount).catch(() => {});
         }
       }
-      
-      // Fallback to encrypted memory storage
+
+      // Encrypted in-memory storage (session-only — cleared on app quit)
       // Generate a random key for encrypting the session password
       this.sessionPasswordKey = crypto.randomBytes(32);
-      
-      // Use the same encryption as crypto-utils for consistency  
+
+      // Use the same encryption as crypto-utils for consistency
       const passwordData = await encryptData(password, 'session-password-salt');
-      
+
       // Store the encrypted password data as a JSON string buffer
       this.encryptedSessionPassword = Buffer.from(JSON.stringify(passwordData), 'utf8');
-      
+
       // Clear the original password from the parameter (best effort)
       this.clearPassword(password);
-      
-      console.log('[SECURITY] Session password stored securely in encrypted memory (fallback)');
+
+      console.log('[SECURITY] Session credential held in encrypted memory (session-only)');
     } catch (error) {
-      console.error('[SECURITY] Failed to store session password securely:', error);
+      console.error('[SECURITY] Failed to store session credential securely');
       // Fallback: clear everything if encryption fails
       this.clearSessionPassword();
       throw new Error('Failed to secure session password');
@@ -1253,28 +1347,37 @@ export class SecureWalletManager {
     }
   }
   
-  private clearSessionPassword(): void {
-    // Clear from keychain if available
-    if (this.currentProfileId && keychainService.isKeychainAvailable()) {
-      const keychainAccount = `wallet-${this.currentProfileId}`;
-      keychainService.deletePassword(keychainAccount).catch(error => {
-        console.error('[SECURITY] Failed to clear password from keychain:', error);
-      });
-    }
-    
-    // Securely overwrite the encrypted password buffer
+  // SEC-4: securely overwrite ONLY the in-memory session-credential buffers.
+  // Deliberately does NOT touch the OS keychain, so the keychain-store path in
+  // storeSessionPassword() can drop the memory copy without deleting the durable
+  // entry it just wrote. Use clearSessionPassword() for a full lifecycle clear.
+  private clearInMemorySessionPasswordBuffers(): void {
     if (this.encryptedSessionPassword) {
       this.encryptedSessionPassword.fill(0);
       this.encryptedSessionPassword = null;
     }
-    
-    // Securely overwrite the password encryption key
     if (this.sessionPasswordKey) {
       this.sessionPasswordKey.fill(0);
       this.sessionPasswordKey = null;
     }
-    
-    console.log('[SECURITY] Session password cleared from memory and keychain');
+  }
+
+  private clearSessionPassword(): void {
+    // SEC-4 lifecycle clear: durably remove the credential from the OS keychain
+    // for the current profile (fire-and-forget) AND wipe the in-memory copy.
+    // Invoked on logout and profile switch (via clearInMemoryWallet), on failed
+    // auto-auth, and on consent revocation — so an explicit sign-out/switch
+    // never leaves a remembered credential behind.
+    if (this.currentProfileId && keychainService.isKeychainAvailable()) {
+      const keychainAccount = `wallet-${this.currentProfileId}`;
+      keychainService.deletePassword(keychainAccount).catch(() => {
+        console.error('[SECURITY] Failed to clear credential from keychain');
+      });
+    }
+
+    this.clearInMemorySessionPasswordBuffers();
+
+    console.log('[SECURITY] Session credential cleared from memory and keychain');
   }
   
   private clearPassword(password: string): void {

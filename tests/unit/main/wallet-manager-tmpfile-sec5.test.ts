@@ -105,7 +105,13 @@ vi.mock('../../../src/main/profile-manager', () => ({
   },
 }));
 vi.mock('../../../src/main/config-manager', () => ({
-  configManager: { setActiveProfile: vi.fn(), getGatewayHost: vi.fn() },
+  // SEC-4: storeSessionPassword() now reads keychain consent from config.
+  configManager: {
+    setActiveProfile: vi.fn(),
+    getGatewayHost: vi.fn(),
+    getKeychainConsent: vi.fn(async () => false),
+    setKeychainConsent: vi.fn(async () => undefined),
+  },
 }));
 vi.mock('../../../src/main/database-manager', () => ({
   databaseManager: { setActiveProfile: vi.fn(), close: vi.fn() },
@@ -118,7 +124,7 @@ vi.mock('../../../src/main/keychain-service', () => ({
     isKeychainAvailable: vi.fn(() => true),
     setPassword: vi.fn(async () => undefined),
     getPassword: vi.fn(async () => null),
-    deletePassword: vi.fn(),
+    deletePassword: vi.fn(async () => true),
   },
 }));
 vi.mock('../../../src/main/crypto-utils', () => ({

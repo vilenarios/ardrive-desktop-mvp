@@ -21,6 +21,13 @@ export interface AppConfig {
    * not index this owner's ArFS metadata; see sync/gateway-failover.ts).
    */
   gatewayFallbacks?: string[];
+  /**
+   * SEC-4: per-profile consent to "remember me on this device" — i.e. to keep
+   * the session credential in the OS keychain so it survives an app restart.
+   * Opt-in: unset/false means the credential is held in encrypted memory only
+   * (gone when the app quits) and never persisted to the keychain.
+   */
+  rememberDevice?: boolean;
 }
 
 export interface DriveSyncMapping {

@@ -168,6 +168,32 @@ export class ConfigManager {
     this.currentProfileId = profileId;
   }
 
+  // SEC-4: per-profile "remember me on this device" consent. Read straight
+  // from the profile config file (no DB round-trip) so it can be consulted on
+  // the hot session-credential path. Defaults to false (opt-in) whenever there
+  // is no active profile or no config yet — the credential must never be
+  // persisted to the keychain without an explicit, recorded opt-in.
+  async getKeychainConsent(): Promise<boolean> {
+    if (!this.currentProfileId) {
+      return false;
+    }
+    try {
+      const profileConfigPath = this.getProfileConfigPath();
+      const configData = await fs.readFile(profileConfigPath, 'utf8');
+      const profileConfig = JSON.parse(configData);
+      return profileConfig.rememberDevice === true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async setKeychainConsent(consent: boolean): Promise<void> {
+    if (!this.currentProfileId) {
+      throw new Error('No active profile');
+    }
+    await this.updateProfileConfig({ rememberDevice: consent === true });
+  }
+
   private async saveGlobalConfig() {
     try {
       await fs.writeFile(this.globalConfigPath, JSON.stringify(this.globalConfig, null, 2));

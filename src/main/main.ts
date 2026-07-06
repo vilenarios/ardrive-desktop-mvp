@@ -776,6 +776,21 @@ class ArDriveApp {
       return this.walletManager.getSecurityMethod();
     }));
 
+    // SEC-4: "remember me on this device" — read/toggle the per-profile consent
+    // that gates whether the session credential is persisted to the OS keychain.
+    ipcMain.handle('security:get-keychain-consent', envelopeHandler(async () => {
+      return await this.walletManager.getKeychainConsent();
+    }));
+
+    // SEC-4: enabling persists the current session credential to the keychain;
+    // disabling (revocation) durably clears it (keychain entry removed). Returns
+    // the effective consent state. Validate the flag strictly so a truthy value
+    // can never silently opt a user in.
+    ipcMain.handle('security:set-keychain-consent', envelopeHandler(async (_, consent: boolean) => {
+      const validatedConsent = InputValidator.validateBoolean(consent, 'consent');
+      return await this.walletManager.setKeychainConsent(validatedConsent);
+    }));
+
     // Profile operations
     ipcMain.handle('profiles:list', envelopeHandler(async () => {
       try {
@@ -857,8 +872,12 @@ class ArDriveApp {
       try {
         // Validate input
         const validatedProfileId = InputValidator.validateProfileId(profileId, 'profileId');
-        
+
         await profileManager.deleteProfile(validatedProfileId);
+        // SEC-4: the profile directory (config + wallet) is gone, but the OS
+        // keychain lives outside it — forget any remembered credential too so
+        // it isn't orphaned across profiles.
+        await this.walletManager.forgetDeviceForProfile(validatedProfileId);
         return true;
       } catch (error) {
         if (error instanceof ValidationError) {
