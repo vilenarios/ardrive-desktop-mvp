@@ -183,7 +183,8 @@ describe('MONEY-6: top-up refresh reaches blocked queue rows in the production c
       success: true,
       data: { queued: 0, active: 0, total: 0 },
     });
-    mockElectronAPI.uploads.getPending.mockResolvedValue([blockedRow]);
+    // UX-3: uploads:get-pending is now enveloped
+    mockElectronAPI.uploads.getPending.mockResolvedValue({ success: true, data: [blockedRow] });
   });
 
   /** Boot App to the dashboard and open the real Upload Queue tab. */

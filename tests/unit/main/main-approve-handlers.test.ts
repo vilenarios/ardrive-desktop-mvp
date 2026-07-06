@@ -236,14 +236,20 @@ describe('uploads:approve — records the payment rail that actually executes (M
     );
   });
 
-  it('blocks approval (throws) when the real Turbo cost exceeds the balance, writing nothing', async () => {
+  it('blocks approval (envelope error) when the real Turbo cost exceeds the balance, writing nothing', async () => {
     const row = dbShapedPending({ estimatedTurboCost: 0.05, hasSufficientTurboBalance: 0 });
     h.databaseManager.getPendingUploads.mockResolvedValue([row]);
     h.turboManager.isInitialized.mockReturnValue(true);
     h.turboManager.getUploadCosts.mockResolvedValue({ winc: '50000000000' });
     h.turboManager.getBalance.mockResolvedValue({ winc: '1000', ar: '0.000000001' });
 
-    await expect(invoke('uploads:approve', row.id)).rejects.toThrow(/Insufficient Turbo Credits/);
+    // UX-3 (D-005): the handler is envelope-wrapped, so a business-rule block
+    // resolves { success: false, error } instead of rejecting. The renderer's
+    // `if (!result.success)` guard (Dashboard.handleApproveUpload) depends on
+    // exactly this shape — a bare `if (result)` would wrongly treat it as OK.
+    const res = (await invoke('uploads:approve', row.id)) as { success: boolean; error?: string };
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/Insufficient Turbo Credits/);
 
     expect(h.databaseManager.addUpload).not.toHaveBeenCalled();
     expect(h.databaseManager.removePendingUpload).not.toHaveBeenCalled();
@@ -278,11 +284,16 @@ describe('uploads:approve-all — Turbo-only semantics, no AR gate (MONEY-1)', (
     h.databaseManager.getPendingUploads.mockResolvedValue(rows);
     h.turboManager.isInitialized.mockReturnValue(false); // no quotes available
 
-    const result = (await invoke('uploads:approve-all')) as {
-      approvedCount: number;
-      totalCount: number;
-      errors?: string[];
+    // UX-3 (D-005): approve-all is envelope-wrapped — the summary is nested
+    // under `.data`. Dashboard.handleApproveAll unwraps `.data` after checking
+    // `.success`; a stale call site reading `.approvedCount` off the raw
+    // envelope would read `undefined`.
+    const envelope = (await invoke('uploads:approve-all')) as {
+      success: true;
+      data: { approvedCount: number; totalCount: number; errors?: string[] };
     };
+    expect(envelope.success).toBe(true);
+    const result = envelope.data;
 
     expect(result.approvedCount).toBe(2);
     expect(result.totalCount).toBe(2);
@@ -305,11 +316,13 @@ describe('uploads:approve-all — Turbo-only semantics, no AR gate (MONEY-1)', (
     h.turboManager.getUploadCosts.mockImplementation(async (size: number) => ({ winc: String(size) }));
     h.turboManager.getBalance.mockResolvedValue({ winc: String(2 * 1024 * 1024), ar: '0.000002' });
 
-    const result = (await invoke('uploads:approve-all')) as {
-      approvedCount: number;
-      totalCount: number;
-      errors?: string[];
+    // UX-3 (D-005): unwrap the envelope's `.data` (see the approve-all note above).
+    const envelope = (await invoke('uploads:approve-all')) as {
+      success: true;
+      data: { approvedCount: number; totalCount: number; errors?: string[] };
     };
+    expect(envelope.success).toBe(true);
+    const result = envelope.data;
 
     expect(result.approvedCount).toBe(2); // free + small
     expect(result.totalCount).toBe(3);
@@ -335,12 +348,69 @@ describe('uploads:approve-all — Turbo-only semantics, no AR gate (MONEY-1)', (
     h.turboManager.getUploadCosts.mockImplementation(async (size: number) => ({ winc: String(size) }));
     h.turboManager.getBalance.mockResolvedValue({ winc: '0', ar: '0' });
 
-    const result = (await invoke('uploads:approve-all')) as { approvedCount: number; errors?: string[] };
+    // UX-3 (D-005): unwrap the envelope's `.data` (see the approve-all note above).
+    const envelope = (await invoke('uploads:approve-all')) as {
+      success: true;
+      data: { approvedCount: number; errors?: string[] };
+    };
+    expect(envelope.success).toBe(true);
+    const result = envelope.data;
 
     expect(result.approvedCount).toBe(1);
     expect(result.errors).toBeUndefined();
     expect(h.databaseManager.addUpload).toHaveBeenCalledWith(
       expect.objectContaining({ id: free.id, uploadMethod: 'turbo' })
     );
+  });
+});
+
+// UX-3 (D-005) trap #1: uploads:reject / reject-all / cancel now return
+// IpcResult<boolean>. The envelope is ALWAYS a truthy object, so a call site
+// doing `if (result)` / `if (!result)` on the raw envelope is silently wrong —
+// only `.success` reveals the true outcome. These tests pin the exact shape the
+// renderer guards (Dashboard.handleRejectUpload/handleRejectAll,
+// UploadApprovalQueueModern.handleCancelUpload) depend on.
+describe('uploads:reject / reject-all / cancel — IpcResult envelope for boolean handlers (UX-3 trap #1)', () => {
+  it('reject resolves { success: true, data: true } and marks the row rejected', async () => {
+    h.databaseManager.updatePendingUploadStatus.mockClear().mockResolvedValue(undefined);
+
+    const res = (await invoke('uploads:reject', 'up-1')) as { success: boolean; data?: boolean };
+
+    expect(res).toBeTruthy(); // the envelope object is always truthy — hence trap #1
+    expect(res.success).toBe(true);
+    expect(res.data).toBe(true);
+    expect(h.databaseManager.updatePendingUploadStatus).toHaveBeenCalledWith('up-1', 'rejected');
+  });
+
+  it('reject resolves { success: false, error } when the DB write fails (still a truthy object)', async () => {
+    h.databaseManager.updatePendingUploadStatus.mockClear().mockRejectedValueOnce(new Error('db down'));
+
+    const res = (await invoke('uploads:reject', 'up-1')) as { success: boolean; error?: string };
+
+    // A bare `if (res)` would treat this failure as success — the renderer's
+    // `if (!res.success)` guard is the only thing that catches it.
+    expect(res).toBeTruthy();
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/db down/);
+  });
+
+  it('reject-all resolves { success: true, data: true } and clears the pending queue', async () => {
+    h.databaseManager.clearAllPendingUploads.mockClear().mockResolvedValue(undefined);
+
+    const res = (await invoke('uploads:reject-all')) as { success: boolean; data?: boolean };
+
+    expect(res.success).toBe(true);
+    expect(res.data).toBe(true);
+    expect(h.databaseManager.clearAllPendingUploads).toHaveBeenCalled();
+  });
+
+  it('cancel resolves { success: true, data: true } when the queue cancels a pending item', async () => {
+    h.syncManagerInstance.cancelUpload.mockReturnValueOnce({ cancelled: true, wasInFlight: false });
+    h.databaseManager.updateUpload.mockClear().mockResolvedValue(undefined);
+
+    const res = (await invoke('uploads:cancel', 'up-1')) as { success: boolean; data?: boolean };
+
+    expect(res.success).toBe(true);
+    expect(res.data).toBe(true);
   });
 });
