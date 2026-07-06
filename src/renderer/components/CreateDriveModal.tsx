@@ -8,13 +8,20 @@ interface CreateDriveModalProps {
   onClose: () => void;
   onDriveCreated: (drive: any) => void;
   currentSyncFolder?: string;
+  // UX-15: only one drive syncs at a time in this beta (D-010), and this
+  // modal makes the new drive active immediately on creation. When the user
+  // already has other drives, that silently stops whichever one was syncing
+  // before — say so, rather than let the "will sync" promise below read as
+  // additive.
+  hasExistingDrives?: boolean;
 }
 
 export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
   isOpen,
   onClose,
   onDriveCreated,
-  currentSyncFolder
+  currentSyncFolder,
+  hasExistingDrives
 }) => {
   const [driveName, setDriveName] = useState('');
   const [drivePrivacy, setDrivePrivacy] = useState<'public' | 'private'>('private');
@@ -304,6 +311,13 @@ export const CreateDriveModal: React.FC<CreateDriveModalProps> = ({
             Once uploaded to Arweave, files in this drive can&apos;t be edited or deleted — by
             you or anyone else. This privacy choice can&apos;t be changed after the drive is
             created. Files will sync both ways between this drive and your local folder.
+            {hasExistingDrives && (
+              // UX-15: true consequence of "isActive: true" + drive:setActive
+              // in handleCreateDrive below — this new drive becomes the one
+              // drive that syncs, and whatever was syncing before stops.
+              ' Only one drive syncs at a time in this beta, so this new drive will'
+              + ' become the one that syncs — your other drives stay connected but pause.'
+            )}
           </p>
         </div>
 

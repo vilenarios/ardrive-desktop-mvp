@@ -387,9 +387,15 @@ const Dashboard: React.FC<DashboardProps> = ({
     
     // Always show confirmation for drive switching (UX-9: in-app modal, not
     // the native OS confirm dialog).
+    // UX-15: only one drive syncs at a time in this beta (D-010) — spell out
+    // exactly what that means at the one moment the user commits to it:
+    // the current drive stops syncing, the target one starts.
+    const switchExplanation = drive?.name
+      ? `"${drive.name}" will stop syncing and "${targetDrive.name}" will become the drive that syncs. Only one drive syncs at a time in this beta — "${drive.name}" stays connected but won't sync until you switch back.`
+      : `"${targetDrive.name}" will become the drive that syncs. Only one drive syncs at a time in this beta.`;
     const confirmMessage = pendingUploads.length > 0
-      ? `You have ${pendingUploads.length} pending upload${pendingUploads.length === 1 ? '' : 's'} that will be cancelled. This will change your active drive and sync folder.`
-      : 'This will change your active drive and sync folder.';
+      ? `You have ${pendingUploads.length} pending upload${pendingUploads.length === 1 ? '' : 's'} that will be cancelled. ${switchExplanation}`
+      : switchExplanation;
 
     const confirmed = await confirm({
       title: `Switch to "${targetDrive.name}"?`,
@@ -686,6 +692,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         isOpen={showCreateDriveModal}
         onClose={() => setShowCreateDriveModal(false)}
         onDriveCreated={handleDriveCreated}
+        hasExistingDrives={drives.length > 0}
         currentSyncFolder={(() => {
           // Extract base sync folder from current drive's folder
           // If current folder is C:\ARDRIVE\My Public Drive, we want C:\ARDRIVE
