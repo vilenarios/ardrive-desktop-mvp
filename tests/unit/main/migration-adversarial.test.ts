@@ -93,12 +93,14 @@ function dumpAll(engine: any): Record<string, any[]> {
 // v5 (SYNC-5) adds an additive `isHidden` column to drive_metadata_cache. It is
 // purely additive (default 0) and leaves every existing value untouched, so for
 // the losslessness comparison we strip it from the post-migration dump and
-// assert its default separately.
+// assert its default separately. v6 (D-026) adds a new, empty `sync_state`
+// table — also purely additive — so it is dropped from the comparison too.
 const CURRENT_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 function stripAddedColumns(dump: Record<string, any[]>): Record<string, any[]> {
+  const { sync_state: _syncState, ...rest } = dump;
   return {
-    ...dump,
-    drive_metadata_cache: (dump.drive_metadata_cache ?? []).map(({ isHidden, ...rest }: any) => rest),
+    ...rest,
+    drive_metadata_cache: (dump.drive_metadata_cache ?? []).map(({ isHidden, ...r }: any) => r),
   };
 }
 

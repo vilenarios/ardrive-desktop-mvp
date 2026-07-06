@@ -13,6 +13,7 @@ import { writeEncryptedFile, readEncryptedFile, secureDeleteFile, decryptData, e
 import * as crypto from 'crypto';
 import { keychainService } from './keychain-service';
 import { driveKeyManager } from './drive-key-manager';
+import { incrementalSyncService } from './sync/incremental-sync-service';
 import { getDriveEmojiFingerprint } from './utils/drive-fingerprint';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
 import { getGatewayConfig } from './gateway';
@@ -325,6 +326,10 @@ export class SecureWalletManager {
 
       // Initialize Drive Key Manager for private drive support
       driveKeyManager.setWallet(walletJson);
+      // D-026: hand the same authenticated wallet to the incremental sync
+      // service (resets its memoized read-only ArDrive so state never leaks
+      // across wallets/profiles).
+      incrementalSyncService.setWallet(wallet);
       // PRIV-4: set the profile so any opt-in drive-key persistence this session
       // writes to (and forgets from) this profile's encrypted keys file.
       if (this.currentProfileId) {
@@ -438,6 +443,10 @@ export class SecureWalletManager {
 
       // Initialize Drive Key Manager for private drive support
       driveKeyManager.setWallet(walletJson);
+      // D-026: hand the same authenticated wallet to the incremental sync
+      // service (resets its memoized read-only ArDrive so state never leaks
+      // across wallets/profiles).
+      incrementalSyncService.setWallet(wallet);
       // PRIV-4: set the profile so any opt-in drive-key persistence this session
       // writes to (and forgets from) this profile's encrypted keys file.
       if (this.currentProfileId) {
@@ -542,6 +551,10 @@ export class SecureWalletManager {
       // drive key to unlock. Seed it here, and restore any opted-in persisted
       // keys using the (session) password we just decrypted the wallet with.
       driveKeyManager.setWallet(walletJson);
+      // D-026: hand the same authenticated wallet to the incremental sync
+      // service (resets its memoized read-only ArDrive so state never leaks
+      // across wallets/profiles).
+      incrementalSyncService.setWallet(wallet);
       if (this.currentProfileId) {
         driveKeyManager.setProfile(this.currentProfileId);
         try {
@@ -912,7 +925,11 @@ export class SecureWalletManager {
 
     // Clear drive keys
     driveKeyManager.clearAllKeys();
-    
+
+    // D-026: drop the incremental sync service's wallet + memoized ArDrive so a
+    // logout / profile switch cannot carry sync state or credentials across.
+    incrementalSyncService.clear();
+
     // Securely clear encrypted session password
     this.clearSessionPassword();
     

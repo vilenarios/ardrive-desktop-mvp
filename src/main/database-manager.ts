@@ -1672,13 +1672,84 @@ export class DatabaseManager {
   async clearDriveMetadataCache(mappingId: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const sql = `DELETE FROM drive_metadata_cache WHERE mappingId = ?`;
-      
+
       this.db!.run(sql, [mappingId], (err) => {
         if (err) {
           reject(err);
         } else {
           resolve();
         }
+      });
+    });
+  }
+
+  // --- Incremental sync state (D-026) -----------------------------------------
+  // Raw, serialized-string persistence for ardrive-core-js DriveSyncState.
+  // The serialization itself lives in SqliteSyncStateStore (which uses core's
+  // serializeSyncState/deserializeSyncState); the DB layer only stores the
+  // opaque TEXT keyed by driveId. Per-profile isolation is automatic — the DB
+  // connection is swapped on profile switch (setActiveProfile).
+
+  /** Upsert the serialized sync state for a drive (INSERT OR REPLACE by drive_id PK). */
+  async saveSyncState(driveId: string, serializedState: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        INSERT INTO sync_state (drive_id, state, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(drive_id) DO UPDATE SET
+          state = excluded.state,
+          updated_at = CURRENT_TIMESTAMP
+      `;
+      this.db!.run(sql, [driveId, serializedState], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  }
+
+  /**
+   * Load the serialized sync state for a drive. Normalized at the DB boundary:
+   * returns a string, or undefined when there is no row (never a raw null/row).
+   */
+  async loadSyncState(driveId: string): Promise<string | undefined> {
+    return new Promise((resolve, reject) => {
+      const sql = `SELECT state FROM sync_state WHERE drive_id = ? LIMIT 1`;
+      this.db!.get(sql, [driveId], (err, row: { state?: string } | undefined) => {
+        if (err) reject(err);
+        else resolve(row?.state ?? undefined);
+      });
+    });
+  }
+
+  /** Delete the sync state for a drive (idempotent). */
+  async clearSyncState(driveId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `DELETE FROM sync_state WHERE drive_id = ?`;
+      this.db!.run(sql, [driveId], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  }
+
+  /** All drive IDs that currently have a stored sync state. */
+  async listSyncStateDriveIds(): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      const sql = `SELECT drive_id FROM sync_state`;
+      this.db!.all(sql, [], (err, rows: { drive_id: string }[] | undefined) => {
+        if (err) reject(err);
+        else resolve((rows ?? []).map((r) => r.drive_id));
+      });
+    });
+  }
+
+  /** Delete every stored sync state (used by SyncStateStore.clearAll). */
+  async clearAllSyncState(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sql = `DELETE FROM sync_state`;
+      this.db!.run(sql, [], (err) => {
+        if (err) reject(err);
+        else resolve();
       });
     });
   }
