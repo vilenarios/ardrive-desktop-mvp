@@ -13,6 +13,7 @@ import { ActivityTab } from './dashboard/ActivityTab';
 import { StorageTab } from './dashboard/StorageTab';
 import { DownloadQueueTab } from './dashboard/DownloadQueueTab';
 import { SyncProgressDisplay } from './SyncProgressDisplay';
+import { SyncIndicator } from './SyncIndicator';
 import Settings from './Settings';
 import { DriveSelector } from './DriveSelector';
 import { CreateDriveModal } from './CreateDriveModal';
@@ -84,6 +85,13 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [downloads, setDownloads] = useState<any[]>([]);
   const downloadRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [downloadQueueStatus, setDownloadQueueStatus] = useState<{ queued: number; active: number; total: number } | null>(null);
+  // UX-28: live upload-side sync state for the persistent header indicator —
+  // the same window.electronAPI.sync.getStatus() call UX-30's tray polls
+  // (SyncManager.getStatus()), so the header chip and the tray tooltip are
+  // reading the exact same source of truth. null until the first successful
+  // fetch resolves so the header never flashes a fabricated "Paused" before
+  // the real state is known.
+  const [uploadSyncStatus, setUploadSyncStatus] = useState<SyncStatus | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResults, setSyncResults] = useState<{
     uploadsFound: number;
@@ -134,6 +142,22 @@ const Dashboard: React.FC<DashboardProps> = ({
     return matchesSearch && matchesStatus;
   });
 
+  // UX-28: combined snapshot for the persistent header sync indicator —
+  // upload-pending count (totalFiles - uploadedFiles, the same math the UX-30
+  // tray uses) PLUS the download queue's live total (queued + active, the
+  // same count the Download Queue tab badge already shows). Summing both
+  // means the chip stays honest during an initial/background drive download,
+  // not just while uploading. null until uploadSyncStatus's first fetch
+  // resolves, so the header never renders a guessed state.
+  const syncIndicatorSnapshot = uploadSyncStatus
+    ? {
+        isActive: uploadSyncStatus.isActive,
+        pendingCount:
+          Math.max(0, uploadSyncStatus.totalFiles - uploadSyncStatus.uploadedFiles) +
+          (downloadQueueStatus?.total ?? 0)
+      }
+    : null;
+
   const copyToClipboard = async (text: string, message: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -159,6 +183,22 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
+  // UX-28: same call the tray (UX-30) polls for its ambient status center
+  // (SyncManager.getStatus() via the 'sync:status' IPC handler) — reused
+  // here, renderer-side, so the header indicator never invents its own
+  // sync-tracking logic. Deliberately swallows failures: a stale/missing
+  // header chip is a cosmetic gap, never worth surfacing as a toast/error.
+  const loadSyncIndicatorStatus = async () => {
+    try {
+      const statusResult = await window.electronAPI.sync.getStatus();
+      if (statusResult.success && statusResult.data) {
+        setUploadSyncStatus(statusResult.data);
+      }
+    } catch (err) {
+      console.error('Failed to load sync status for header indicator:', err);
+    }
+  };
+
   const loadDownloads = async () => {
     try {
       const downloadResult = await window.electronAPI.files.getDownloads();
@@ -170,7 +210,13 @@ const Dashboard: React.FC<DashboardProps> = ({
       if (statusResult.success) {
         setDownloadQueueStatus(statusResult.data);
       }
-      
+
+      // UX-28: rides the same cadence as the download-queue poll below (5s
+      // baseline via refreshDriveState, 2s while downloads are active) so the
+      // header indicator's "N files" count stays live without a separate
+      // polling loop.
+      loadSyncIndicatorStatus();
+
       // Check if there are any active downloads (exclude stuck downloads)
       const now = Date.now();
       const hasActiveDownloads = downloadList.some((d: any) => {
@@ -248,7 +294,17 @@ const Dashboard: React.FC<DashboardProps> = ({
       }
     };
   }, []); // Empty dependency array - only run on mount/unmount
-  
+
+  // UX-28: event-driven refresh for the header sync indicator — a fresh
+  // onSyncProgress event (bubbled down from App.tsx as the syncProgress prop)
+  // means the sync engine just reported something new, so re-poll the live
+  // status immediately instead of waiting for the next 5s/2s poll tick.
+  useEffect(() => {
+    if (syncProgress) {
+      loadSyncIndicatorStatus();
+    }
+  }, [syncProgress]);
+
   useEffect(() => {
     // Listen for download progress updates
     const handleDownloadProgress = (progressData: {
@@ -792,6 +848,11 @@ const Dashboard: React.FC<DashboardProps> = ({
             <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
             {isSyncing ? 'Syncing...' : 'Sync'}
           </button>
+
+          {/* UX-28: persistent global sync indicator — lives in the header
+              (outside the per-tab content below) so overall progress is
+              visible from every tab, not just the Download Queue tab's badge. */}
+          {syncIndicatorSnapshot && <SyncIndicator snapshot={syncIndicatorSnapshot} />}
         </div>
 
         {/* Right: User Menu */}
