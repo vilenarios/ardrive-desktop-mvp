@@ -1127,6 +1127,191 @@ describe('SyncManager', () => {
     });
   });
 
+  describe('Fail-closed privacy routing for metadata ops (PRIV-8)', () => {
+    // The whole metadata-op family used `mapping?.drivePrivacy === 'private'`,
+    // which is FALSE when the mapping is UNRESOLVED — so a PRIVATE entity's op
+    // would silently route to the unencrypted PUBLIC ArFS path AND spend. The
+    // fix funnels every site through resolveDrivePrivacyOrThrow, which THROWS on
+    // an unresolved privacy state instead of defaulting to public.
+    const fileEntityId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const folderEntityId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const publicMapping = { ...testMapping, drivePrivacy: 'public' as const };
+    const privateMapping = { ...testMapping, drivePrivacy: 'private' as const, driveName: 'Secret Drive' };
+
+    beforeEach(() => {
+      syncManager['driveId'] = testDriveId;
+      syncManager['rootFolderId'] = testRootFolderId;
+      // These call sites hardcode only a public path — mock them so a
+      // regression (leaking to public) would be observable, never a no-op.
+      (mockArDrive as any).renamePublicFile = vi.fn().mockResolvedValue({ created: [{ type: 'file' }], fees: {} });
+      (mockArDrive as any).movePublicFile = vi.fn().mockResolvedValue({ created: [{ type: 'file' }], fees: {} });
+      (mockArDrive as any).renamePublicFolder = vi.fn().mockResolvedValue({ created: [{ type: 'folder' }], fees: {} });
+      (mockArDrive as any).movePublicFolder = vi.fn().mockResolvedValue({ created: [{ type: 'folder' }], fees: {} });
+      (mockArDrive as any).createPrivateFolder = vi.fn().mockResolvedValue({ created: [{ type: 'folder', entityId: { toString: () => 'priv-folder' } }] });
+      // executeFolderRename/Move record success/failure history via this method;
+      // the shared mock DB doesn't stub it (no prior test drove those paths).
+      (mockDatabaseManager as any).addFolderOperation = vi.fn().mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+      driveKeyManager.clearAllKeys();
+    });
+
+    const makeHideOp = (over: any = {}) =>
+      ({
+        id: 'hide-op-priv8',
+        driveId: testDriveId,
+        localPath: `${testSyncPath}/gone.txt`,
+        fileName: 'gone.txt',
+        fileSize: 0,
+        status: 'awaiting_approval',
+        operationType: 'hide',
+        metadata: { isHidden: true },
+        arfsFileId: fileEntityId,
+        createdAt: new Date(),
+        ...over,
+      }) as any;
+
+    const makeRenameOp = (over: any = {}) =>
+      ({
+        id: 'rename-op-priv8',
+        driveId: testDriveId,
+        localPath: `${testSyncPath}/renamed.txt`,
+        previousPath: `${testSyncPath}/renamed.txt`,
+        fileName: 'renamed.txt',
+        fileSize: 0,
+        status: 'awaiting_approval',
+        operationType: 'rename',
+        arfsFileId: fileEntityId,
+        createdAt: new Date(),
+        ...over,
+      }) as any;
+
+    // --- (a) THE critical case: private entity + UNRESOLVED mapping -----------
+
+    it('BLOCKS a hide op when the mapping is UNRESOLVED — never the public path, spends nothing', async () => {
+      // The entity is really on a private drive, but its mapping is missing.
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([]);
+
+      await expect(
+        syncManager.executeMetadataOperation(makeHideOp())
+      ).rejects.toThrow(/refusing to write to avoid leaking private data as public/i);
+
+      // The unencrypted PUBLIC path was NOT taken (no leak)...
+      expect(mockArDrive.hidePublicFile).not.toHaveBeenCalled();
+      expect(mockArDrive.hidePublicFolder).not.toHaveBeenCalled();
+      // ...and the private path was not taken either — nothing was written/spent.
+      expect(mockArDrive.hidePrivateFile).not.toHaveBeenCalled();
+      // No local cache mutation either (the write never happened).
+      expect(mockDatabaseManager.updateDriveMetadataHidden).not.toHaveBeenCalled();
+    });
+
+    it('BLOCKS a hide op when drivePrivacy is null (DB-shaped null column crosses raw)', async () => {
+      // DB-shaped fixture: a real SQLite row surfaces a null column as null, not
+      // as an absent key — the too-optimistic type says 'public'|'private'.
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([
+        { ...testMapping, drivePrivacy: null },
+      ]);
+
+      await expect(
+        syncManager.executeMetadataOperation(makeHideOp())
+      ).rejects.toThrow(/Cannot resolve drive privacy/i);
+
+      expect(mockArDrive.hidePublicFile).not.toHaveBeenCalled();
+      expect(mockArDrive.hidePrivateFile).not.toHaveBeenCalled();
+    });
+
+    // --- (spend proof) the PAID folder-create path also fails closed ---------
+
+    it('BLOCKS folder creation on an UNRESOLVED mapping — no paid createFolder call of either kind', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([]);
+
+      await expect(
+        syncManager['createFolderOnArweave'](`${testSyncPath}/NewFolder`)
+      ).rejects.toThrow(/Cannot resolve drive privacy/i);
+
+      // Neither the public nor the private paid folder-creation call fired.
+      expect(mockArDrive.createPublicFolder).not.toHaveBeenCalled();
+      expect((mockArDrive as any).createPrivateFolder).not.toHaveBeenCalled();
+    });
+
+    // --- (b) no regression: positively-public still uses the public path -----
+
+    it('positively-public hide still routes to hidePublicFile (no regression)', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([publicMapping]);
+
+      await syncManager.executeMetadataOperation(makeHideOp());
+
+      expect(mockArDrive.hidePublicFile).toHaveBeenCalledTimes(1);
+      expect(mockArDrive.hidePrivateFile).not.toHaveBeenCalled();
+    });
+
+    // --- (c) no regression: positively-private still encrypts ----------------
+
+    it('positively-private hide still routes to hidePrivateFile WITH the drive key (no regression)', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      const key = { keyData: Buffer.from('secret') } as any;
+      driveKeyManager.cacheKey(testDriveId, key);
+
+      await syncManager.executeMetadataOperation(makeHideOp());
+
+      expect(mockArDrive.hidePrivateFile).toHaveBeenCalledTimes(1);
+      expect(mockArDrive.hidePrivateFile.mock.calls[0][0].driveKey).toBe(key);
+      expect(mockArDrive.hidePublicFile).not.toHaveBeenCalled();
+    });
+
+    // --- move/rename: public-only ArFS paths must also fail closed -----------
+
+    it('BLOCKS a file rename on a positively-PRIVATE drive — never renamePublicFile', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      driveKeyManager.cacheKey(testDriveId, { keyData: Buffer.from('secret') } as any);
+
+      await expect(
+        syncManager.executeMetadataOperation(makeRenameOp())
+      ).rejects.toThrow(/private move\/rename is not supported yet|Refusing to move\/rename/i);
+
+      // The public plaintext rename revision was NOT written (no leak/spend).
+      expect((mockArDrive as any).renamePublicFile).not.toHaveBeenCalled();
+    });
+
+    it('BLOCKS a file rename when the mapping is UNRESOLVED — never renamePublicFile', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([]);
+
+      await expect(
+        syncManager.executeMetadataOperation(makeRenameOp())
+      ).rejects.toThrow(/Cannot resolve drive privacy/i);
+
+      expect((mockArDrive as any).renamePublicFile).not.toHaveBeenCalled();
+    });
+
+    it('a file rename on a positively-PUBLIC drive still calls renamePublicFile (no regression)', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([publicMapping]);
+
+      await syncManager.executeMetadataOperation(makeRenameOp());
+
+      expect((mockArDrive as any).renamePublicFile).toHaveBeenCalledTimes(1);
+      expect((mockArDrive as any).renamePublicFile.mock.calls[0][0].fileId.toString()).toBe(fileEntityId);
+    });
+
+    it('BLOCKS an auto-sync FOLDER rename on a private drive — never renamePublicFolder', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+
+      await expect(
+        syncManager['executeFolderRename'](folderEntityId, `${testSyncPath}/Old`, `${testSyncPath}/New`)
+      ).rejects.toThrow(/private move\/rename is not supported yet|Refusing to move\/rename/i);
+
+      expect((mockArDrive as any).renamePublicFolder).not.toHaveBeenCalled();
+    });
+
+    it('an auto-sync FOLDER rename on a public drive still calls renamePublicFolder (no regression)', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([publicMapping]);
+
+      await syncManager['executeFolderRename'](folderEntityId, `${testSyncPath}/Old`, `${testSyncPath}/New`);
+
+      expect((mockArDrive as any).renamePublicFolder).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('Error Scenarios', () => {
     it('should surface database failures and return to idle', async () => {
       mockDatabaseManager.getDriveMappings.mockRejectedValue(new Error('Database error'));

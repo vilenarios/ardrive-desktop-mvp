@@ -17,6 +17,7 @@ import { FileOperationDetector, FileOperationDetection } from './sync/FileOperat
 import { driveKeyManager } from './drive-key-manager';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
 import { retryWithBackoff } from './sync/retry';
+import { resolveDrivePrivacyOrThrow } from './sync/drive-privacy';
 import {
   fetchTxDataWithFailover,
   queryMetadataWithResilience,
@@ -1783,8 +1784,13 @@ export class SyncManager {
     
     const newName = path.basename(newPath);
     console.log(`Renaming folder on ArDrive: ${path.basename(oldPath)} -> ${newName}`);
-    
+
     try {
+      // PRIV-8: fail closed — renamePublicFolder has no private counterpart
+      // wired here; a private (or unresolved) drive must not leak the folder's
+      // new name as a public plaintext revision (and spend). Block instead.
+      await this.assertPublicMoveRenameOrThrow(this.driveId, `folder "${path.basename(oldPath)}"`);
+
       const result = await this.arDrive.renamePublicFolder({
         folderId: EID(arfsFolderId),
         newName: newName
@@ -1828,12 +1834,17 @@ export class SyncManager {
     console.log(`Moving folder on ArDrive from ${path.dirname(oldPath)} to ${newParentPath}`);
     
     try {
+      // PRIV-8: fail closed — movePublicFolder has no private counterpart wired
+      // here; a private (or unresolved) drive must not leak the folder's new
+      // location as a public plaintext revision (and spend). Block instead.
+      await this.assertPublicMoveRenameOrThrow(this.driveId, `folder "${path.basename(oldPath)}"`);
+
       // Get the new parent folder's ArDrive ID
       const newParentFolder = await this.databaseManager.getFolderByPath(newParentPath);
       if (!newParentFolder || !newParentFolder.arfsFolderId) {
         throw new Error(`New parent folder not found or not synced: ${newParentPath}`);
       }
-      
+
       const result = await this.arDrive.movePublicFolder({
         folderId: EID(arfsFolderId),
         newParentFolderId: EID(newParentFolder.arfsFolderId)
@@ -2492,8 +2503,12 @@ export class SyncManager {
         // Get drive mapping to check privacy
         const mappings = await this.databaseManager.getDriveMappings();
         const mapping = mappings.find(m => m.driveId === this.driveId);
-        const isPrivateDrive = mapping?.drivePrivacy === 'private';
-        
+        // PRIV-8: fail closed — an unresolved mapping must NOT default to the
+        // public path (would create an unencrypted public folder for a private
+        // drive AND spend).
+        const isPrivateDrive =
+          resolveDrivePrivacyOrThrow(mapping, this.driveId, `folder "${itemName}"`) === 'private';
+
         // MONEY-2: last spend checkpoint before the paid folder creation
         if (await this.finalizeCancelledUpload(upload)) {
           return;
@@ -2585,8 +2600,11 @@ export class SyncManager {
       // Get drive mapping to check if private
       const mappings = await this.databaseManager.getDriveMappings();
       const mapping = mappings.find(m => m.driveId === this.driveId);
-      const isPrivateDrive = mapping?.drivePrivacy === 'private';
-      
+      // PRIV-8: fail closed — never let an unresolved mapping route a private
+      // file to the unencrypted public upload path (leak + spend).
+      const isPrivateDrive =
+        resolveDrivePrivacyOrThrow(mapping, this.driveId, `file "${upload.fileName}"`) === 'private';
+
       // Build upload options
       const uploadOptions: any = {
         entitiesToUpload: [
@@ -2681,7 +2699,10 @@ export class SyncManager {
             // Add drive key for private drives (check again in retry)
             const retryMappings = await this.databaseManager.getDriveMappings();
             const retryMapping = retryMappings.find(m => m.driveId === this.driveId);
-            const retryIsPrivateDrive = retryMapping?.drivePrivacy === 'private';
+            // PRIV-8: the retry is a second paid attempt — fail closed here too
+            // so an unresolved mapping can't route the re-upload to public.
+            const retryIsPrivateDrive =
+              resolveDrivePrivacyOrThrow(retryMapping, this.driveId, `file "${upload.fileName}"`) === 'private';
             
             if (retryIsPrivateDrive) {
               const driveKey = driveKeyManager.getDriveKey(this.driveId!);
@@ -2887,8 +2908,11 @@ export class SyncManager {
       // Get drive mapping to check privacy
       const mappings = await this.databaseManager.getDriveMappings();
       const mapping = mappings.find(m => m.driveId === this.driveId);
-      const isPrivateDrive = mapping?.drivePrivacy === 'private';
-      
+      // PRIV-8: fail closed — an unresolved mapping must not create an
+      // unencrypted public folder for a private drive (leak + spend).
+      const isPrivateDrive =
+        resolveDrivePrivacyOrThrow(mapping, this.driveId, `folder "${folderName}"`) === 'private';
+
       let result;
       if (isPrivateDrive) {
         const driveKey = driveKeyManager.getDriveKey(this.driveId!);
@@ -2946,8 +2970,11 @@ export class SyncManager {
           // Get drive mapping to check privacy
           const mappings = await this.databaseManager.getDriveMappings();
           const mapping = mappings.find(m => m.driveId === this.driveId);
-          const isPrivateDrive = mapping?.drivePrivacy === 'private';
-          
+          // PRIV-8: fail closed — resolve privacy positively before listing; an
+          // unresolved mapping must not silently list as public on a private drive.
+          const isPrivateDrive =
+            resolveDrivePrivacyOrThrow(mapping, this.driveId, `folder "${folderName}"`) === 'private';
+
           // List the parent folder contents to find the existing folder
           const parentContents = await this.listFolderContents(parentFolderId, isPrivateDrive);
           
@@ -3229,7 +3256,10 @@ export class SyncManager {
 
     try {
       // Check if drive is private from mapping
-      const isPrivateDrive = mapping.drivePrivacy === 'private';
+      // PRIV-8: fail closed — resolve privacy positively; a null/undefined
+      // drivePrivacy must not silently list a private drive as public.
+      const isPrivateDrive =
+        resolveDrivePrivacyOrThrow(mapping, this.driveId, `drive "${mapping.driveName}"`) === 'private';
       console.log(`Fetching drive contents via ArDrive Core ${isPrivateDrive ? 'listPrivateFolder' : 'listPublicFolder'}...`);
       
       let allItems: any[] = [];
@@ -3629,6 +3659,33 @@ export class SyncManager {
     }
   }
 
+  /**
+   * PRIV-8: fail-closed guard for metadata ops that currently have ONLY a
+   * public ArFS code path — file/folder MOVE and RENAME. ardrive-core-js does
+   * expose private move/rename, but this app has not wired those paths yet, so
+   * these call sites unconditionally used the movePublic / renamePublic calls.
+   * On a private drive that would write an unencrypted PUBLIC metadata revision
+   * (exposing the entity's new name/location as plaintext) AND spend.
+   *
+   * Rather than leak, refuse: block when the drive is positively private, and
+   * (via resolveDrivePrivacyOrThrow) also block when privacy can't be resolved.
+   * A positively-public drive proceeds unchanged (no regression).
+   */
+  private async assertPublicMoveRenameOrThrow(
+    driveId: string | null | undefined,
+    entityDescription: string,
+  ): Promise<void> {
+    const mappings = await this.databaseManager.getDriveMappings();
+    const mapping = mappings.find(m => m.driveId === driveId);
+    if (resolveDrivePrivacyOrThrow(mapping, driveId, entityDescription) === 'private') {
+      throw new Error(
+        `Refusing to move/rename ${entityDescription} on a private drive: ` +
+          `private move/rename is not supported yet and must not fall through to ` +
+          `the public ArFS path (it would leak private data as public and spend).`,
+      );
+    }
+  }
+
   // Execute metadata operations (move, rename, hide, etc.)
   async executeMetadataOperation(pendingUpload: PendingUpload): Promise<any> {
     if (!this.arDrive) {
@@ -3645,25 +3702,39 @@ export class SyncManager {
           if (!pendingUpload.arfsFileId || !pendingUpload.metadata?.newParentFolderId) {
             throw new Error('Missing required data for move operation');
           }
-          
+
+          // PRIV-8: fail closed — movePublicFile has no private counterpart wired
+          // here; a private (or unresolved) drive must not leak+spend via public.
+          await this.assertPublicMoveRenameOrThrow(
+            pendingUpload.driveId || this.driveId,
+            `file "${pendingUpload.fileName}"`,
+          );
+
           result = await this.arDrive.movePublicFile({
             fileId: EID(pendingUpload.arfsFileId),
             newParentFolderId: EID(pendingUpload.metadata.newParentFolderId)
           });
-          
+
           console.log(`Successfully moved file ${pendingUpload.fileName}`);
           break;
-          
+
         case 'rename':
           if (!pendingUpload.arfsFileId) {
             throw new Error('Missing file ID for rename operation');
           }
-          
+
+          // PRIV-8: fail closed — renamePublicFile has no private counterpart
+          // wired here; block private/unresolved rather than leak+spend via public.
+          await this.assertPublicMoveRenameOrThrow(
+            pendingUpload.driveId || this.driveId,
+            `file "${pendingUpload.fileName}"`,
+          );
+
           result = await this.arDrive.renamePublicFile({
             fileId: EID(pendingUpload.arfsFileId),
             newName: pendingUpload.fileName
           });
-          
+
           console.log(`Successfully renamed file to ${pendingUpload.fileName}`);
           break;
           
@@ -3683,10 +3754,18 @@ export class SyncManager {
           }
 
           // Resolve drive privacy to pick the public vs private ArFS path.
+          // PRIV-8: fail closed — an unresolved mapping must NOT default to the
+          // public hide/unhide path (would write an unencrypted public metadata
+          // revision of a private entity AND spend).
           const mappings = await this.databaseManager.getDriveMappings();
           const opDriveId = pendingUpload.driveId || this.driveId || undefined;
           const mapping = mappings.find((m: any) => m.driveId === opDriveId);
-          const isPrivateDrive = mapping?.drivePrivacy === 'private';
+          const isPrivateDrive =
+            resolveDrivePrivacyOrThrow(
+              mapping,
+              opDriveId,
+              `${isFolder ? 'folder' : 'file'} "${pendingUpload.fileName}"`,
+            ) === 'private';
 
           // Private hide/unhide requires the drive key (encrypts the whole
           // metadata JSON, exactly like a private rename).
