@@ -9,6 +9,7 @@ What this beta **deliberately does not do yet**, so testers know what's a scope 
 - **No automatic conflict resolution.** If the same file changes in two places, the app does not yet merge or prompt to resolve; last-write behavior applies. Conflict detection/resolution is post-beta.
 - **Downloads are not hash-verified on arrival.** Integrity is checked on upload; a post-download hash check is post-beta (SYNC-12).
 - **2 GB per-file cap** (MVP; larger via streaming upload is post-beta, SYNC-6/10). Files over the cap are rejected with a clear message.
+- **Two files with the *same name* in the same drive folder → only one lands locally.** ArFS allows identical names in one folder (files are keyed by ID, not name), but a local filesystem can't hold two files at the same path, so on download the second overwrites the first. Both are safe on-chain; only the local copy collides. De-duplicating the local name (`bro (1).png`) is a post-beta fix (SYNC-25). Rare in practice.
 
 ## Snapshots
 
