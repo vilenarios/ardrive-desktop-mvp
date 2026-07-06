@@ -16,6 +16,7 @@
 // Pending rows use the raw sqlite shape (integer booleans, null quotes,
 // legacy recommendedMethod strings) per CLAUDE.md trap 6.
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { TURBO_FREE_SIZE_LIMIT } from '../../../src/utils/turbo-utils';
 
 const h = vi.hoisted(() => {
   const handlers = new Map<string, (...args: unknown[]) => unknown>();
@@ -270,6 +271,75 @@ describe('uploads:approve — records the payment rail that actually executes (M
     expect(h.databaseManager.addUpload).toHaveBeenCalledWith(
       expect.objectContaining({ id: row.id, uploadMethod: 'turbo' })
     );
+  });
+});
+
+// main.ts computes its OWN `pendingUpload.fileSize <= TURBO_FREE_SIZE_LIMIT`
+// gate, independently of CostCalculator.isFreeWithTurbo (pinned separately in
+// tests/unit/sync/CostCalculator.test.ts). MONEY-14 found these two
+// boundaries had drifted (one used `<`, one used `<=`, and the constant
+// itself was wrong in five places) — these tests exercise main.ts's copy of
+// the gate at the exact byte boundary with DB-shaped pending rows, so the two
+// independent implementations can't silently drift apart again.
+describe('uploads:approve — free-tier byte boundary [MONEY-14 cross-check]', () => {
+  it('exactly at the limit (107520 bytes) is free — no balance/cost lookup', async () => {
+    const row = dbShapedPending({
+      fileSize: TURBO_FREE_SIZE_LIMIT,
+      estimatedCost: TURBO_FREE_SIZE_LIMIT / 1e12,
+    });
+    h.databaseManager.getPendingUploads.mockResolvedValue([row]);
+    h.turboManager.isInitialized.mockReturnValue(true);
+    // If the free path consulted pricing/balance, these would blow up the handler
+    h.turboManager.getUploadCosts.mockRejectedValue(new Error('must not be called'));
+    h.turboManager.getBalance.mockRejectedValue(new Error('must not be called'));
+
+    await invoke('uploads:approve', row.id);
+
+    expect(h.turboManager.getUploadCosts).not.toHaveBeenCalled();
+    expect(h.databaseManager.addUpload).toHaveBeenCalledWith(
+      expect.objectContaining({ id: row.id, uploadMethod: 'turbo' })
+    );
+  });
+
+  it('one byte under the limit (107519 bytes) is free — no balance/cost lookup', async () => {
+    const row = dbShapedPending({
+      fileSize: TURBO_FREE_SIZE_LIMIT - 1,
+      estimatedCost: (TURBO_FREE_SIZE_LIMIT - 1) / 1e12,
+    });
+    h.databaseManager.getPendingUploads.mockResolvedValue([row]);
+    h.turboManager.isInitialized.mockReturnValue(true);
+    h.turboManager.getUploadCosts.mockRejectedValue(new Error('must not be called'));
+    h.turboManager.getBalance.mockRejectedValue(new Error('must not be called'));
+
+    await invoke('uploads:approve', row.id);
+
+    expect(h.turboManager.getUploadCosts).not.toHaveBeenCalled();
+    expect(h.databaseManager.addUpload).toHaveBeenCalledWith(
+      expect.objectContaining({ id: row.id, uploadMethod: 'turbo' })
+    );
+  });
+
+  it('one byte over the limit (107521 bytes) is paid — blocked (envelope error) when the balance is insufficient', async () => {
+    const row = dbShapedPending({
+      fileSize: TURBO_FREE_SIZE_LIMIT + 1,
+      estimatedCost: (TURBO_FREE_SIZE_LIMIT + 1) / 1e12,
+      estimatedTurboCost: 0.05,
+      hasSufficientTurboBalance: 0,
+    });
+    h.databaseManager.getPendingUploads.mockResolvedValue([row]);
+    h.turboManager.isInitialized.mockReturnValue(true);
+    h.turboManager.getUploadCosts.mockResolvedValue({ winc: String(TURBO_FREE_SIZE_LIMIT + 1) });
+    h.turboManager.getBalance.mockResolvedValue({ winc: '0', ar: '0' });
+
+    const res = (await invoke('uploads:approve', row.id)) as { success: boolean; error?: string };
+
+    // Being one byte over means the balance check runs at all (proves the
+    // boundary is a strict `<=`, not an off-by-one `<`).
+    expect(h.turboManager.getUploadCosts).toHaveBeenCalled();
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/Insufficient Turbo Credits/);
+    expect(h.databaseManager.addUpload).not.toHaveBeenCalled();
+    expect(h.databaseManager.removePendingUpload).not.toHaveBeenCalled();
   });
 });
 

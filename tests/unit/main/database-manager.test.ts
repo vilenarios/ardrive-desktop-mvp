@@ -697,6 +697,236 @@ describe('DatabaseManager', () => {
     });
   });
 
+  // [MONEY-15 / DB hardening] DB-boundary shape audit. CLAUDE.md trap #6:
+  // node-sqlite3 returns BOOLEAN columns as 0/1 integers and empty nullable
+  // columns as null. getPendingUploads (above) is the model: it normalizes
+  // every scalar at the boundary. These blocks pin the SAME contract for the
+  // other methods that carry boolean-ish columns, documenting where it holds
+  // and where it doesn't (findings filed in docs/product/BACKLOG.md MONEY-15).
+  describe('drive mapping normalization — DB-shaped fixtures (locks in correct behavior)', () => {
+    // migrations.ts: `isActive BOOLEAN DEFAULT 1` on drive_mappings. Both
+    // getDriveMappings and getDriveMappingById already coerce with
+    // Boolean(row.isActive) — these tests pin that against the REAL sqlite
+    // shape (integer 0/1, null dates, null JSON column) rather than a clean
+    // JS fixture, so a regression here is caught immediately.
+    const dbShapedMappingRow = (overrides: Record<string, unknown> = {}) => ({
+      id: 'mapping-1',
+      driveId: 'drive-1',
+      driveName: 'My Drive',
+      drivePrivacy: 'public',
+      localFolderPath: '/sync/folder',
+      rootFolderId: 'root-1',
+      isActive: 0, // SQLite false -> integer 0
+      lastSyncTime: null,
+      lastMetadataSyncAt: null,
+      excludePatterns: null,
+      maxFileSize: null,
+      syncDirection: 'bidirectional',
+      uploadPriority: 0,
+      createdAt: '2026-07-03T00:00:00.000Z',
+      updatedAt: '2026-07-03T00:00:00.000Z',
+      ...overrides,
+    });
+
+    it('getDriveMappings: integer isActive 0/1 becomes a real boolean; null dates/JSON become undefined', async () => {
+      mockDbInstance.all.mockImplementationOnce(
+        (sql: string, callback: (err: Error | null, rows?: any[]) => void) => {
+          callback(null, [
+            dbShapedMappingRow({ id: 'inactive' }),
+            dbShapedMappingRow({ id: 'active', isActive: 1, excludePatterns: '["*.tmp"]', maxFileSize: 1000 }),
+          ]);
+        }
+      );
+
+      const [inactive, active] = await databaseManager.getDriveMappings();
+
+      expect(inactive.isActive).toBe(false);
+      expect(active.isActive).toBe(true);
+      expect(inactive.lastSyncTime).toBeUndefined();
+      expect(inactive.lastMetadataSyncAt).toBeUndefined();
+      expect(inactive.syncSettings?.excludePatterns).toBeUndefined();
+      expect(active.syncSettings?.excludePatterns).toEqual(['*.tmp']);
+      expect(inactive.createdAt).toBeInstanceOf(Date);
+    });
+
+    it('getDriveMappingById: the same DB-shaped row normalizes identically', async () => {
+      mockDbInstance.get.mockImplementationOnce(
+        (sql: string, params: any, callback: (err: Error | null, row?: any) => void) => {
+          if (typeof params === 'function') callback = params;
+          callback(null, dbShapedMappingRow({ isActive: 1, lastSyncTime: '2026-07-01T00:00:00.000Z' }));
+        }
+      );
+
+      const mapping = await databaseManager.getDriveMappingById('mapping-1');
+
+      expect(mapping?.isActive).toBe(true);
+      expect(mapping?.lastSyncTime).toBeInstanceOf(Date);
+    });
+  });
+
+  describe('downloads — isCancelled normalization gap [DB-1 finding, MONEY-15]', () => {
+    // migrations.ts: `isCancelled BOOLEAN DEFAULT 0` on `downloads`. Unlike
+    // getPendingUploads/getDriveMappings/getFolders/getFileVersions,
+    // getDownloads/getDownloadByFileId/getDownloadByPath spread the raw
+    // sqlite row through with NO boolean coercion — isCancelled reaches
+    // callers as the literal SQLite integer, even though FileDownload types
+    // it `isCancelled?: boolean`.
+    //
+    // FINDING (DB-1, latent risk — NOT currently exploited): every read of
+    // `.isCancelled` in the app stays inside SQL WHERE clauses written by
+    // database-manager.ts itself (`WHERE ... AND isCancelled = 0`); no
+    // consumer reads it off a returned FileDownload object today, so nothing
+    // misbehaves in production right now. But the method breaks the
+    // DB-boundary contract the normalized methods follow: a future call site
+    // written against the FileDownload type that does
+    // `download.isCancelled === true` (or `!== false`) would silently
+    // misclassify a cancelled download — the exact MONEY-3 failure mode.
+    // These tests pin the CURRENT (unnormalized) behavior so the gap is
+    // visible; if a future fix normalizes it, update the `.toBe(1)` /
+    // `.toBe(0)` assertions to `.toBe(true)` / `.toBe(false)`.
+    const dbShapedDownloadRow = (overrides: Record<string, unknown> = {}) => ({
+      id: 'download-1',
+      driveId: 'drive-1',
+      fileName: 'file.bin',
+      localPath: '/sync/file.bin',
+      fileSize: 1024,
+      fileId: 'arfs-file-1',
+      dataTxId: null,
+      metadataTxId: null,
+      status: 'failed',
+      progress: 0,
+      priority: 0,
+      isCancelled: 1, // SQLite true -> integer 1
+      error: 'Cancelled by user',
+      downloadedAt: '2026-07-03T00:00:00.000Z',
+      completedAt: null,
+      ...overrides,
+    });
+
+    it('getDownloads: isCancelled reaches the caller as a raw integer, not a boolean', async () => {
+      mockDbInstance.all.mockImplementationOnce(
+        (sql: string, params: any, callback: (err: Error | null, rows?: any[]) => void) => {
+          if (typeof params === 'function') callback = params;
+          callback(null, [dbShapedDownloadRow()]);
+        }
+      );
+
+      const [download] = await databaseManager.getDownloads();
+
+      // Documents current (unnormalized) behavior, not the FileDownload
+      // type's contract.
+      expect((download as any).isCancelled).toBe(1);
+      expect((download as any).isCancelled).not.toBe(true);
+      // Dates ARE normalized — this part of the boundary is fine.
+      expect(download.downloadedAt).toBeInstanceOf(Date);
+      expect(download.completedAt).toBeUndefined();
+    });
+
+    it('getDownloadByFileId: same raw-integer isCancelled shape', async () => {
+      mockDbInstance.get.mockImplementationOnce(
+        (sql: string, params: any, callback: (err: Error | null, row?: any) => void) => {
+          if (typeof params === 'function') callback = params;
+          callback(null, dbShapedDownloadRow({ isCancelled: 0 }));
+        }
+      );
+
+      const download = await databaseManager.getDownloadByFileId('arfs-file-1');
+      expect((download as any)?.isCancelled).toBe(0);
+    });
+
+    it('getDownloadByPath: same raw-integer isCancelled shape', async () => {
+      mockDbInstance.get.mockImplementationOnce(
+        (sql: string, params: any, callback: (err: Error | null, row?: any) => void) => {
+          if (typeof params === 'function') callback = params;
+          callback(null, dbShapedDownloadRow({ isCancelled: 1, localPath: '/sync/file.bin' }));
+        }
+      );
+
+      const download = await databaseManager.getDownloadByPath('/sync/file.bin');
+      expect((download as any)?.isCancelled).toBe(1);
+    });
+  });
+
+  describe('drive metadata cache — localFileExists/isHidden not normalized [DB-2 finding, MONEY-15]', () => {
+    // migrations.ts: `localFileExists BOOLEAN DEFAULT 0` (v3 baseline) and
+    // `isHidden BOOLEAN DEFAULT 0` (migration v5, SYNC-5) on
+    // drive_metadata_cache. getDriveMetadata/getFilesByStatus return
+    // `resolve(rows || [])` verbatim — no boolean coercion at all, unlike
+    // getPendingUploads/getDriveMappings/getFolders/getFileVersions above.
+    //
+    // FINDING (DB-2, latent risk): main.ts is currently the only in-tree
+    // consumer, and it defends itself inline at TWO call sites with explicit
+    // `=== 1` / `=== true` comparisons (main.ts:1177 `item.localFileExists
+    // === 1`, main.ts:1187 `item.isHidden === 1`) before these rows reach the
+    // renderer — but a THIRD call site (main.ts:1400, the force-refresh /
+    // merged-with-live-entities path) does NOT: `isDownloaded:
+    // localData.localFileExists` forwards the raw SQLite integer straight
+    // through an IPC payload typed as `boolean`. It is harmless today only
+    // because StorageTab.tsx exclusively truthy-checks `isDownloaded`
+    // (`item.isDownloaded || false`, `if (item.isDownloaded && ...)`), so 1/0
+    // behave like true/false there. But getDriveMetadata/getFilesByStatus
+    // themselves provide NO defense in depth: any future caller that forwards
+    // a row without main.ts's manual `=== 1` guard leaks a raw integer to a
+    // renderer expecting a real boolean. The companion renderer test
+    // (storage-tab-hidden-dbshape.test.tsx) demonstrates the concrete
+    // failure mode for `isHidden` specifically: StorageTab's OWN boundary
+    // check (`item.isHidden === true`) is written in the exact strict-equality
+    // style this trap describes, and would silently un-hide an actually-
+    // hidden file if fed this raw shape.
+    const dbShapedMetadataRow = (overrides: Record<string, unknown> = {}) => ({
+      id: 'meta-1',
+      mappingId: 'mapping-1',
+      fileId: 'arfs-file-1',
+      parentFolderId: null,
+      name: 'secret.txt',
+      path: '/secret.txt',
+      type: 'file',
+      size: 100,
+      lastModifiedDate: 1751500000000,
+      dataTxId: 'tx-1',
+      metadataTxId: 'meta-tx-1',
+      contentType: 'text/plain',
+      fileHash: null,
+      lastSyncedAt: '2026-07-03T00:00:00.000Z',
+      localPath: '/sync/secret.txt',
+      localFileExists: 1, // SQLite true -> integer 1
+      syncStatus: 'synced',
+      syncPreference: 'auto',
+      downloadPriority: 0,
+      lastError: null,
+      isHidden: 1, // SQLite true -> integer 1 (the file IS hidden on Arweave)
+      ...overrides,
+    });
+
+    it('getDriveMetadata: returns localFileExists/isHidden as raw integers, not booleans', async () => {
+      mockDbInstance.all.mockImplementationOnce(
+        (sql: string, params: any, callback: (err: Error | null, rows?: any[]) => void) => {
+          if (typeof params === 'function') callback = params;
+          callback(null, [dbShapedMetadataRow()]);
+        }
+      );
+
+      const [row] = await databaseManager.getDriveMetadata('mapping-1');
+
+      expect(row.localFileExists).toBe(1);
+      expect(row.localFileExists).not.toBe(true);
+      expect(row.isHidden).toBe(1);
+      expect(row.isHidden).not.toBe(true);
+    });
+
+    it('getFilesByStatus: same raw-integer shape (method has no in-tree caller today — dead but part of the public boundary)', async () => {
+      mockDbInstance.all.mockImplementationOnce(
+        (sql: string, params: any, callback: (err: Error | null, rows?: any[]) => void) => {
+          if (typeof params === 'function') callback = params;
+          callback(null, [dbShapedMetadataRow({ localFileExists: 0 })]);
+        }
+      );
+
+      const [row] = await databaseManager.getFilesByStatus('mapping-1', 'synced');
+      expect(row.localFileExists).toBe(0);
+    });
+  });
+
   describe('close', () => {
     it('should close the database connection', async () => {
       await expect(databaseManager.close()).resolves.not.toThrow();
