@@ -577,7 +577,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           onSuccess={(manifestUrl) => {
             // Refresh the permaweb files to show the new manifest
             console.log('Manifest created successfully:', manifestUrl);
-            // The URL is already copied to clipboard by CreateManifestModal
+            // UX-33: CreateManifestModal now shows the deployed URL persistently
+            // with its own Copy Link/Open actions, but the modal is still on
+            // screen and easy to dismiss before clicking those — copy the link
+            // here too as a safety net so the user leaves this flow with the
+            // link on their clipboard no matter what, backed by a toast (not
+            // just a fleeting one from the modal) confirming it landed.
+            copyToClipboard(manifestUrl);
+            toast?.success('Site link copied to clipboard');
           }}
           toast={toast}
         />

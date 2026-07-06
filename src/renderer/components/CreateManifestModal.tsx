@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileJson, Folder, ChevronRight, ChevronDown, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { X, FileJson, Folder, ChevronRight, ChevronDown, Loader2, AlertCircle, CheckCircle2, Copy, ExternalLink } from 'lucide-react';
 import { useModalA11y } from '../hooks/useModalA11y';
 import '../styles/manifest-modal.css';
 
@@ -38,6 +38,13 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [folderInfo, setFolderInfo] = useState<{ fileCount: number; estimatedCost: number } | null>(null);
   const [estimatingCost, setEstimatingCost] = useState(false);
+  // UX-33: the manifest URL used to be dropped entirely after creation (a
+  // fleeting toast + a console.log, nothing persistent — see the git-history
+  // note in create-manifest-modal.test.tsx). Once set, the confirmation
+  // layer switches from "confirm details" to a "site deployed" view that
+  // keeps the link on screen with Copy/Open actions instead of closing.
+  const [deployedUrl, setDeployedUrl] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // A11Y-3: Escape closes, backdrop click closes, focus trapped, focus
   // returns to the trigger on close — same shared hook as the other 3 drive
@@ -49,8 +56,11 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
     !showConfirmation,
     onClose
   );
+  // UX-33: once the manifest is deployed, this layer's Escape/backdrop-click
+  // should close the whole modal (there's no folder selection left to "go
+  // back" to) rather than reverting to the confirmation-details step.
   const { containerRef: confirmContainerRef, handleBackdropClick: handleConfirmBackdropClick } =
-    useModalA11y<HTMLDivElement>(showConfirmation, () => setShowConfirmation(false));
+    useModalA11y<HTMLDivElement>(showConfirmation, () => (deployedUrl ? onClose() : setShowConfirmation(false)));
 
   useEffect(() => {
     console.log('CreateManifestModal mounted for drive:', driveId);
@@ -173,14 +183,44 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
 
       toast?.success(`Manifest created successfully! (${result.data.fileCount} files)`);
 
+      // UX-33: surface the URL persistently instead of closing immediately —
+      // onSuccess still hands it to the caller (OverviewTab copies it too),
+      // but the modal itself now stays open on a "site deployed" view so the
+      // user isn't relying on a fleeting toast to grab the link.
+      setDeployedUrl(result.data.manifestUrl);
       onSuccess(result.data.manifestUrl);
-      onClose();
     } catch (err: any) {
       console.error('Failed to create manifest:', err);
       setError(err.message || 'Failed to create manifest');
       toast?.error(err.message || 'Failed to create manifest');
     } finally {
       setCreating(false);
+    }
+  };
+
+  // UX-33: same clipboard pattern as OverviewTab.tsx's copyToClipboard
+  // (navigator.clipboard.writeText), scoped locally since this is the only
+  // clipboard action in this component.
+  const handleCopyManifestLink = async () => {
+    if (!deployedUrl) return;
+    try {
+      await navigator.clipboard.writeText(deployedUrl);
+      setLinkCopied(true);
+      toast?.success('Site link copied to clipboard');
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy manifest URL:', err);
+      toast?.error('Failed to copy link');
+    }
+  };
+
+  const handleOpenManifestLink = async () => {
+    if (!deployedUrl) return;
+    try {
+      await window.electronAPI.shell.openExternal(deployedUrl);
+    } catch (err) {
+      console.error('Failed to open manifest URL:', err);
+      toast?.error('Failed to open link');
     }
   };
 
@@ -516,97 +556,146 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
                 <CheckCircle2 size={24} style={{ color: 'var(--success-600)' }} />
-                <h2 id="confirm-manifest-modal-title" style={{ margin: 0, fontSize: '20px', fontWeight: 600 }}>Confirm Manifest Creation</h2>
+                <h2 id="confirm-manifest-modal-title" style={{ margin: 0, fontSize: '20px', fontWeight: 600 }}>
+                  {deployedUrl ? 'Site Deployed' : 'Confirm Manifest Creation'}
+                </h2>
               </div>
             </div>
 
-            {/* Selected Folder Info */}
-            <div style={{
-              backgroundColor: 'var(--gray-50)',
-              borderRadius: 'var(--radius-md)',
-              padding: 'var(--space-4)',
-              marginBottom: 'var(--space-4)'
-            }}>
-              <div style={{ 
-                fontSize: '14px',
-                color: 'var(--gray-600)',
-                marginBottom: 'var(--space-2)'
-              }}>
-                Selected Folder
-              </div>
-              <div style={{ 
-                fontWeight: '600',
-                fontSize: '16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)'
-              }}>
-                <Folder size={18} style={{ color: 'var(--gray-500)' }} />
-                {folders.find(f => f.id === selectedFolder)?.name || 'Unknown'}
-              </div>
-              <div style={{
-                fontSize: '13px',
-                color: 'var(--gray-500)',
-                marginTop: 'var(--space-2)'
-              }}>
-                {folderInfo.fileCount} file paths will be included in the manifest
-              </div>
-            </div>
+            {deployedUrl ? (
+              <>
+                {/* UX-33: honest framing — a manifest is always public (core-js's
+                    uploadPublicManifest), regardless of the source drive's own
+                    privacy, and the link is permanent once written to Arweave. */}
+                <div style={{
+                  backgroundColor: 'var(--success-50)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 'var(--space-4)',
+                  marginBottom: 'var(--space-4)',
+                  border: '1px solid var(--success-200)',
+                  fontSize: '14px',
+                  color: 'var(--success-700)'
+                }}>
+                  Your site is live on Arweave — a permanent, public link. Anyone
+                  who has it can browse the files in this folder, no ArDrive account needed.
+                </div>
 
-            {/* Manifest Name */}
-            <div style={{
-              backgroundColor: 'var(--gray-50)',
-              borderRadius: 'var(--radius-md)',
-              padding: 'var(--space-4)',
-              marginBottom: 'var(--space-4)'
-            }}>
-              <div style={{ 
-                fontSize: '14px',
-                color: 'var(--gray-600)',
-                marginBottom: 'var(--space-2)'
-              }}>
-                Manifest Name
-              </div>
-              <div style={{ 
-                fontWeight: '600',
-                fontSize: '16px'
-              }}>
-                {manifestName}
-              </div>
-            </div>
+                <div style={{
+                  backgroundColor: 'var(--gray-50)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 'var(--space-4)',
+                  marginBottom: 'var(--space-4)'
+                }}>
+                  <div style={{
+                    fontSize: '14px',
+                    color: 'var(--gray-600)',
+                    marginBottom: 'var(--space-2)'
+                  }}>
+                    Site URL
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'monospace',
+                      fontSize: '13px',
+                      wordBreak: 'break-all',
+                      color: 'var(--ardrive-primary)',
+                      fontWeight: 600
+                    }}
+                  >
+                    {deployedUrl}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Selected Folder Info */}
+                <div style={{
+                  backgroundColor: 'var(--gray-50)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 'var(--space-4)',
+                  marginBottom: 'var(--space-4)'
+                }}>
+                  <div style={{
+                    fontSize: '14px',
+                    color: 'var(--gray-600)',
+                    marginBottom: 'var(--space-2)'
+                  }}>
+                    Selected Folder
+                  </div>
+                  <div style={{
+                    fontWeight: '600',
+                    fontSize: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-2)'
+                  }}>
+                    <Folder size={18} style={{ color: 'var(--gray-500)' }} />
+                    {folders.find(f => f.id === selectedFolder)?.name || 'Unknown'}
+                  </div>
+                  <div style={{
+                    fontSize: '13px',
+                    color: 'var(--gray-500)',
+                    marginTop: 'var(--space-2)'
+                  }}>
+                    {folderInfo.fileCount} file paths will be included in the manifest
+                  </div>
+                </div>
 
-            {/* Cost Estimate */}
-            <div style={{
-              backgroundColor: 'var(--success-50)',
-              borderRadius: 'var(--radius-md)',
-              padding: 'var(--space-4)',
-              marginBottom: 'var(--space-4)',
-              border: '1px solid var(--success-200)'
-            }}>
-              <div style={{ 
-                fontSize: '14px',
-                color: 'var(--success-700)',
-                marginBottom: 'var(--space-2)',
-                fontWeight: '500'
-              }}>
-                Cost
-              </div>
-              <div style={{ 
-                fontWeight: '700',
-                fontSize: '20px',
-                color: 'var(--success-600)'
-              }}>
-                FREE
-              </div>
-              <div style={{
-                fontSize: '13px',
-                color: 'var(--success-600)',
-                marginTop: 'var(--space-1)'
-              }}>
-                Using Turbo Credits (manifests are free)
-              </div>
-            </div>
+                {/* Manifest Name */}
+                <div style={{
+                  backgroundColor: 'var(--gray-50)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 'var(--space-4)',
+                  marginBottom: 'var(--space-4)'
+                }}>
+                  <div style={{
+                    fontSize: '14px',
+                    color: 'var(--gray-600)',
+                    marginBottom: 'var(--space-2)'
+                  }}>
+                    Manifest Name
+                  </div>
+                  <div style={{
+                    fontWeight: '600',
+                    fontSize: '16px'
+                  }}>
+                    {manifestName}
+                  </div>
+                </div>
 
+                {/* Cost Estimate */}
+                <div style={{
+                  backgroundColor: 'var(--success-50)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 'var(--space-4)',
+                  marginBottom: 'var(--space-4)',
+                  border: '1px solid var(--success-200)'
+                }}>
+                  <div style={{
+                    fontSize: '14px',
+                    color: 'var(--success-700)',
+                    marginBottom: 'var(--space-2)',
+                    fontWeight: '500'
+                  }}>
+                    Cost
+                  </div>
+                  <div style={{
+                    fontWeight: '700',
+                    fontSize: '20px',
+                    color: 'var(--success-600)'
+                  }}>
+                    FREE
+                  </div>
+                  <div style={{
+                    fontSize: '13px',
+                    color: 'var(--success-600)',
+                    marginTop: 'var(--space-1)'
+                  }}>
+                    Using Turbo Credits (manifests are free)
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Error Message */}
             {error && (
@@ -632,35 +721,73 @@ const CreateManifestModal: React.FC<CreateManifestModalProps> = ({
               gap: 'var(--space-3)',
               justifyContent: 'flex-end'
             }}>
-              <button
-                className="button outline"
-                onClick={() => setShowConfirmation(false)}
-                disabled={creating}
-              >
-                Back
-              </button>
-              <button
-                className="button primary"
-                onClick={handleConfirmCreate}
-                disabled={creating}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-2)'
-                }}
-              >
-                {creating ? (
-                  <>
-                    <Loader2 size={16} className="spin" />
-                    Creating Manifest...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={16} />
-                    Confirm & Create
-                  </>
-                )}
-              </button>
+              {deployedUrl ? (
+                <>
+                  <button
+                    className="button outline"
+                    onClick={handleCopyManifestLink}
+                    style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
+                  >
+                    {linkCopied ? (
+                      <>
+                        <CheckCircle2 size={16} />
+                        Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={16} />
+                        Copy Link
+                      </>
+                    )}
+                  </button>
+                  <button
+                    className="button outline"
+                    onClick={handleOpenManifestLink}
+                    style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
+                  >
+                    <ExternalLink size={16} />
+                    Open
+                  </button>
+                  <button
+                    className="button primary"
+                    onClick={onClose}
+                  >
+                    Done
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className="button outline"
+                    onClick={() => setShowConfirmation(false)}
+                    disabled={creating}
+                  >
+                    Back
+                  </button>
+                  <button
+                    className="button primary"
+                    onClick={handleConfirmCreate}
+                    disabled={creating}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)'
+                    }}
+                  >
+                    {creating ? (
+                      <>
+                        <Loader2 size={16} className="spin" />
+                        Creating Manifest...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={16} />
+                        Confirm & Create
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

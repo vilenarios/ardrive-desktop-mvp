@@ -7,15 +7,13 @@
 // substitution, no /raw/ path munging à la the SYNC-18 download-side bug —
 // there is no equivalent post-processing on the create/upload side).
 //
-// Also documents a real gap found while writing this test: the modal used to
-// copy the manifest URL to the clipboard (see git history — that call was
-// removed at some point) but OverviewTab.tsx's onSuccess handler still has a
-// stale comment claiming "The URL is already copied to clipboard by
-// CreateManifestModal." Today the modal has NO visible UI for the resulting
-// link at all — it's handed to onSuccess and otherwise only console.log'd.
-// That's a real UX gap (the user has no way to get their manifest URL from
-// the app after creating it) but is out of scope to fix here; flagged for
-// the backlog instead.
+// UX-33: the modal used to close immediately on success, relying on a
+// fleeting toast (and a stale OverviewTab.tsx comment claiming the URL was
+// "already copied to clipboard") to get the link to the user — it wasn't,
+// and there was no visible UI for the resulting link at all. Now the modal
+// stays open on a "Site Deployed" view with the URL rendered plus working
+// Copy Link/Open actions; the tests below cover both the URL pass-through
+// contract and that deployed view.
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -31,11 +29,20 @@ const mockElectronAPI = {
     countFolderFiles: vi.fn(),
     createManifest: vi.fn(),
   },
+  shell: {
+    openExternal: vi.fn(),
+  },
 };
 
 Object.defineProperty(window, 'electronAPI', {
   value: mockElectronAPI,
   writable: true,
+});
+
+Object.defineProperty(navigator, 'clipboard', {
+  value: { writeText: vi.fn().mockResolvedValue(undefined) },
+  writable: true,
+  configurable: true,
 });
 
 const singleRootFolderTree = [{ id: 'root-folder-1', name: 'Root', parentId: '', path: '/' }];
@@ -104,7 +111,47 @@ describe('CreateManifestModal — create-manifest link contract (SYNC-18 follow-
       manifestName: 'DriveManifest.json',
     });
     expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('3 files'));
-    expect(onClose).toHaveBeenCalledTimes(1);
+
+    // UX-33: the modal no longer closes itself on success — it stays open on
+    // the "Site Deployed" view so the link isn't only reachable via onSuccess.
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('UX-33: shows a persistent "Site Deployed" view with the URL, a working Copy Link button, and an Open button — not just a toast', async () => {
+    mockElectronAPI.drive.createManifest.mockResolvedValue({
+      success: true,
+      data: {
+        manifestUrl: GATEWAY_MANIFEST_URL,
+        fileUrls: [GATEWAY_FILE_URL],
+        txId: 'TX_MANIFEST_XYZ',
+        fileCount: 3,
+        manifestName: 'DriveManifest.json',
+      },
+    });
+
+    await proceedToConfirmationAndCreate();
+
+    // The deployed view renders the exact URL as visible text in the modal,
+    // not just as an argument passed to a callback.
+    await screen.findByText('Site Deployed');
+    expect(screen.getByText(GATEWAY_MANIFEST_URL)).toBeInTheDocument();
+
+    // Copy Link actually copies the rendered URL to the clipboard and confirms via toast.
+    const copyButton = screen.getByRole('button', { name: /copy link/i });
+    fireEvent.click(copyButton);
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(GATEWAY_MANIFEST_URL));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('copied')));
+    await screen.findByRole('button', { name: /copied!/i });
+
+    // Open hands the exact URL to the shell — never a re-derived/hardcoded link.
+    const openButton = screen.getByRole('button', { name: /^open$/i });
+    fireEvent.click(openButton);
+    await waitFor(() => expect(mockElectronAPI.shell.openExternal).toHaveBeenCalledWith(GATEWAY_MANIFEST_URL));
+
+    // Modal stays open and dismissible (Escape) rather than being forced shut.
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it('does not call onSuccess and surfaces the error when the handler envelope reports failure', async () => {
