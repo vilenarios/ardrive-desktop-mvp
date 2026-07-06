@@ -11,8 +11,6 @@ import {
   Check,
   RefreshCw,
   Users,
-  Plus,
-  Edit,
   X
 } from 'lucide-react';
 import { Profile } from '../../types';
@@ -27,10 +25,11 @@ interface UserMenuProps {
   onShowTurboManager: () => void;
   onShowWalletExport: () => void;
   onLogout: () => void;
+  // UX-5: opens the ProfileSwitcher (which itself offers switch/add/manage).
+  // The former onAddProfile/onCreateDrive props were never rendered here —
+  // removed to kill the dead wiring flagged in the audit (§5.5).
   onSwitchProfile?: () => void;
-  onAddProfile?: () => void;
   profileCount?: number;
-  onCreateDrive?: () => void;
 }
 
 const UserMenu: React.FC<UserMenuProps> = ({
@@ -42,9 +41,7 @@ const UserMenu: React.FC<UserMenuProps> = ({
   onShowWalletExport,
   onLogout,
   onSwitchProfile,
-  onAddProfile,
-  profileCount = 1,
-  onCreateDrive
+  profileCount = 1
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState(false);
