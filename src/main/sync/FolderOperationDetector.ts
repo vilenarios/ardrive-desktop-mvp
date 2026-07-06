@@ -27,6 +27,14 @@ interface PendingOperation {
   timeout: NodeJS.Timeout;
 }
 
+// SYNC-24 (F2): a pending delete that could be the source of the folder just
+// added, paired with the operation it would produce.
+interface FolderCandidate {
+  deletedPath: string;
+  pending: PendingOperation;
+  detection: OperationDetection;
+}
+
 export class FolderOperationDetector {
   private pendingDeletes = new Map<string, PendingOperation>();
   private recentOperations = new Map<string, OperationDetection>();
@@ -128,41 +136,82 @@ export class FolderOperationDetector {
 
   async onFolderAdd(folderPath: string): Promise<OperationDetection | null> {
     console.log(`FolderOperationDetector: Folder add detected - ${folderPath}`);
-    
+
     try {
       const newSnapshot = await this.createSnapshot(folderPath);
-      
-      // Check all pending deletes for potential matches
+
+      // SYNC-24 (F2): gather EVERY pending delete that would classify as a real
+      // operation, rather than returning on the first match. Returning on the
+      // first pending delete lets a new folder cross-match an unrelated deleted
+      // folder in the same parent (insertion order decides), assigning it the
+      // WRONG ArFS folderId and corrupting identity/history.
+      const candidates: FolderCandidate[] = [];
       for (const [deletedPath, pending] of this.pendingDeletes) {
         const detection = this.detectOperation(pending.snapshot, newSnapshot);
-        
         if (detection.type !== 'new') {
-          // Cancel the pending delete
-          clearTimeout(pending.timeout);
-          this.pendingDeletes.delete(deletedPath);
-          
-          // Cache the operation
-          this.cacheOperation(folderPath, detection);
-          
-          console.log(`FolderOperationDetector: Detected ${detection.type} operation`);
-          return detection;
+          candidates.push({ deletedPath, pending, detection });
         }
       }
-      
-      // No match found, this is a new folder
+
+      const chosen = this.chooseFolderCandidate(candidates, newSnapshot);
+      if (chosen) {
+        // Cancel the matched pending delete
+        clearTimeout(chosen.pending.timeout);
+        this.pendingDeletes.delete(chosen.deletedPath);
+
+        // Cache the operation
+        this.cacheOperation(folderPath, chosen.detection);
+
+        console.log(`FolderOperationDetector: Detected ${chosen.detection.type} operation`);
+        return chosen.detection;
+      }
+
+      // No unambiguous match -> treat as a new folder. Fail-safe: a wrong
+      // folderId corrupts ArFS identity, whereas a 'new' folder is merely
+      // suboptimal (re-creates instead of linking).
       const newFolderDetection: OperationDetection = {
         type: 'new',
         newPath: folderPath,
-        reason: 'No matching deleted folder found within detection window'
+        reason: candidates.length > 1
+          ? 'Ambiguous match against multiple deleted folders in the detection window — treating as new to avoid assigning a wrong folderId'
+          : 'No matching deleted folder found within detection window'
       };
-      
+
       this.cacheOperation(folderPath, newFolderDetection);
       return newFolderDetection;
-      
+
     } catch (error) {
       console.error(`Failed to analyze folder add for ${folderPath}:`, error);
       return null;
     }
+  }
+
+  /**
+   * SYNC-24 (F2): pick the single deleted folder a new folder most likely came
+   * from, or null when the match is ambiguous (caller falls back to 'new').
+   *   - 0 candidates  -> null (no match)
+   *   - 1 candidate   -> that candidate (unambiguous)
+   *   - 2+ candidates -> require a UNIQUE exact-name match (a move keeps the
+   *     folder name — the strongest identity signal the content-blind detector
+   *     has). Anything else is genuinely ambiguous -> null (fail safe to 'new').
+   */
+  private chooseFolderCandidate(
+    candidates: FolderCandidate[],
+    newSnapshot: FolderSnapshot
+  ): FolderCandidate | null {
+    if (candidates.length === 0) return null;
+    if (candidates.length === 1) return candidates[0];
+
+    const exactName = candidates.filter(
+      c => c.pending.snapshot.name === newSnapshot.name
+    );
+    if (exactName.length === 1) return exactName[0];
+
+    console.warn(
+      `FolderOperationDetector: ${candidates.length} deleted folders could match ${newSnapshot.path}; ` +
+      `no unique exact-name match — treating as new to avoid a wrong folderId`
+    );
+    return null;
   }
 
   private detectOperation(oldSnapshot: FolderSnapshot, newSnapshot: FolderSnapshot): OperationDetection {
