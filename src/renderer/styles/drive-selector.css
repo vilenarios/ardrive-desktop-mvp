@@ -144,6 +144,15 @@
   color: var(--text-secondary);
 }
 
+/* UX-18: wraps a drive's option button + its remove action so the remove
+ * button can be absolutely positioned over the row without nesting a
+ * <button> inside another <button>. */
+.drive-selector-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
 .drive-selector-option {
   display: flex;
   align-items: center;
@@ -157,6 +166,12 @@
   color: var(--text-primary);
   text-align: left;
   transition: background-color var(--motion-base) var(--ease-standard);
+}
+
+/* Room for the absolutely-positioned remove button so it never overlaps
+ * the sync-badge/lock icon at the row's trailing edge. */
+.drive-selector-option.has-remove {
+  padding-right: calc(var(--space-3) + 28px);
 }
 
 .drive-selector-option:hover {
@@ -191,6 +206,43 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* UX-18: icon-only ghost hit target (DESIGN-SYSTEM.md "Icon-only / ghost hit
+ * targets" recipe) — vertically centered over the row via the base
+ * translateY(-50%) transform, combined with the :active scale so both
+ * apply (an inline transform would otherwise win and drop the :active
+ * rule). Danger-tinted so its intent reads before it's even clicked. */
+.drive-selector-remove-button {
+  position: absolute;
+  right: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--icon-mid);
+  transition: color var(--motion-base) var(--ease-standard),
+              background-color var(--motion-base) var(--ease-standard);
+}
+
+.drive-selector-remove-button:hover {
+  color: var(--danger-fg);
+  background: var(--danger-surface);
+}
+
+.drive-selector-remove-button:active {
+  transform: translateY(-50%) scale(0.93);
+}
+
+.drive-selector-remove-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .drive-selector-option-fingerprint {
