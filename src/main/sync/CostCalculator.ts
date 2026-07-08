@@ -1,8 +1,8 @@
 import { turboManager } from '../turbo-manager';
 import { TURBO_FREE_SIZE_LIMIT } from '../../utils/turbo-utils';
+import { MAX_SYNC_FILE_SIZE_BYTES } from './constants';
 
 export class CostCalculator {
-  private readonly MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB for MVP
   private readonly FOLDER_BASE_COST = 0.000001; // Minimal cost for folder metadata
 
   async calculateUploadCosts(fileSize: number): Promise<{
@@ -80,8 +80,10 @@ export class CostCalculator {
     return this.FOLDER_BASE_COST;
   }
 
+  // SYNC-6: the beta upload cap. Single source = MAX_SYNC_FILE_SIZE_BYTES so the
+  // check and every "too big" message the sync engine surfaces stay in lock-step.
   isFileTooBig(fileSize: number): boolean {
-    return fileSize > this.MAX_FILE_SIZE;
+    return fileSize > MAX_SYNC_FILE_SIZE_BYTES;
   }
 
   isFreeWithTurbo(fileSize: number): boolean {

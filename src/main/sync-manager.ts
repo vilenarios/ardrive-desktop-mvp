@@ -22,6 +22,7 @@ import { resolveDrivePrivacyOrThrow } from './sync/drive-privacy';
 // MONEY-14 single source for the Turbo free-tier boundary (107520 bytes).
 // MONEY-10 uses it to flag an approved upload that grew past it before execution.
 import { TURBO_FREE_SIZE_LIMIT } from '../utils/turbo-utils';
+import { MAX_SYNC_FILE_SIZE_BYTES } from './sync/constants';
 import {
   fetchTxDataWithFailover,
   queryMetadataWithResilience,
@@ -104,6 +105,12 @@ export class SyncManager {
   // back to 'healthy' on a successful (re)start or an intentional stop.
   private syncHealth: SyncHealth = 'healthy';
   private syncHealthMessage: string | null = null;
+
+  // SYNC-6: paths already surfaced as over the upload cap (path -> byte size),
+  // so a burst of watcher events (or a retry) for the same too-big file fires
+  // exactly one OS notification instead of spamming. A different size for the
+  // same path re-surfaces (the file grew/shrank but is still over the cap).
+  private oversizeSurfaced = new Map<string, number>();
   // Params of the most recent startSync so the offline watchdog can re-attempt
   // it once connectivity returns (startSync's catch nulls driveId/rootFolderId
   // for PRIV-5, so we can't rely on those).
@@ -870,6 +877,23 @@ export class SyncManager {
       await this.databaseManager.updateUpload(upload.id, { status: 'failed', error: note });
       this.emitUploadProgress(upload.id, 0, 'failed', note);
       this.uploadQueueManager.removeFromQueue(upload.id);
+      return true;
+    }
+
+    // SYNC-6: enforce the beta upload cap on the QUEUED/RETRY route too, so an
+    // oversized file can never slip in via any path — e.g. a file that grew past
+    // the cap after approval, or an oversize 'failed' record the user hit "retry"
+    // on. Block it here (mark this execution record failed with the honest
+    // reason + surface it); do NOT re-queue for an approval the user could never
+    // grant, and never spend.
+    if (this.costCalculator.isFileTooBig(currentSize)) {
+      const note = this.formatOversizeMessage(upload.fileName, currentSize);
+      upload.status = 'failed';
+      upload.error = note;
+      await this.databaseManager.updateUpload(upload.id, { status: 'failed', error: note });
+      this.emitUploadProgress(upload.id, 0, 'failed', note);
+      this.uploadQueueManager.removeFromQueue(upload.id);
+      this.notifyOversize(upload.localPath, note, currentSize);
       return true;
     }
 
@@ -2524,6 +2548,102 @@ export class SyncManager {
     }
   }
 
+  // ─── SYNC-6: honest file-size cap ────────────────────────────────────────
+  // A file over the beta upload cap (MAX_SYNC_FILE_SIZE_BYTES) is SKIPPED — it
+  // is never uploaded, so the cap stays money-safe — but the skip must be LOUD,
+  // not silent (audit §2.11): the user gets an OS notification AND a persistent
+  // 'failed' uploads row naming the file, its size, and the limit, instead of
+  // the file simply vanishing from sync with no explanation.
+
+  /**
+   * Honest, non-apologetic copy for a file blocked by the cap. Both the size
+   * and the limit are rendered from MAX_SYNC_FILE_SIZE_BYTES, so the message can
+   * never disagree with CostCalculator.isFileTooBig (which uses the same
+   * constant). e.g. `"big.zip" is 240 MB — over the 100 MB limit for this beta
+   * and won't sync.`
+   */
+  private formatOversizeMessage(fileName: string, size: number): string {
+    const toMb = (bytes: number) => Math.max(1, Math.round(bytes / (1024 * 1024)));
+    return (
+      `"${fileName}" is ${toMb(size)} MB — over the ${toMb(MAX_SYNC_FILE_SIZE_BYTES)} MB ` +
+      `limit for this beta and won't sync.`
+    );
+  }
+
+  /** Stable uploads-row id for the persistent oversize record of a given path. */
+  private oversizeUploadId(filePath: string): string {
+    return `oversize-${crypto.createHash('sha256').update(filePath).digest('hex').slice(0, 24)}`;
+  }
+
+  /**
+   * Fire the OS notification (UX-29) for an oversized file, deduped per
+   * path+size so repeated watcher events / retries never spam. This is
+   * deliberately NOT routed through markSyncDegraded: one oversized file is not
+   * a broken sync — the engine is still healthy and every other file keeps
+   * syncing — so it must not flip the SYNC-9 health signal to "error". Returns
+   * the message so callers can also persist it. Notification failures are
+   * swallowed (ambient polish must never break the sync flow).
+   */
+  private notifyOversize(filePath: string, message: string, size: number): string {
+    if (this.oversizeSurfaced.get(filePath) === size) {
+      return message;
+    }
+    this.oversizeSurfaced.set(filePath, size);
+    console.warn(`SYNC-6: ${message}`);
+    try {
+      notificationService.notifySyncError(message);
+    } catch (notifyError) {
+      console.error('SYNC-6: failed to show oversize notification:', notifyError);
+    }
+    return message;
+  }
+
+  /**
+   * Sync-(watcher-)detected route: surface an oversized file loudly, then skip.
+   * OS notification PLUS a persistent 'failed' uploads row (idempotent per path)
+   * so the file shows up in the activity/failed surface with the honest reason
+   * rather than silently disappearing. Never uploads — money-safe.
+   */
+  private async surfaceOversizeSkip(filePath: string, fileName: string, size: number): Promise<void> {
+    const message = this.notifyOversize(filePath, this.formatOversizeMessage(fileName, size), size);
+    try {
+      const id = this.oversizeUploadId(filePath);
+      // Idempotent: drop any prior oversize record for this path, then re-insert
+      // (addUpload is a plain INSERT), so bursts / size changes never duplicate.
+      await this.databaseManager.removeUpload(id);
+      await this.databaseManager.addUpload({
+        id,
+        driveId: this.driveId || undefined,
+        localPath: filePath,
+        fileName,
+        fileSize: size,
+        status: 'failed',
+        progress: 0,
+        uploadMethod: 'turbo',
+        error: message,
+      });
+      this.notifyRenderer('sync:pending-uploads-updated');
+    } catch (recordError) {
+      // The notification already fired; a failure to persist must not crash sync.
+      console.error('SYNC-6: failed to record oversize file:', recordError);
+    }
+  }
+
+  /**
+   * A path that was previously blocked as oversize now fits under the cap (the
+   * user shrank the file). Retire the dedup marker and the stale 'failed' record
+   * so the file is no longer shown as failed once it actually syncs.
+   */
+  private async clearOversizeRecord(filePath: string): Promise<void> {
+    this.oversizeSurfaced.delete(filePath);
+    try {
+      await this.databaseManager.removeUpload(this.oversizeUploadId(filePath));
+      this.notifyRenderer('sync:pending-uploads-updated');
+    } catch (clearError) {
+      console.error('SYNC-6: failed to clear stale oversize record:', clearError);
+    }
+  }
+
   private async handleNewFile(filePath: string, changeType: ChangeType = 'create') {
     console.log(`Processing new file: ${filePath}`);
     
@@ -2550,10 +2670,19 @@ export class SyncManager {
       const stats = await fs.stat(filePath);
       console.log(`File stats: size=${stats.size} bytes`);
       
-      // Skip files larger than 100MB for MVP
+      // SYNC-6: a file over the beta upload cap is SKIPPED (never uploaded — the
+      // cap stays money-safe) but must be surfaced, not silently dropped
+      // (audit §2.11): an OS notification + a persistent failed-upload record
+      // naming the file, its size, and the limit. Follow-up SYNC-10 (streaming
+      // hashing) is the prerequisite for raising the cap to 2 GiB (D-014).
       if (this.costCalculator.isFileTooBig(stats.size)) {
-        console.log(`Skipping large file: ${filePath} (${stats.size} bytes)`);
+        await this.surfaceOversizeSkip(filePath, path.basename(filePath), stats.size);
         return;
+      }
+      // Under the cap: if this path was previously blocked as oversize, retire
+      // that record so it isn't shown as failed once it actually syncs.
+      if (this.oversizeSurfaced.has(filePath)) {
+        await this.clearOversizeRecord(filePath);
       }
 
       // Check if we've already processed this file

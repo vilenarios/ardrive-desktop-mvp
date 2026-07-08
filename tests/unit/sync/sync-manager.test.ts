@@ -13,6 +13,9 @@ import { SyncManager } from '@/main/sync-manager';
 import { createMockDatabaseManager } from '../../helpers/mock-database';
 import { driveKeyManager } from '@/main/drive-key-manager';
 import { createMockArDrive } from '../../helpers/mock-ardrive';
+import { notificationService } from '@/main/notification-service';
+import { CostCalculator } from '@/main/sync/CostCalculator';
+import { MAX_SYNC_FILE_SIZE_BYTES } from '@/main/sync/constants';
 import * as chokidar from 'chokidar';
 
 const { mockWatcher, mockWebContentsSend, mockGetAllWindows, mockWindow } = vi.hoisted(() => {
@@ -885,6 +888,142 @@ describe('SyncManager', () => {
       await syncManager['handleNewFile'](filePath, 'update');
 
       expect(mockDatabaseManager.addPendingUpload).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('File-size cap is surfaced, not silently skipped (SYNC-6)', () => {
+    const oversizeName = 'big.zip';
+    const filePath = `${testSyncPath}/${oversizeName}`;
+    const OVERSIZE_BYTES = 240 * 1024 * 1024; // 240 MiB — comfortably over the cap
+    let notifySpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(async () => {
+      syncManager['driveId'] = testDriveId;
+      syncManager['rootFolderId'] = testRootFolderId;
+      // A too-big file: the cost calculator flags it and disk reports 240 MiB.
+      syncManager['costCalculator'] = {
+        isFileTooBig: vi.fn((size: number) => size > MAX_SYNC_FILE_SIZE_BYTES),
+        isFreeWithTurbo: vi.fn(() => false),
+        calculateUploadCosts: vi.fn(async () => ({
+          estimatedCost: 0,
+          estimatedTurboCost: 100,
+          recommendedMethod: 'turbo',
+          hasSufficientTurboBalance: true,
+        })),
+        formatCostInAR: vi.fn(() => '0.000000 AR'),
+      } as any;
+
+      const fs = await import('fs/promises');
+      vi.mocked(fs.access).mockResolvedValue(undefined);
+      vi.mocked(fs.stat).mockResolvedValue({
+        size: OVERSIZE_BYTES,
+        isFile: () => true,
+        isDirectory: () => false,
+      } as any);
+      mockDatabaseManager.getProcessedFiles.mockResolvedValue([]);
+
+      // The OS-notification surface short-circuits (Notification.isSupported()
+      // is mocked false); stub the method so we only observe that it fired with
+      // honest copy naming the file, its size, and the limit.
+      notifySpy = vi.spyOn(notificationService, 'notifySyncError').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      notifySpy.mockRestore();
+    });
+
+    it('surfaces an oversized file (OS notification + persistent failed record) and does NOT upload it', async () => {
+      (mockArDrive as any).uploadAllEntities = vi.fn();
+
+      await syncManager['handleNewFile'](filePath, 'create');
+
+      // 1) LOUD, not silent: an OS notification naming the file, its size, and the limit.
+      expect(notifySpy).toHaveBeenCalledTimes(1);
+      const message = notifySpy.mock.calls[0][0] as string;
+      expect(message).toContain(oversizeName);
+      expect(message).toContain('240 MB');
+      expect(message).toContain('100 MB');
+      expect(message.toLowerCase()).toContain("won't sync");
+
+      // 2) Persistent surface: a 'failed' uploads row carrying the same honest reason.
+      expect(mockDatabaseManager.addUpload).toHaveBeenCalledWith(
+        expect.objectContaining({
+          localPath: filePath,
+          fileName: oversizeName,
+          fileSize: OVERSIZE_BYTES,
+          status: 'failed',
+          error: message,
+        })
+      );
+
+      // 3) SKIP preserved / money-safe: never queued for upload, never uploaded.
+      expect(mockDatabaseManager.addPendingUpload).not.toHaveBeenCalled();
+      expect((mockArDrive as any).uploadAllEntities).not.toHaveBeenCalled();
+      expect(mockDatabaseManager.addProcessedFile).not.toHaveBeenCalled();
+    });
+
+    it('does not spam: a burst of watcher events for the same too-big file notifies once', async () => {
+      await syncManager['handleNewFile'](filePath, 'create');
+      await syncManager['handleNewFile'](filePath, 'change');
+      await syncManager['handleNewFile'](filePath, 'change');
+
+      expect(notifySpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('blocks an oversized file on the queued/retry route too (never uploads over the cap)', async () => {
+      const upload: any = {
+        id: 'upload-oversize-1',
+        driveId: testDriveId,
+        localPath: filePath,
+        fileName: oversizeName,
+        fileSize: 50 * 1024 * 1024, // approved small; grew past the cap on disk
+        status: 'pending',
+        progress: 0,
+      };
+
+      const handled = await syncManager['revalidateApprovedFileSize'](upload);
+
+      expect(handled).toBe(true); // caller stops before any upload work
+      expect(upload.status).toBe('failed');
+      expect(upload.error).toContain('100 MB');
+      expect(mockDatabaseManager.updateUpload).toHaveBeenCalledWith(
+        'upload-oversize-1',
+        expect.objectContaining({ status: 'failed' })
+      );
+      expect(notifySpy).toHaveBeenCalledTimes(1);
+      // It is NOT re-queued for an approval the user could never grant.
+      expect(mockDatabaseManager.addPendingUpload).not.toHaveBeenCalled();
+    });
+
+    it('lets a file UNDER the cap sync normally (queued for approval, no oversize notice)', async () => {
+      const okName = 'small.txt';
+      const okPath = `${testSyncPath}/${okName}`;
+      const OK_CONTENT = Buffer.from('a modest amount of content');
+      const fs = await import('fs/promises');
+      vi.mocked(fs.stat).mockResolvedValue({
+        size: OK_CONTENT.length,
+        isFile: () => true,
+        isDirectory: () => false,
+      } as any);
+      vi.mocked(fs.readFile).mockResolvedValue(OK_CONTENT as any);
+      mockDatabaseManager.getProcessedFiles.mockResolvedValue([]);
+      mockDatabaseManager.getPendingUploads.mockResolvedValue([]);
+
+      await syncManager['handleNewFile'](okPath, 'create');
+
+      expect(notifySpy).not.toHaveBeenCalled();
+      expect(mockDatabaseManager.addPendingUpload).toHaveBeenCalledWith(
+        expect.objectContaining({ localPath: okPath, status: 'awaiting_approval' })
+      );
+    });
+
+    it('the beta cap is a single source: CostCalculator.isFileTooBig keys off MAX_SYNC_FILE_SIZE_BYTES', () => {
+      const calc = new CostCalculator();
+      // Exactly at the limit is allowed; a single byte over is rejected — proving
+      // the check derives from the constant (not a separate magic number).
+      expect(calc.isFileTooBig(MAX_SYNC_FILE_SIZE_BYTES)).toBe(false);
+      expect(calc.isFileTooBig(MAX_SYNC_FILE_SIZE_BYTES + 1)).toBe(true);
+      expect(MAX_SYNC_FILE_SIZE_BYTES).toBe(100 * 1024 * 1024);
     });
   });
 
