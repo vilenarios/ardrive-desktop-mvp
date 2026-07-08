@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
 import { BrowserWindow } from 'electron';
-import { ArDrive, wrapFileOrFolder, EID, PrivateKeyData } from 'ardrive-core-js';
+import { ArDrive, wrapFileOrFolder, EID, PrivateKeyData, DriveKey } from 'ardrive-core-js';
 import { DatabaseManager } from './database-manager';
 import { VersionManager, ChangeType } from './version-manager';
 import { FileUpload, SyncStatus, SyncHealth, PendingUpload } from '../types';
@@ -2244,17 +2244,25 @@ export class SyncManager {
     console.log(`Renaming folder on ArDrive: ${path.basename(oldPath)} -> ${newName}`);
 
     try {
-      // PRIV-8: fail closed — renamePublicFolder has no private counterpart
-      // wired here; a private (or unresolved) drive must not leak the folder's
-      // new name as a public plaintext revision (and spend). Block instead.
-      await this.assertPublicMoveRenameOrThrow(this.driveId, `folder "${path.basename(oldPath)}"`);
+      // PRIV-6/PRIV-8: route by resolved privacy. Public -> renamePublicFolder;
+      // positively-private -> renamePrivateFolder WITH the drive key (encrypted
+      // metadata revision). UNRESOLVED or LOCKED-private throws inside the
+      // resolver (fail closed) — a private folder's new name never leaks public.
+      const route = await this.resolveMoveRenameRoute(this.driveId, `folder "${path.basename(oldPath)}"`);
 
-      const result = await this.arDrive.renamePublicFolder({
-        folderId: EID(arfsFolderId),
-        newName: newName
-      });
-      
-      console.log(`ArDrive folder rename successful:`, result);
+      const result = route.privacy === 'private'
+        ? await this.arDrive.renamePrivateFolder({
+            folderId: EID(arfsFolderId),
+            newName: newName,
+            driveKey: route.driveKey
+          })
+        : await this.arDrive.renamePublicFolder({
+            folderId: EID(arfsFolderId),
+            newName: newName
+          });
+
+      // SEC-1: NEVER log the raw result — a private result carries the drive key.
+      console.log(`ArDrive folder rename successful:`, summarizeArFSResult(result));
       
       // Update operation history in database
       await this.databaseManager.addFolderOperation({
@@ -2292,10 +2300,10 @@ export class SyncManager {
     console.log(`Moving folder on ArDrive from ${path.dirname(oldPath)} to ${newParentPath}`);
     
     try {
-      // PRIV-8: fail closed — movePublicFolder has no private counterpart wired
-      // here; a private (or unresolved) drive must not leak the folder's new
-      // location as a public plaintext revision (and spend). Block instead.
-      await this.assertPublicMoveRenameOrThrow(this.driveId, `folder "${path.basename(oldPath)}"`);
+      // PRIV-6/PRIV-8: resolve the privacy route BEFORE any write (fail closed
+      // on unresolved / locked-private). Public -> movePublicFolder;
+      // positively-private -> movePrivateFolder WITH the drive key.
+      const route = await this.resolveMoveRenameRoute(this.driveId, `folder "${path.basename(oldPath)}"`);
 
       // Get the new parent folder's ArDrive ID
       const newParentFolder = await this.databaseManager.getFolderByPath(newParentPath);
@@ -2303,12 +2311,19 @@ export class SyncManager {
         throw new Error(`New parent folder not found or not synced: ${newParentPath}`);
       }
 
-      const result = await this.arDrive.movePublicFolder({
-        folderId: EID(arfsFolderId),
-        newParentFolderId: EID(newParentFolder.arfsFolderId)
-      });
-      
-      console.log(`ArDrive folder move successful:`, result);
+      const result = route.privacy === 'private'
+        ? await this.arDrive.movePrivateFolder({
+            folderId: EID(arfsFolderId),
+            newParentFolderId: EID(newParentFolder.arfsFolderId),
+            driveKey: route.driveKey
+          })
+        : await this.arDrive.movePublicFolder({
+            folderId: EID(arfsFolderId),
+            newParentFolderId: EID(newParentFolder.arfsFolderId)
+          });
+
+      // SEC-1: NEVER log the raw result — a private result carries the drive key.
+      console.log(`ArDrive folder move successful:`, summarizeArFSResult(result));
       
       // Update operation history in database
       await this.databaseManager.addFolderOperation({
@@ -4391,30 +4406,46 @@ export class SyncManager {
   }
 
   /**
-   * PRIV-8: fail-closed guard for metadata ops that currently have ONLY a
-   * public ArFS code path — file/folder MOVE and RENAME. ardrive-core-js does
-   * expose private move/rename, but this app has not wired those paths yet, so
-   * these call sites unconditionally used the movePublic / renamePublic calls.
-   * On a private drive that would write an unencrypted PUBLIC metadata revision
-   * (exposing the entity's new name/location as plaintext) AND spend.
+   * PRIV-6/PRIV-8: resolve the ArFS routing for a file/folder MOVE or RENAME.
    *
-   * Rather than leak, refuse: block when the drive is positively private, and
-   * (via resolveDrivePrivacyOrThrow) also block when privacy can't be resolved.
-   * A positively-public drive proceeds unchanged (no regression).
+   * These metadata ops have both a PUBLIC (`*Public*`) and a PRIVATE
+   * (`*Private*`, drive-key-encrypted) ArFS code path. This resolver picks the
+   * correct one, preserving PRIV-8's fail-closed invariant. Three layers:
+   *
+   *   - UNRESOLVED privacy (missing mapping / null column / garbage): the inner
+   *     `resolveDrivePrivacyOrThrow` THROWS — never guess, never default public.
+   *   - positively PUBLIC  -> `{ privacy: 'public' }` (caller uses `*Public*`).
+   *   - positively PRIVATE -> `{ privacy: 'private', driveKey }` (caller uses
+   *     `*Private*` WITH the drive key, writing an encrypted metadata revision).
+   *
+   * A LOCKED private drive (positively private but no cached key) THROWS with an
+   * "unlock to move/rename" message — it must NEVER fall through to the public,
+   * unencrypted path (that would leak the entity's new name/location as
+   * plaintext AND spend). So a private entity can only ever take the encrypted
+   * path, and the drive key is threaded in from the in-memory `driveKeyManager`.
    */
-  private async assertPublicMoveRenameOrThrow(
+  private async resolveMoveRenameRoute(
     driveId: string | null | undefined,
     entityDescription: string,
-  ): Promise<void> {
+  ): Promise<{ privacy: 'public' } | { privacy: 'private'; driveKey: DriveKey }> {
     const mappings = await this.databaseManager.getDriveMappings();
     const mapping = mappings.find(m => m.driveId === driveId);
-    if (resolveDrivePrivacyOrThrow(mapping, driveId, entityDescription) === 'private') {
+    // PRIV-8: throws on any unresolved privacy state — do not proceed.
+    if (resolveDrivePrivacyOrThrow(mapping, driveId, entityDescription) === 'public') {
+      return { privacy: 'public' };
+    }
+    // Positively private: the metadata revision must be encrypted, so the drive
+    // key is required. A locked drive (no cached key) fails closed here.
+    if (!driveId) {
+      throw new Error(`Cannot resolve drive for private ${entityDescription} move/rename`);
+    }
+    const driveKey = driveKeyManager.getDriveKey(driveId);
+    if (!driveKey) {
       throw new Error(
-        `Refusing to move/rename ${entityDescription} on a private drive: ` +
-          `private move/rename is not supported yet and must not fall through to ` +
-          `the public ArFS path (it would leak private data as public and spend).`,
+        `Private drive is locked — unlock it to move/rename ${entityDescription}.`,
       );
     }
+    return { privacy: 'private', driveKey };
   }
 
   // Execute metadata operations (move, rename, hide, etc.)
@@ -4429,46 +4460,62 @@ export class SyncManager {
       let result;
       
       switch (pendingUpload.operationType) {
-        case 'move':
+        case 'move': {
           if (!pendingUpload.arfsFileId || !pendingUpload.metadata?.newParentFolderId) {
             throw new Error('Missing required data for move operation');
           }
 
-          // PRIV-8: fail closed — movePublicFile has no private counterpart wired
-          // here; a private (or unresolved) drive must not leak+spend via public.
-          await this.assertPublicMoveRenameOrThrow(
+          // PRIV-6/PRIV-8: route by resolved privacy. Public -> movePublicFile;
+          // positively-private -> movePrivateFile WITH the drive key. UNRESOLVED
+          // or LOCKED-private throws inside the resolver (never leak+spend public).
+          const moveRoute = await this.resolveMoveRenameRoute(
             pendingUpload.driveId || this.driveId,
             `file "${pendingUpload.fileName}"`,
           );
 
-          result = await this.arDrive.movePublicFile({
-            fileId: EID(pendingUpload.arfsFileId),
-            newParentFolderId: EID(pendingUpload.metadata.newParentFolderId)
-          });
+          result = moveRoute.privacy === 'private'
+            ? await this.arDrive.movePrivateFile({
+                fileId: EID(pendingUpload.arfsFileId),
+                newParentFolderId: EID(pendingUpload.metadata.newParentFolderId),
+                driveKey: moveRoute.driveKey
+              })
+            : await this.arDrive.movePublicFile({
+                fileId: EID(pendingUpload.arfsFileId),
+                newParentFolderId: EID(pendingUpload.metadata.newParentFolderId)
+              });
 
           console.log(`Successfully moved file ${pendingUpload.fileName}`);
           break;
+        }
 
-        case 'rename':
+        case 'rename': {
           if (!pendingUpload.arfsFileId) {
             throw new Error('Missing file ID for rename operation');
           }
 
-          // PRIV-8: fail closed — renamePublicFile has no private counterpart
-          // wired here; block private/unresolved rather than leak+spend via public.
-          await this.assertPublicMoveRenameOrThrow(
+          // PRIV-6/PRIV-8: route by resolved privacy. Public -> renamePublicFile;
+          // positively-private -> renamePrivateFile WITH the drive key. UNRESOLVED
+          // or LOCKED-private throws inside the resolver (never leak+spend public).
+          const renameRoute = await this.resolveMoveRenameRoute(
             pendingUpload.driveId || this.driveId,
             `file "${pendingUpload.fileName}"`,
           );
 
-          result = await this.arDrive.renamePublicFile({
-            fileId: EID(pendingUpload.arfsFileId),
-            newName: pendingUpload.fileName
-          });
+          result = renameRoute.privacy === 'private'
+            ? await this.arDrive.renamePrivateFile({
+                fileId: EID(pendingUpload.arfsFileId),
+                newName: pendingUpload.fileName,
+                driveKey: renameRoute.driveKey
+              })
+            : await this.arDrive.renamePublicFile({
+                fileId: EID(pendingUpload.arfsFileId),
+                newName: pendingUpload.fileName
+              });
 
           console.log(`Successfully renamed file to ${pendingUpload.fileName}`);
           break;
-          
+        }
+
         case 'hide':
         case 'unhide':
         case 'delete': {
