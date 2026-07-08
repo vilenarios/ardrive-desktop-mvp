@@ -1387,12 +1387,17 @@ describe('SyncManager', () => {
     beforeEach(() => {
       syncManager['driveId'] = testDriveId;
       syncManager['rootFolderId'] = testRootFolderId;
-      // These call sites hardcode only a public path — mock them so a
-      // regression (leaking to public) would be observable, never a no-op.
+      // Mock BOTH the public and the PRIV-6 private move/rename paths so a
+      // regression (leaking to public, or skipping the encrypted path) is
+      // observable, never a silent no-op.
       (mockArDrive as any).renamePublicFile = vi.fn().mockResolvedValue({ created: [{ type: 'file' }], fees: {} });
       (mockArDrive as any).movePublicFile = vi.fn().mockResolvedValue({ created: [{ type: 'file' }], fees: {} });
       (mockArDrive as any).renamePublicFolder = vi.fn().mockResolvedValue({ created: [{ type: 'folder' }], fees: {} });
       (mockArDrive as any).movePublicFolder = vi.fn().mockResolvedValue({ created: [{ type: 'folder' }], fees: {} });
+      (mockArDrive as any).renamePrivateFile = vi.fn().mockResolvedValue({ created: [{ type: 'file' }], fees: {} });
+      (mockArDrive as any).movePrivateFile = vi.fn().mockResolvedValue({ created: [{ type: 'file' }], fees: {} });
+      (mockArDrive as any).renamePrivateFolder = vi.fn().mockResolvedValue({ created: [{ type: 'folder' }], fees: {} });
+      (mockArDrive as any).movePrivateFolder = vi.fn().mockResolvedValue({ created: [{ type: 'folder' }], fees: {} });
       (mockArDrive as any).createPrivateFolder = vi.fn().mockResolvedValue({ created: [{ type: 'folder', entityId: { toString: () => 'priv-folder' } }] });
       // executeFolderRename/Move record success/failure history via this method;
       // the shared mock DB doesn't stub it (no prior test drove those paths).
@@ -1508,16 +1513,19 @@ describe('SyncManager', () => {
 
     // --- move/rename: public-only ArFS paths must also fail closed -----------
 
-    it('BLOCKS a file rename on a positively-PRIVATE drive — never renamePublicFile', async () => {
+    it('BLOCKS a file rename on a LOCKED private drive (no key) — never any public/private write', async () => {
+      // PRIV-6 added the private path, but a LOCKED drive (no cached key) must
+      // still fail closed — never fall through to the unencrypted public write.
       mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
-      driveKeyManager.cacheKey(testDriveId, { keyData: Buffer.from('secret') } as any);
+      // No key cached => locked.
 
       await expect(
         syncManager.executeMetadataOperation(makeRenameOp())
-      ).rejects.toThrow(/private move\/rename is not supported yet|Refusing to move\/rename/i);
+      ).rejects.toThrow(/locked/i);
 
-      // The public plaintext rename revision was NOT written (no leak/spend).
+      // Neither the public plaintext rename NOR the private one fired (no spend).
       expect((mockArDrive as any).renamePublicFile).not.toHaveBeenCalled();
+      expect((mockArDrive as any).renamePrivateFile).not.toHaveBeenCalled();
     });
 
     it('BLOCKS a file rename when the mapping is UNRESOLVED — never renamePublicFile', async () => {
@@ -1539,14 +1547,17 @@ describe('SyncManager', () => {
       expect((mockArDrive as any).renamePublicFile.mock.calls[0][0].fileId.toString()).toBe(fileEntityId);
     });
 
-    it('BLOCKS an auto-sync FOLDER rename on a private drive — never renamePublicFolder', async () => {
+    it('BLOCKS an auto-sync FOLDER rename on a LOCKED private drive — never renamePublicFolder', async () => {
+      // No key cached => locked. PRIV-6's private path is unavailable, so it
+      // must fail closed rather than leak the folder's new name as public.
       mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
 
       await expect(
         syncManager['executeFolderRename'](folderEntityId, `${testSyncPath}/Old`, `${testSyncPath}/New`)
-      ).rejects.toThrow(/private move\/rename is not supported yet|Refusing to move\/rename/i);
+      ).rejects.toThrow(/locked/i);
 
       expect((mockArDrive as any).renamePublicFolder).not.toHaveBeenCalled();
+      expect((mockArDrive as any).renamePrivateFolder).not.toHaveBeenCalled();
     });
 
     it('an auto-sync FOLDER rename on a public drive still calls renamePublicFolder (no regression)', async () => {
@@ -1555,6 +1566,213 @@ describe('SyncManager', () => {
       await syncManager['executeFolderRename'](folderEntityId, `${testSyncPath}/Old`, `${testSyncPath}/New`);
 
       expect((mockArDrive as any).renamePublicFolder).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Private move/rename routed through the encrypted ArFS path (PRIV-6)', () => {
+    // PRIV-8 fails a private/unresolved move/rename CLOSED (blocks). PRIV-6 adds
+    // the positively-private branch: route through the *Private* ArFS calls WITH
+    // the drive key so the metadata revision is ENCRYPTED — never a public
+    // plaintext write. The fail-closed invariant (unresolved / locked → throw,
+    // never public) is preserved.
+    const fileEntityId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const folderEntityId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const parentFolderId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const publicMapping = { ...testMapping, drivePrivacy: 'public' as const };
+    const privateMapping = { ...testMapping, drivePrivacy: 'private' as const, driveName: 'Secret Drive' };
+
+    beforeEach(() => {
+      syncManager['driveId'] = testDriveId;
+      syncManager['rootFolderId'] = testRootFolderId;
+      // Mock BOTH public and private move/rename so a wrong route is observable.
+      (mockArDrive as any).renamePublicFile = vi.fn().mockResolvedValue({ created: [{ type: 'file' }], fees: {} });
+      (mockArDrive as any).movePublicFile = vi.fn().mockResolvedValue({ created: [{ type: 'file' }], fees: {} });
+      (mockArDrive as any).renamePublicFolder = vi.fn().mockResolvedValue({ created: [{ type: 'folder' }], fees: {} });
+      (mockArDrive as any).movePublicFolder = vi.fn().mockResolvedValue({ created: [{ type: 'folder' }], fees: {} });
+      (mockArDrive as any).renamePrivateFile = vi.fn().mockResolvedValue({ created: [{ type: 'file' }], fees: {} });
+      (mockArDrive as any).movePrivateFile = vi.fn().mockResolvedValue({ created: [{ type: 'file' }], fees: {} });
+      (mockArDrive as any).renamePrivateFolder = vi.fn().mockResolvedValue({ created: [{ type: 'folder' }], fees: {} });
+      (mockArDrive as any).movePrivateFolder = vi.fn().mockResolvedValue({ created: [{ type: 'folder' }], fees: {} });
+      (mockDatabaseManager as any).addFolderOperation = vi.fn().mockResolvedValue(undefined);
+      // executeFolderMove resolves the destination parent's ArFS id from the DB.
+      mockDatabaseManager.getFolderByPath.mockResolvedValue({ arfsFolderId: parentFolderId });
+    });
+
+    afterEach(() => {
+      driveKeyManager.clearAllKeys();
+    });
+
+    const makeRenameOp = (over: any = {}) =>
+      ({
+        id: 'rename-op-priv6',
+        driveId: testDriveId,
+        localPath: `${testSyncPath}/renamed.txt`,
+        previousPath: `${testSyncPath}/renamed.txt`,
+        fileName: 'renamed.txt',
+        fileSize: 0,
+        status: 'awaiting_approval',
+        operationType: 'rename',
+        arfsFileId: fileEntityId,
+        createdAt: new Date(),
+        ...over,
+      }) as any;
+
+    const makeMoveOp = (over: any = {}) =>
+      ({
+        id: 'move-op-priv6',
+        driveId: testDriveId,
+        localPath: `${testSyncPath}/sub/moved.txt`,
+        fileName: 'moved.txt',
+        fileSize: 0,
+        status: 'awaiting_approval',
+        operationType: 'move',
+        arfsFileId: fileEntityId,
+        metadata: { newParentFolderId: parentFolderId },
+        createdAt: new Date(),
+        ...over,
+      }) as any;
+
+    // --- positively-private: encrypted path WITH the drive key ---------------
+
+    it('a positively-PRIVATE file rename calls renamePrivateFile WITH the key — never renamePublicFile', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      const key = { keyData: Buffer.from('secret') } as any;
+      driveKeyManager.cacheKey(testDriveId, key);
+
+      await syncManager.executeMetadataOperation(makeRenameOp());
+
+      expect((mockArDrive as any).renamePrivateFile).toHaveBeenCalledTimes(1);
+      const arg = (mockArDrive as any).renamePrivateFile.mock.calls[0][0];
+      expect(arg.fileId.toString()).toBe(fileEntityId);
+      expect(arg.newName).toBe('renamed.txt');
+      expect(arg.driveKey).toBe(key);
+      // The unencrypted public path was NEVER taken.
+      expect((mockArDrive as any).renamePublicFile).not.toHaveBeenCalled();
+    });
+
+    it('a positively-PRIVATE file move calls movePrivateFile WITH the key — never movePublicFile', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      const key = { keyData: Buffer.from('secret') } as any;
+      driveKeyManager.cacheKey(testDriveId, key);
+
+      await syncManager.executeMetadataOperation(makeMoveOp());
+
+      expect((mockArDrive as any).movePrivateFile).toHaveBeenCalledTimes(1);
+      const arg = (mockArDrive as any).movePrivateFile.mock.calls[0][0];
+      expect(arg.fileId.toString()).toBe(fileEntityId);
+      expect(arg.newParentFolderId.toString()).toBe(parentFolderId);
+      expect(arg.driveKey).toBe(key);
+      expect((mockArDrive as any).movePublicFile).not.toHaveBeenCalled();
+    });
+
+    it('a positively-PRIVATE folder rename calls renamePrivateFolder WITH the key — never renamePublicFolder', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      const key = { keyData: Buffer.from('secret') } as any;
+      driveKeyManager.cacheKey(testDriveId, key);
+
+      await syncManager['executeFolderRename'](folderEntityId, `${testSyncPath}/Old`, `${testSyncPath}/New`);
+
+      expect((mockArDrive as any).renamePrivateFolder).toHaveBeenCalledTimes(1);
+      const arg = (mockArDrive as any).renamePrivateFolder.mock.calls[0][0];
+      expect(arg.folderId.toString()).toBe(folderEntityId);
+      expect(arg.driveKey).toBe(key);
+      expect((mockArDrive as any).renamePublicFolder).not.toHaveBeenCalled();
+    });
+
+    it('a positively-PRIVATE folder move calls movePrivateFolder WITH the key — never movePublicFolder', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      const key = { keyData: Buffer.from('secret') } as any;
+      driveKeyManager.cacheKey(testDriveId, key);
+
+      await syncManager['executeFolderMove'](folderEntityId, `${testSyncPath}/Old/Child`, `${testSyncPath}/New/Child`);
+
+      expect((mockArDrive as any).movePrivateFolder).toHaveBeenCalledTimes(1);
+      const arg = (mockArDrive as any).movePrivateFolder.mock.calls[0][0];
+      expect(arg.folderId.toString()).toBe(folderEntityId);
+      expect(arg.newParentFolderId.toString()).toBe(parentFolderId);
+      expect(arg.driveKey).toBe(key);
+      expect((mockArDrive as any).movePublicFolder).not.toHaveBeenCalled();
+    });
+
+    // --- no regression: positively-public still takes the public path --------
+
+    it('a positively-PUBLIC file move still calls movePublicFile — never movePrivateFile', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([publicMapping]);
+
+      await syncManager.executeMetadataOperation(makeMoveOp());
+
+      expect((mockArDrive as any).movePublicFile).toHaveBeenCalledTimes(1);
+      expect((mockArDrive as any).movePrivateFile).not.toHaveBeenCalled();
+    });
+
+    it('a positively-PUBLIC folder move still calls movePublicFolder — never movePrivateFolder', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([publicMapping]);
+
+      await syncManager['executeFolderMove'](folderEntityId, `${testSyncPath}/Old/Child`, `${testSyncPath}/New/Child`);
+
+      expect((mockArDrive as any).movePublicFolder).toHaveBeenCalledTimes(1);
+      expect((mockArDrive as any).movePrivateFolder).not.toHaveBeenCalled();
+    });
+
+    // --- fail-closed preserved (PRIV-8) --------------------------------------
+
+    it('an UNRESOLVED mapping still fails closed on a file move — never public OR private', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([]);
+
+      await expect(
+        syncManager.executeMetadataOperation(makeMoveOp())
+      ).rejects.toThrow(/Cannot resolve drive privacy/i);
+
+      expect((mockArDrive as any).movePublicFile).not.toHaveBeenCalled();
+      expect((mockArDrive as any).movePrivateFile).not.toHaveBeenCalled();
+    });
+
+    it('a LOCKED private drive fails closed on a file move (no key) — never public OR private', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      // No key cached => locked.
+
+      await expect(
+        syncManager.executeMetadataOperation(makeMoveOp())
+      ).rejects.toThrow(/locked/i);
+
+      expect((mockArDrive as any).movePublicFile).not.toHaveBeenCalled();
+      expect((mockArDrive as any).movePrivateFile).not.toHaveBeenCalled();
+    });
+
+    // --- SEC-1: the drive key must NEVER reach the logs ----------------------
+
+    it('logs only the whitelisted summary of a private result — the drive key never leaks', async () => {
+      mockDatabaseManager.getDriveMappings.mockResolvedValue([privateMapping]);
+      driveKeyManager.cacheKey(testDriveId, { keyData: Buffer.from('secret') } as any);
+
+      // A realistic private ArFS result carries key material: created[].key is an
+      // EntityKey whose toString() is the raw url-encoded drive key, and some
+      // shapes attach a top-level driveKey. summarizeArFSResult must strip both.
+      const SECRET = 'RAW_DRIVE_KEY_MATERIAL_MUST_NOT_LEAK';
+      (mockArDrive as any).renamePrivateFolder = vi.fn().mockResolvedValue({
+        created: [{ type: 'folder', entityId: { toString: () => folderEntityId }, key: { toString: () => SECRET } }],
+        driveKey: { toString: () => SECRET },
+        fees: {},
+      });
+
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await syncManager['executeFolderRename'](folderEntityId, `${testSyncPath}/Old`, `${testSyncPath}/New`);
+      } finally {
+        // Serialize every console.log argument and prove the secret is absent.
+        const logged = logSpy.mock.calls
+          .flat()
+          .map(a => {
+            try { return typeof a === 'string' ? a : JSON.stringify(a); }
+            catch { return String(a); }
+          })
+          .join(' || ');
+        logSpy.mockRestore();
+        expect(logged).not.toContain(SECRET);
+      }
+
+      // Sanity: the encrypted path really did run (so the log path was exercised).
+      expect((mockArDrive as any).renamePrivateFolder).toHaveBeenCalledTimes(1);
     });
   });
 
