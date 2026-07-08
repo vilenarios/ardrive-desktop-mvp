@@ -47,16 +47,13 @@ const mockElectronAPI = {
   driveMappings: { getPrimary: vi.fn(), list: vi.fn() },
   sync: { getFolder: vi.fn(), start: vi.fn(), stop: vi.fn() },
   files: { getUploads: vi.fn() },
-  onSyncStatusUpdate: vi.fn(),
-  onSyncProgress: vi.fn(),
-  onUploadProgress: vi.fn(),
-  onDriveUpdate: vi.fn(),
-  onWalletInfoUpdated: vi.fn(),
-  removeWalletInfoUpdatedListener: vi.fn(),
-  removeSyncProgressListener: vi.fn(),
-  removeUploadProgressListener: vi.fn(),
-  removeDriveUpdateListener: vi.fn(),
-  removeAllListeners: vi.fn(),
+  // UX-4: every on* returns a scoped disposer. Return a fresh spy per call so
+  // the test can assert the disposer from a specific registration is invoked.
+  onSyncStatusUpdate: vi.fn(() => vi.fn()),
+  onSyncProgress: vi.fn(() => vi.fn()),
+  onUploadProgress: vi.fn(() => vi.fn()),
+  onDriveUpdate: vi.fn(() => vi.fn()),
+  onWalletInfoUpdated: vi.fn(() => vi.fn()),
 };
 
 Object.defineProperty(window, 'electronAPI', { value: mockElectronAPI, writable: true });
@@ -110,7 +107,10 @@ describe('App profile switch — full renderer refresh (UX-5)', () => {
 
     // Main process has switched to Bob; flip the backend, then fire the switch.
     useProfile(profileB, driveB, '5.0');
-    const removalsBefore = mockElectronAPI.removeDriveUpdateListener.mock.calls.length;
+    // UX-4: capture the disposer returned by the boot-time onDriveUpdate
+    // registration; the switch must invoke it (tearing down the old profile's
+    // listener) via scoped removal, not removeAllListeners.
+    const bootDriveUpdateDisposer = mockElectronAPI.onDriveUpdate.mock.results[0].value;
     fireEvent.click(screen.getByText('trigger-switch'));
 
     // Renderer now reflects ONLY Bob.
@@ -124,9 +124,10 @@ describe('App profile switch — full renderer refresh (UX-5)', () => {
     expect(screen.queryByText('balance:1.0')).not.toBeInTheDocument();
 
     // Old listeners were torn down as part of the switch (no leftover listeners
-    // pointing at the old profile's state).
+    // pointing at the old profile's state) — via the boot registration's OWN
+    // scoped disposer, not a channel-wide removeAllListeners.
     await waitFor(() => {
-      expect(mockElectronAPI.removeDriveUpdateListener.mock.calls.length).toBeGreaterThan(removalsBefore);
+      expect(bootDriveUpdateDisposer).toHaveBeenCalled();
     });
   });
 

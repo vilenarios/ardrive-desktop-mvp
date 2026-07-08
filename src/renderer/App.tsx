@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppConfig, DriveInfo, DriveInfoWithStatus, WalletInfo, SyncStatus, FileUpload, Profile, SyncProgress } from '../types';
 import WalletSetup from './components/WalletSetup';
 import DriveAndSyncSetup from './components/DriveAndSyncSetup';
@@ -35,30 +35,38 @@ const App: React.FC = () => {
   const [bootError, setBootError] = useState<string | null>(null);
   const { toasts, toast, removeToast } = useToast();
 
+  // UX-4: disposers for the sync-monitoring listeners registered by
+  // startSyncMonitoring. Each on* returns a scoped Unsubscribe that removes
+  // ONLY its own handler, so tearing these down never clobbers a co-subscriber
+  // (StorageTab, UploadApprovalQueue) on the same shared channels.
+  const syncMonitoringDisposers = useRef<Array<() => void>>([]);
+
   useEffect(() => {
     initializeApp();
-    
+
     // Listen for wallet info updates from main process
     const handleWalletInfoUpdate = (newWalletInfo: WalletInfo) => {
       console.log('Received wallet info update:', newWalletInfo);
       setWalletInfo(newWalletInfo);
     };
-    
-    window.electronAPI.onWalletInfoUpdated(handleWalletInfoUpdate);
-    
+
+    // UX-4: capture the scoped disposer so cleanup removes ONLY this handler,
+    // never the whole 'wallet-info-updated' channel (which TurboCreditsManager
+    // also subscribes to).
+    const disposeWalletInfo = window.electronAPI.onWalletInfoUpdated(handleWalletInfoUpdate);
+
     return () => {
-      window.electronAPI.removeWalletInfoUpdatedListener();
-      window.electronAPI.removeSyncProgressListener();
+      disposeWalletInfo?.();
+      removeSyncMonitoringListeners();
     };
   }, []);
 
   // MONEY-6: pull-based wallet refresh using the IPC RETURN VALUE, not the
-  // wallet-info-updated event. The event path is dead after the first
-  // TurboCreditsManager unmount (its cleanup calls the preload's global
-  // removeAllListeners('wallet-info-updated'), killing this component's
-  // listener for the session — UX-4 owns the root fix). Dashboard calls this
-  // when the Turbo manager closes so blocked queue rows see the post-top-up
-  // balance.
+  // wallet-info-updated event. This deterministic pull complements the event
+  // path (which UX-4 made clobber-safe: TurboCreditsManager's cleanup now
+  // removes only its own listener, no longer killing App's for the session).
+  // Dashboard calls this when the Turbo manager closes so blocked queue rows
+  // see the post-top-up balance without waiting on the event.
   const refreshWalletInfo = async () => {
     try {
       const freshWalletInfoResult = await window.electronAPI.wallet.getInfo(true);
@@ -307,11 +315,13 @@ const App: React.FC = () => {
   // switch. Without removing the previous set first, each re-init STACKS another
   // live listener still closing over the prior profile's state (a cross-profile
   // leak + duplicated work). Clearing them makes startSyncMonitoring idempotent.
+  // UX-4: dispose each listener via its OWN scoped disposer (not
+  // removeAllListeners), so tearing down App's set leaves co-subscribers of the
+  // same channels (StorageTab on 'drive:update', UploadApprovalQueue on
+  // 'upload:progress') untouched.
   const removeSyncMonitoringListeners = () => {
-    window.electronAPI.removeAllListeners('sync:status-update');
-    window.electronAPI.removeSyncProgressListener();
-    window.electronAPI.removeUploadProgressListener();
-    window.electronAPI.removeDriveUpdateListener();
+    syncMonitoringDisposers.current.forEach((dispose) => dispose?.());
+    syncMonitoringDisposers.current = [];
   };
 
   const startSyncMonitoring = () => {
@@ -322,12 +332,15 @@ const App: React.FC = () => {
     removeSyncMonitoringListeners();
 
     // Listen for sync status updates
-    window.electronAPI.onSyncStatusUpdate((status) => {
-      setSyncStatus(status);
-    });
+    syncMonitoringDisposers.current.push(
+      window.electronAPI.onSyncStatusUpdate((status) => {
+        setSyncStatus(status);
+      })
+    );
 
     // Listen for sync progress updates
-    window.electronAPI.onSyncProgress((progress) => {
+    syncMonitoringDisposers.current.push(
+      window.electronAPI.onSyncProgress((progress) => {
       console.log('🔴 [RENDERER] Received sync progress:', {
         phase: progress.phase,
         description: progress.description,
@@ -347,10 +360,12 @@ const App: React.FC = () => {
       } else {
         setSyncProgress(progress);
       }
-    });
+      })
+    );
 
     // Listen for upload updates
-    window.electronAPI.onUploadProgress(async (progressData) => {
+    syncMonitoringDisposers.current.push(
+      window.electronAPI.onUploadProgress(async (progressData) => {
       console.log('Upload progress update:', progressData);
       
       // Update existing upload in state
@@ -376,10 +391,12 @@ const App: React.FC = () => {
           console.error('Failed to refresh uploads after completion:', error);
         }
       }
-    });
+      })
+    );
 
     // Listen for drive updates
-    window.electronAPI.onDriveUpdate(async () => {
+    syncMonitoringDisposers.current.push(
+      window.electronAPI.onDriveUpdate(async () => {
       const drivesResult = await window.electronAPI.drive.listWithStatus();
 
       // Extract drives from result (UX-3: IpcResult envelope)
@@ -402,7 +419,8 @@ const App: React.FC = () => {
       } catch (error) {
         console.error('Failed to refresh uploads after drive update:', error);
       }
-    });
+      })
+    );
   };
 
   const handleWalletImported = async () => {

@@ -99,10 +99,12 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
       }
     };
 
-    window.electronAPI.onSyncProgress(handleSyncProgress);
-    
+    // UX-4: 'sync:progress' is shared with App's sync monitor — dispose ONLY
+    // this handler on cleanup so App's listener is not clobbered.
+    const dispose = window.electronAPI.onSyncProgress(handleSyncProgress);
+
     return () => {
-      window.electronAPI.removeSyncProgressListener();
+      dispose?.();
     };
   }, []);
 
