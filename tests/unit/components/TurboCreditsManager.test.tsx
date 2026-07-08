@@ -27,13 +27,12 @@ const mockElectronAPI = {
   },
   payment: {
     openWindow: vi.fn(),
-    onPaymentCompleted: vi.fn(),
-    removePaymentCompletedListener: vi.fn(),
-    onPaymentCancelled: vi.fn(),
-    removePaymentCancelledListener: vi.fn(),
+    // UX-4: on* now returns a scoped disposer; return a fresh spy per call so
+    // the unmount test can assert the component invoked its OWN disposer.
+    onPaymentCompleted: vi.fn(() => vi.fn()),
+    onPaymentCancelled: vi.fn(() => vi.fn()),
   },
-  onWalletInfoUpdated: vi.fn(),
-  removeWalletInfoUpdatedListener: vi.fn(),
+  onWalletInfoUpdated: vi.fn(() => vi.fn()),
 };
 
 // Override the global setup
@@ -250,13 +249,20 @@ describe('TurboCreditsManager', () => {
       expect(mockElectronAPI.onWalletInfoUpdated).toHaveBeenCalled();
     });
 
-    it('should clean up listeners on unmount', () => {
+    it('should clean up listeners on unmount via each subscription\'s scoped disposer (UX-4)', () => {
       const { unmount } = renderComponent();
+
+      // The scoped disposers returned when the component subscribed.
+      const disposeWalletInfo = mockElectronAPI.onWalletInfoUpdated.mock.results[0].value;
+      const disposePaymentCompleted = mockElectronAPI.payment.onPaymentCompleted.mock.results[0].value;
 
       unmount();
 
-      expect(mockElectronAPI.payment.removePaymentCompletedListener).toHaveBeenCalled();
-      expect(mockElectronAPI.removeWalletInfoUpdatedListener).toHaveBeenCalled();
+      // UX-4: cleanup removes ONLY this component's handlers (scoped removal),
+      // never a channel-wide removeAllListeners that would clobber App's
+      // co-subscriber on 'wallet-info-updated'.
+      expect(disposePaymentCompleted).toHaveBeenCalled();
+      expect(disposeWalletInfo).toHaveBeenCalled();
     });
 
     it('calls onWalletRefresh when payment-completed fires (MONEY-6: App must get fresh info by return value, not the dead event channel)', async () => {

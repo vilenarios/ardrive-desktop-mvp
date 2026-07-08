@@ -93,16 +93,19 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
     
     refreshBalances();
     
-    // Listen for wallet info updates (e.g., after returning from payment)
-    window.electronAPI.onWalletInfoUpdated((updatedWalletInfo) => {
+    // Listen for wallet info updates (e.g., after returning from payment).
+    // UX-4: 'wallet-info-updated' is shared with App — capture the scoped
+    // disposer so this component's cleanup removes ONLY its own handler and no
+    // longer clobbers App's listener for the session.
+    const disposeWalletInfo = window.electronAPI.onWalletInfoUpdated((updatedWalletInfo) => {
       console.log('Wallet info updated, refreshing Turbo balance...');
       setSuccessMessage('Payment successful! Your Turbo Credits balance has been updated.');
       setTimeout(() => setSuccessMessage(null), 5000);
       loadTurboBalance();
     });
-    
+
     // Listen for payment completion
-    window.electronAPI.payment.onPaymentCompleted(() => {
+    const disposePaymentCompleted = window.electronAPI.payment.onPaymentCompleted(() => {
       console.log('Payment completed, refreshing balance...');
       setSuccessMessage('Payment successful! Your Turbo Credits balance is being updated...');
       setTimeout(() => setSuccessMessage(null), 5000);
@@ -119,18 +122,18 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
 
     // MONEY-7: listen for the user closing the payment window without
     // completing checkout — exactly one of completed/cancelled ever fires.
-    window.electronAPI.payment.onPaymentCancelled(() => {
+    const disposePaymentCancelled = window.electronAPI.payment.onPaymentCancelled(() => {
       console.log('Payment window closed without completing.');
       setError(null);
       setSuccessMessage('Payment window closed. No charge was made.');
       setTimeout(() => setSuccessMessage(null), 5000);
     });
 
-    // Cleanup listeners on unmount
+    // Cleanup listeners on unmount (UX-4: scoped disposers, no removeAll*).
     return () => {
-      window.electronAPI.removeWalletInfoUpdatedListener();
-      window.electronAPI.payment.removePaymentCompletedListener();
-      window.electronAPI.payment.removePaymentCancelledListener();
+      disposeWalletInfo?.();
+      disposePaymentCompleted?.();
+      disposePaymentCancelled?.();
     };
   }, []);
 

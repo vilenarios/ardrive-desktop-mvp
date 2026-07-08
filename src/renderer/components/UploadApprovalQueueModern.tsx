@@ -119,10 +119,12 @@ const UploadApprovalQueueModern: React.FC<UploadApprovalQueueModernProps> = ({
       }
     };
 
-    window.electronAPI.onUploadProgress(handleUploadProgress);
+    // UX-4: 'upload:progress' is shared with App and StorageTab — dispose ONLY
+    // this handler on cleanup so the co-subscribers are not clobbered.
+    const dispose = window.electronAPI.onUploadProgress(handleUploadProgress);
 
     return () => {
-      window.electronAPI.removeUploadProgressListener();
+      dispose?.();
     };
   }, [pendingUploads, onRejectUpload, onRefreshBalance]);
 

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 import type { IpcResult } from '../types/ipc';
 import type {
   DriveInfo,
@@ -26,6 +26,26 @@ import type { ArNSProfile } from './arns-service';
 // to every call site, so the compiler flags any raw-property access on the
 // wrapper (`.id`, `.find()`, `.length`) that skips the `.success`/`.data`
 // guard. Un-annotated methods below are handlers not yet migrated (raw shape).
+
+// UX-4: a disposer returned by every event subscription (on*) below.
+export type Unsubscribe = () => void;
+
+// UX-4: register a SINGLE handler on a main->renderer channel and return a
+// disposer that removes ONLY that handler (ipcRenderer.removeListener), never
+// ipcRenderer.removeAllListeners. removeAllListeners nukes EVERY handler on a
+// channel, so one component's cleanup silently killed a co-subscriber's
+// listener (App vs TurboCreditsManager on 'wallet-info-updated'; App vs
+// StorageTab on 'drive:update'; App/StorageTab/UploadApprovalQueue on
+// 'upload:progress'). Scoped removal lets independent subscribers of the same
+// channel coexist and clean up in isolation.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function subscribe(channel: string, callback: (...args: any[]) => void): Unsubscribe {
+  const handler = (_event: IpcRendererEvent, ...args: unknown[]) => callback(...args);
+  ipcRenderer.on(channel, handler);
+  return () => {
+    ipcRenderer.removeListener(channel, handler);
+  };
+}
 
 const api = {
   // Wallet operations (UX-3: migrated to the IpcResult envelope)
@@ -252,20 +272,14 @@ const api = {
   payment: {
     openWindow: (url: string): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('payment:open-window', url),
-    onPaymentCompleted: (callback: () => void) => {
-      ipcRenderer.on('payment-completed', callback);
-    },
-    removePaymentCompletedListener: () => {
-      ipcRenderer.removeAllListeners('payment-completed');
-    },
+    // UX-4: returns a scoped disposer; call it in the effect cleanup instead of
+    // a removeAll* helper so a co-subscriber on this channel isn't clobbered.
+    onPaymentCompleted: (callback: () => void): Unsubscribe =>
+      subscribe('payment-completed', callback),
     // MONEY-7: fired when the user closes the payment window without
     // completing checkout (exactly one of completed/cancelled ever fires).
-    onPaymentCancelled: (callback: () => void) => {
-      ipcRenderer.on('payment-cancelled', callback);
-    },
-    removePaymentCancelledListener: () => {
-      ipcRenderer.removeAllListeners('payment-cancelled');
-    },
+    onPaymentCancelled: (callback: () => void): Unsubscribe =>
+      subscribe('payment-cancelled', callback),
   },
 
   // Security operations (UX-3: migrated to the IpcResult envelope)
@@ -306,31 +320,17 @@ const api = {
       ipcRenderer.invoke('turbo:get-status'),
   },
   
-  // Event listeners
-  onWalletInfoUpdated: (callback: (walletInfo: any) => void) => {
-    ipcRenderer.on('wallet-info-updated', (_, walletInfo) => callback(walletInfo));
-  },
-  removeWalletInfoUpdatedListener: () => {
-    ipcRenderer.removeAllListeners('wallet-info-updated');
-  },
-  removeSyncProgressListener: () => {
-    ipcRenderer.removeAllListeners('sync:progress');
-  },
-  
+  // Event listeners (UX-4: every on* returns a scoped Unsubscribe disposer;
+  // renderer effects call it in cleanup to remove ONLY their own handler.)
+  onWalletInfoUpdated: (callback: (walletInfo: any) => void): Unsubscribe =>
+    subscribe('wallet-info-updated', callback),
+
   // Upload progress events
-  onUploadProgress: (callback: (data: { uploadId: string; progress: number; status: 'uploading' | 'completed' | 'failed'; error?: string }) => void) => {
-    ipcRenderer.on('upload:progress', (_, data) => callback(data));
-  },
-  removeUploadProgressListener: () => {
-    ipcRenderer.removeAllListeners('upload:progress');
-  },
-  onUploadComplete: (callback: (data: { uploadId: string; success: boolean; error?: string }) => void) => {
-    ipcRenderer.on('upload:complete', (_, data) => callback(data));
-  },
-  removeUploadCompleteListener: () => {
-    ipcRenderer.removeAllListeners('upload:complete');
-  },
-  
+  onUploadProgress: (callback: (data: { uploadId: string; progress: number; status: 'uploading' | 'completed' | 'failed'; error?: string }) => void): Unsubscribe =>
+    subscribe('upload:progress', callback),
+  onUploadComplete: (callback: (data: { uploadId: string; success: boolean; error?: string }) => void): Unsubscribe =>
+    subscribe('upload:complete', callback),
+
   // Download progress events
   onDownloadProgress: (callback: (data: {
     downloadId: string;
@@ -340,13 +340,10 @@ const api = {
     totalBytes: number;
     speed: number;
     remainingTime: number;
-  }) => void) => {
-    ipcRenderer.on('download:progress', (_, data) => callback(data));
-  },
-  removeDownloadProgressListener: () => {
-    ipcRenderer.removeAllListeners('download:progress');
-  },
-  
+  }) => void): Unsubscribe =>
+    subscribe('download:progress', callback),
+
+
   // ArNS operations (UX-3: migrated to the IpcResult envelope)
   arns: {
     getProfile: (address: string): Promise<IpcResult<ArNSProfile>> =>
@@ -421,37 +418,19 @@ const api = {
       ipcRenderer.invoke('system:get-env', key),
   },
 
-  // Event listeners
-  onSyncStatusUpdate: (callback: (status: any) => void) => {
-    ipcRenderer.on('sync:status-update', (_, status) => callback(status));
-  },
-  onSyncProgress: (callback: (progress: any) => void) => {
-    ipcRenderer.on('sync:progress', (_, progress) => callback(progress));
-  },
-  onDriveUpdate: (callback: () => void) => {
-    ipcRenderer.on('drive:update', () => callback());
-  },
-  onDriveMetadataUpdated: (callback: (driveId: string) => void) => {
-    ipcRenderer.on('drive:metadata-updated', (_, driveId) => callback(driveId));
-  },
-  onSyncComplete: (callback: () => void) => {
-    ipcRenderer.on('sync:completed', () => callback());
-  },
-  onFileStateChanged: (callback: (data: { fileId: string; syncStatus?: string; syncPreference?: string }) => void) => {
-    ipcRenderer.on('sync:file-state-changed', (_, data) => callback(data));
-  },
-  removeFileStateChangedListener: () => {
-    ipcRenderer.removeAllListeners('sync:file-state-changed');
-  },
-  removeDriveUpdateListener: () => {
-    ipcRenderer.removeAllListeners('drive:update');
-  },
-  removeDriveMetadataUpdatedListener: () => {
-    ipcRenderer.removeAllListeners('drive:metadata-updated');
-  },
-  removeAllListeners: (channel: string) => {
-    ipcRenderer.removeAllListeners(channel);
-  },
+  // Event listeners (UX-4: every on* returns a scoped Unsubscribe disposer.)
+  onSyncStatusUpdate: (callback: (status: any) => void): Unsubscribe =>
+    subscribe('sync:status-update', callback),
+  onSyncProgress: (callback: (progress: any) => void): Unsubscribe =>
+    subscribe('sync:progress', callback),
+  onDriveUpdate: (callback: () => void): Unsubscribe =>
+    subscribe('drive:update', callback),
+  onDriveMetadataUpdated: (callback: (driveId: string) => void): Unsubscribe =>
+    subscribe('drive:metadata-updated', callback),
+  onSyncComplete: (callback: () => void): Unsubscribe =>
+    subscribe('sync:completed', callback),
+  onFileStateChanged: (callback: (data: { fileId: string; syncStatus?: string; syncPreference?: string }) => void): Unsubscribe =>
+    subscribe('sync:file-state-changed', callback),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

@@ -278,12 +278,12 @@ export const StorageTab: React.FC<StorageTabProps> = ({
       loadDriveMetadata(false);
     };
     
-    // Listen for sync completion
-    window.electronAPI.onSyncComplete(handleSyncComplete);
-    
+    // Listen for sync completion. UX-4: dispose ONLY this handler on cleanup,
+    // not the whole 'sync:completed' channel.
+    const dispose = window.electronAPI.onSyncComplete(handleSyncComplete);
+
     return () => {
-      // Cleanup listener
-      window.electronAPI.removeAllListeners('sync:completed');
+      dispose?.();
     };
   }, [drive?.id]); // Re-setup if drive changes
 
@@ -372,11 +372,14 @@ export const StorageTab: React.FC<StorageTabProps> = ({
       }
     };
     
-    window.electronAPI.onUploadProgress(handleUploadProgress);
-    
+    // UX-4: capture the scoped disposer and clean it up on unmount. Previously
+    // this listener leaked (no cleanup) AND shared 'upload:progress' with App
+    // and UploadApprovalQueue, so it accumulated across re-renders. Scoped
+    // removal tears down only this handler, leaving the co-subscribers intact.
+    const dispose = window.electronAPI.onUploadProgress(handleUploadProgress);
+
     return () => {
-      // Note: The preload API doesn't expose a remove listener method
-      // This would need to be added to properly clean up
+      dispose?.();
     };
   }, []);
 
@@ -418,8 +421,8 @@ export const StorageTab: React.FC<StorageTabProps> = ({
       
     };
 
-    window.electronAPI.onFileStateChanged(handleFileStateChange);
-    
+    const disposeFileStateChanged = window.electronAPI.onFileStateChanged(handleFileStateChange);
+
     // Listen for drive updates (uploads, moves, renames, etc.)
     const handleDriveUpdate = () => {
       console.log('Drive update detected, refreshing...', { 
@@ -440,13 +443,16 @@ export const StorageTab: React.FC<StorageTabProps> = ({
       }
     };
     
-    window.electronAPI.onDriveUpdate(handleDriveUpdate);
-    window.electronAPI.onDriveMetadataUpdated(handleDriveMetadataUpdated);
-    
+    // UX-4: 'drive:update' is shared with App's sync monitor — dispose ONLY
+    // these handlers so StorageTab's re-subscribe (on drive change) or unmount
+    // never clobbers App's listener on the same channel.
+    const disposeDriveUpdate = window.electronAPI.onDriveUpdate(handleDriveUpdate);
+    const disposeDriveMetadataUpdated = window.electronAPI.onDriveMetadataUpdated(handleDriveMetadataUpdated);
+
     return () => {
-      window.electronAPI.removeFileStateChangedListener();
-      window.electronAPI.removeDriveUpdateListener();
-      window.electronAPI.removeDriveMetadataUpdatedListener();
+      disposeFileStateChanged?.();
+      disposeDriveUpdate?.();
+      disposeDriveMetadataUpdated?.();
     };
   }, [drive?.id]);
 

@@ -361,11 +361,11 @@ const Dashboard: React.FC<DashboardProps> = ({
       );
     };
     
-    window.electronAPI.onDownloadProgress(handleDownloadProgress);
+    // UX-4: dispose ONLY this handler on cleanup (scoped removal, no removeAll*).
+    const dispose = window.electronAPI.onDownloadProgress(handleDownloadProgress);
 
     return () => {
-      // Remove download progress listener
-      window.electronAPI.removeDownloadProgressListener();
+      dispose?.();
     };
   }, []);
 
@@ -849,10 +849,10 @@ const Dashboard: React.FC<DashboardProps> = ({
         onClose={() => {
           setShowTurboManager(false);
           // MONEY-6: refresh App's walletInfo by IPC return value on manager
-          // close — the wallet-info-updated event listener in App is dead
-          // after the first manager unmount (preload removeAllListeners
-          // clobber, UX-4), so without this pull the queue's blocked rows
-          // keep gating on the pre-top-up balance until restart.
+          // close. This deterministic pull complements App's wallet-info-updated
+          // listener (UX-4 made the event clobber-safe: the Turbo manager's
+          // cleanup now removes only its own handler), so the queue's blocked
+          // rows immediately see the post-top-up balance without a restart.
           onRefreshWalletInfo?.();
         }}
         onWalletRefresh={onRefreshWalletInfo}
