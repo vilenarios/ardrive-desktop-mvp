@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, AlertCircle, Shield } from 'lucide-react';
+import { ArrowRight, AlertCircle, Shield, ExternalLink, Zap, RefreshCw } from 'lucide-react';
 import { InfoButton } from '../common/InfoButton';
 
 interface TurboPurchaseTabProps {
@@ -14,6 +14,12 @@ interface TurboPurchaseTabProps {
   calculateStorageAmount: (dollarAmount: number) => string;
   handleFiatTopUp: (amount?: number) => void;
   handleTokenTopUp: () => void;
+  // FEAT-8: crypto top-up via ar.io Console deep-link. walletAddress is the
+  // PUBLIC Arweave address used as the credit destination (never a key). The
+  // crypto button is disabled when it is empty/unavailable.
+  walletAddress?: string;
+  handleCryptoTopUp: () => void;
+  onRefreshBalance: () => void;
 }
 
 const TurboPurchaseTab: React.FC<TurboPurchaseTabProps> = ({
@@ -27,8 +33,15 @@ const TurboPurchaseTab: React.FC<TurboPurchaseTabProps> = ({
   loading,
   calculateStorageAmount,
   handleFiatTopUp,
-  handleTokenTopUp
+  handleTokenTopUp,
+  walletAddress,
+  handleCryptoTopUp,
+  onRefreshBalance
 }) => {
+  // FEAT-8: guard — no destination address means we cannot build a valid
+  // deep-link, so disable the crypto top-up rather than open a broken URL.
+  const hasWalletAddress = !!walletAddress && walletAddress.trim().length > 0;
+
   const quickBuyOptions = [
     { amount: 5, label: '$5', description: calculateStorageAmount(5) },
     { amount: 10, label: '$10', description: calculateStorageAmount(10) },
@@ -100,6 +113,58 @@ const TurboPurchaseTab: React.FC<TurboPurchaseTabProps> = ({
           <div className="tcm-payment-info">
             <Shield size={14} />
             <span>Secure payment powered by Stripe</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Crypto Top-up Section (FEAT-8) — a DIFFERENT payment rail from the
+          card checkout above: the user pays on ar.io Console with their own
+          browser wallet. The desktop app never handles a private key. */}
+      <div className="tcm-section">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+          <h3>Top up with crypto</h3>
+          <InfoButton tooltip="A separate payment rail from the card checkout above. Pay from a Solana, Ethereum, or Arweave browser wallet on ar.io Console — no card needed. Credits are added to your ArDrive (Arweave) wallet." />
+        </div>
+        <div className="tcm-crypto-section">
+          <p className="tcm-crypto-copy">
+            Pay with your Solana, Ethereum, or Arweave wallet via ar.io Console
+            (opens in your browser). Credits are added to your ArDrive account —
+            we never see your keys.
+          </p>
+
+          <button
+            type="button"
+            className="tcm-crypto-btn"
+            onClick={handleCryptoTopUp}
+            disabled={!hasWalletAddress}
+            aria-label="Top up with crypto on ar.io Console (opens in your browser)"
+            title={hasWalletAddress ? 'Opens ar.io Console in your browser' : 'Wallet address unavailable'}
+          >
+            <Zap size={16} aria-hidden="true" />
+            <span>Top up with crypto (Solana / Ethereum / Arweave)</span>
+            <ExternalLink size={16} aria-hidden="true" />
+          </button>
+
+          {!hasWalletAddress && (
+            <div className="tcm-crypto-unavailable" role="status">
+              <AlertCircle size={14} />
+              <span>Wallet address unavailable — reopen Turbo Credits once your wallet has loaded.</span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            className="tcm-crypto-refresh"
+            onClick={onRefreshBalance}
+            disabled={loading}
+          >
+            <RefreshCw size={14} className={loading ? 'spinning' : ''} aria-hidden="true" />
+            <span>Refresh balance</span>
+          </button>
+
+          <div className="tcm-payment-info">
+            <Shield size={14} />
+            <span>Opens ar.io Console in your browser — your keys never leave your wallet.</span>
           </div>
         </div>
       </div>

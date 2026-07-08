@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   CreditCard, 
   Zap, 
@@ -57,6 +57,12 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
   const [tokenAmount, setTokenAmount] = useState<string>('0.001');
   const [fiatEstimate, setFiatEstimate] = useState<FiatEstimate | null>(null);
   const [activeTab, setActiveTab] = useState<'purchase' | 'settings' | 'coming-soon' | 'about'>('purchase');
+
+  // FEAT-8: set when the user opens the ar.io Console crypto top-up in their
+  // browser, so the window-focus handler only re-fetches the balance when they
+  // return from a top-up they actually initiated (keeps the refresh lightweight
+  // — a normal focus with no pending top-up does nothing).
+  const cryptoTopUpInitiatedRef = useRef(false);
 
   // Calculate storage amount for dollar amount
   const calculateStorageAmount = (dollarAmount: number): string => {
@@ -135,6 +141,24 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
       disposePaymentCompleted?.();
       disposePaymentCancelled?.();
     };
+  }, []);
+
+  // FEAT-8: crypto top-up happens in the external ar.io Console (the browser),
+  // so no payment-completed IPC ever fires here. When the user returns and the
+  // app regains focus AFTER they initiated a crypto top-up, re-fetch the Turbo
+  // balance so newly-added credits appear. Gated on cryptoTopUpInitiatedRef so
+  // ordinary focus changes don't spam turbo:get-balance.
+  useEffect(() => {
+    const handleWindowFocus = () => {
+      if (!cryptoTopUpInitiatedRef.current) return;
+      cryptoTopUpInitiatedRef.current = false;
+      console.log('Returned from ar.io Console — refreshing Turbo balance');
+      setSuccessMessage('Checking for new credits from your ar.io Console top-up…');
+      setTimeout(() => setSuccessMessage(null), 5000);
+      loadTurboBalance();
+    };
+    window.addEventListener('focus', handleWindowFocus);
+    return () => window.removeEventListener('focus', handleWindowFocus);
   }, []);
 
   const loadTurboBalance = async () => {
@@ -242,6 +266,49 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
     }
   };
 
+  // FEAT-8: Top up with crypto via the ar.io Console deep-link. The desktop app
+  // has NO browser-wallet integration, so we NEVER handle a private key here —
+  // we only pass the wallet's PUBLIC Arweave address as the credit destination.
+  // The user pays on console.ar.io with their own Solana/Ethereum/Arweave
+  // browser wallet; Turbo then credits this Arweave wallet.
+  const handleCryptoTopUp = async () => {
+    const address = walletInfo?.address?.trim();
+    // Guard: never open a broken URL without a destination address (the button
+    // is also disabled in this state — this is defence in depth).
+    if (!address) {
+      setError('Wallet address unavailable — cannot start a crypto top-up.');
+      return;
+    }
+
+    setError(null);
+
+    // CONTRACT (fixed — the console side reads exactly this):
+    //   https://console.ar.io/topup?destinationAddress=<arweaveAddress>&source=ardrive-desktop
+    // Only the PUBLIC Arweave address is ever placed in the URL — never a key.
+    const url =
+      'https://console.ar.io/topup?destinationAddress=' +
+      encodeURIComponent(address) +
+      '&source=ardrive-desktop';
+
+    // Remember we started a top-up so the window-focus handler refreshes the
+    // balance when the user returns from the browser.
+    cryptoTopUpInitiatedRef.current = true;
+
+    // D-005: shell:open-external resolves the IpcResult envelope.
+    const result = await window.electronAPI.shell.openExternal(url);
+    if (result && result.success === false) {
+      cryptoTopUpInitiatedRef.current = false;
+      setError(result.error || 'Failed to open ar.io Console in your browser');
+      return;
+    }
+
+    setSuccessMessage(
+      'Opened ar.io Console in your browser. Complete your top-up there, then ' +
+        'return — your balance will refresh automatically.'
+    );
+    setTimeout(() => setSuccessMessage(null), 8000);
+  };
+
   const formatCreditsUsage = (winc: string) => {
     const ar = parseFloat(winc) / 1e12;
     if (ar < 0.000001) return '< 0.000001 AR';
@@ -337,6 +404,9 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
             calculateStorageAmount={calculateStorageAmount}
             handleFiatTopUp={handleFiatTopUp}
             handleTokenTopUp={handleTokenTopUp}
+            walletAddress={walletInfo.address}
+            handleCryptoTopUp={handleCryptoTopUp}
+            onRefreshBalance={loadTurboBalance}
           />
         )}
 
