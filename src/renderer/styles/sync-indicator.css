@@ -38,6 +38,22 @@
   background: var(--surface-inset);
 }
 
+/* SYNC-9: degraded states — a broken/offline sync must READ as degraded, not
+ * blend in with the ambient states. Offline (network down, will auto-resume) is
+ * a "warning"; a genuine sync error (locked drive, watcher died) is "danger".
+ * Tokens per docs/product/DESIGN-SYSTEM.md / theme.css. */
+.sync-indicator-offline {
+  color: var(--warning-fg);
+  border-color: var(--warning);
+  background: var(--warning-surface);
+}
+
+.sync-indicator-error {
+  color: var(--danger-fg);
+  border-color: var(--danger);
+  background: var(--danger-surface);
+}
+
 .sync-indicator-label {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -140,6 +140,51 @@ export function isTransientGatewayError(error: unknown): boolean {
 }
 
 /**
+ * SYNC-9: is this error specifically a NETWORK-DOWN / gateway-unreachable
+ * failure — i.e. "we couldn't reach the network at all" — as opposed to a
+ * gateway that answered with something unhelpful (404, an index gap) or a
+ * local/validation error?
+ *
+ * This is the authoritative "offline" signal: when a metadata read fails with
+ * one of these AFTER SYNC-20 retries (and SYNC-23 failover) are exhausted, the
+ * app is effectively offline and should say so — sync paused, auto-retry on
+ * reconnect — rather than fall back to a fake-healthy state. Deliberately
+ * NARROWER than {@link isTransientGatewayError}: a bare "404 / not found" is an
+ * ANSWER, not an unreachable network, so it does NOT read as offline here.
+ */
+export function isNetworkDownError(error: unknown): boolean {
+  if (!error) return false;
+  const message =
+    typeof error === 'string'
+      ? error
+      : error instanceof Error
+      ? error.message
+      : typeof (error as { message?: unknown }).message === 'string'
+      ? ((error as { message?: string }).message as string)
+      : String(error);
+  const haystack = message.toLowerCase();
+
+  return (
+    haystack.includes('enotfound') ||
+    haystack.includes('eai_again') ||
+    haystack.includes('econnrefused') ||
+    haystack.includes('econnreset') ||
+    haystack.includes('etimedout') ||
+    haystack.includes('enetunreach') ||
+    haystack.includes('ehostunreach') ||
+    haystack.includes('epipe') ||
+    haystack.includes('socket hang up') ||
+    haystack.includes('getaddrinfo') ||
+    haystack.includes('network') ||
+    haystack.includes('offline') ||
+    haystack.includes('fetch failed') ||
+    haystack.includes('failed to fetch') ||
+    haystack.includes('timed out') ||
+    haystack.includes('timeout')
+  );
+}
+
+/**
  * Run `fn` with bounded retries and exponential backoff, each attempt guarded
  * by an optional per-attempt timeout. Resolves with the first success; if every
  * attempt fails (or an error isn't retryable) the LAST error is re-thrown, so

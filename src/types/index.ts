@@ -115,6 +115,21 @@ export interface FileUpload {
   completedAt?: Date;
 }
 
+/**
+ * SYNC-9: honest sync-health signal surfaced through SyncManager.getStatus().
+ * Lets the UI tell the truth about a degraded/offline sync instead of looking
+ * healthy while sync is actually broken.
+ *   - 'healthy': normal operation (idle, syncing, or up to date).
+ *   - 'error':   a NON-network failure the user must act on — e.g. a locked
+ *                private drive, a died file watcher, a validation error. Not
+ *                auto-retried (retrying won't fix it).
+ *   - 'offline': the gateway is unreachable / the network is down (detected as
+ *                the authoritative signal after SYNC-20 retries + SYNC-23
+ *                failover are exhausted). Sync is paused and auto-retried until
+ *                connectivity returns.
+ */
+export type SyncHealth = 'healthy' | 'error' | 'offline';
+
 export interface SyncStatus {
   isActive: boolean;
   totalFiles: number;
@@ -122,6 +137,11 @@ export interface SyncStatus {
   failedFiles: number;
   currentFile?: string;
   lastError?: string;
+  // SYNC-9: degraded/offline visibility. Always present from getStatus().
+  health: SyncHealth;
+  // Human-readable detail for the degraded state (tooltip / notification /
+  // progress-modal copy). Absent when healthy.
+  healthMessage?: string;
 }
 
 export interface DriveSyncStatus {

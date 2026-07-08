@@ -240,7 +240,14 @@ class ArDriveApp {
           }
         } catch (syncError) {
           console.error('Failed to auto-start sync:', syncError);
-          // Don't throw - this is non-critical, user can manually start sync
+          // SYNC-9: this is no longer a SILENT no-op. Before re-throwing here,
+          // SyncManager.startSync already recorded a visible degraded/offline
+          // health state (surfaced via sync:status -> the persistent header
+          // indicator), fired the OS notification (UX-29), and — when the
+          // failure is offline — armed the auto-resume watchdog. Swallowing the
+          // re-thrown error at boot is safe: the user can also manually retry,
+          // and the app can never look healthy while this sync is actually
+          // broken/offline.
         }
       }
       
