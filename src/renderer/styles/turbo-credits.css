@@ -284,7 +284,8 @@
 
 /* Messages */
 .tcm-error-message,
-.tcm-success-message {
+.tcm-success-message,
+.tcm-info-message {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -304,6 +305,15 @@
   background: var(--success-surface);
   color: var(--success-fg);
   border: 1px solid var(--success);
+}
+
+/* FEAT-8: neutral status for the crypto-top-up return poll — "checking…" and
+   the gentle "no credits detected yet" copy. Info-toned so it never reads as an
+   error and never falsely implies credits arrived. */
+.tcm-info-message {
+  background: var(--info-surface);
+  color: var(--info-fg);
+  border: 1px solid var(--info);
 }
 
 /* Common Section Styles */

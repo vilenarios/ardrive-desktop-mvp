@@ -26,6 +26,30 @@ import TurboAboutTab from './turbo/TurboAboutTab';
 import { TURBO_FREE_SIZE_LIMIT } from '../../utils/turbo-utils';
 import TurboComingSoonTab from './turbo/TurboComingSoonTab';
 
+// FEAT-8: on-chain (SOL/ETH/AR) top-ups purchased on the ar.io Console have
+// confirmation latency — the balance may not be credited by the time the user
+// returns to the app. A single refresh-on-focus can fire too early and never
+// re-fire. Instead, when the user returns we run a BOUNDED, self-terminating
+// poll: re-check the balance a handful of times and stop the instant credits
+// land (or after the cap, gently). Bounded work only — never an open loop.
+const CRYPTO_BALANCE_POLL_INTERVAL_MS = 14000; // ~14s between balance checks
+const CRYPTO_BALANCE_POLL_MAX_ATTEMPTS = 8; // ~8 checks (~2 min) then stop, gently
+
+/**
+ * True when `fetchedWinc` is strictly greater than `baselineWinc` (credits
+ * landed). winc is an integer winston string; compare as BigInt for precision,
+ * falling back to float for any unexpectedly non-integer value.
+ */
+const wincIncreased = (fetchedWinc: string, baselineWinc: string): boolean => {
+  try {
+    return BigInt(fetchedWinc) > BigInt(baselineWinc);
+  } catch {
+    const fetched = parseFloat(fetchedWinc);
+    const baseline = parseFloat(baselineWinc);
+    return Number.isFinite(fetched) && Number.isFinite(baseline) && fetched > baseline;
+  }
+};
+
 interface TurboCreditsManagerProps {
   walletInfo: WalletInfo;
   onClose: () => void;
@@ -57,12 +81,30 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
   const [tokenAmount, setTokenAmount] = useState<string>('0.001');
   const [fiatEstimate, setFiatEstimate] = useState<FiatEstimate | null>(null);
   const [activeTab, setActiveTab] = useState<'purchase' | 'settings' | 'coming-soon' | 'about'>('purchase');
+  // FEAT-8: dedicated status region for the crypto-top-up return poll, kept
+  // separate from `successMessage`/`error` (owned by the fiat + AR flows) so the
+  // poll's honest, tone-aware copy never collides with those. `info` = neutral
+  // (checking / no-credits-yet), `success` = credits actually landed.
+  const [pollStatus, setPollStatus] = useState<{ tone: 'info' | 'success'; text: string } | null>(null);
 
   // FEAT-8: set when the user opens the ar.io Console crypto top-up in their
-  // browser, so the window-focus handler only re-fetches the balance when they
-  // return from a top-up they actually initiated (keeps the refresh lightweight
-  // — a normal focus with no pending top-up does nothing).
+  // browser, so the window-focus handler only starts the balance poll when they
+  // return from a top-up they actually initiated (a normal focus with no pending
+  // top-up does nothing).
   const cryptoTopUpInitiatedRef = useRef(false);
+  // FEAT-8: the Turbo balance (winc) at the moment a crypto top-up was
+  // INITIATED — the "before" number the poll compares against to detect credits
+  // landing. Null when the balance wasn't loaded yet at initiation time.
+  const baselineWincRef = useRef<string | null>(null);
+  // FEAT-8: poll lifecycle. `pollTimerRef` holds the pending setTimeout so it can
+  // be cleared (success / cap / unmount / manual refresh); `pollRunningRef`
+  // guards against stacking a second poll if the user re-focuses mid-poll;
+  // `pollAttemptsRef` bounds the poll. `isMountedRef` blocks any setState from an
+  // in-flight fetch that resolves after unmount.
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollRunningRef = useRef(false);
+  const pollAttemptsRef = useRef(0);
+  const isMountedRef = useRef(true);
 
   // Calculate storage amount for dollar amount
   const calculateStorageAmount = (dollarAmount: number): string => {
@@ -145,40 +187,127 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
 
   // FEAT-8: crypto top-up happens in the external ar.io Console (the browser),
   // so no payment-completed IPC ever fires here. When the user returns and the
-  // app regains focus AFTER they initiated a crypto top-up, re-fetch the Turbo
-  // balance so newly-added credits appear. Gated on cryptoTopUpInitiatedRef so
-  // ordinary focus changes don't spam turbo:get-balance.
+  // app regains focus AFTER they initiated a crypto top-up, start a BOUNDED poll
+  // (on-chain confirmation latency means a single refresh can fire before the
+  // credits land and never re-fire). Gated on cryptoTopUpInitiatedRef so
+  // ordinary focus changes don't touch the balance, and on pollRunningRef (inside
+  // startBalancePoll) so re-focusing mid-poll never stacks a second poll.
   useEffect(() => {
     const handleWindowFocus = () => {
       if (!cryptoTopUpInitiatedRef.current) return;
       cryptoTopUpInitiatedRef.current = false;
-      console.log('Returned from ar.io Console — refreshing Turbo balance');
-      setSuccessMessage('Checking for new credits from your ar.io Console top-up…');
-      setTimeout(() => setSuccessMessage(null), 5000);
-      loadTurboBalance();
+      console.log('Returned from ar.io Console — polling for new Turbo credits');
+      startBalancePoll();
     };
     window.addEventListener('focus', handleWindowFocus);
     return () => window.removeEventListener('focus', handleWindowFocus);
   }, []);
 
-  const loadTurboBalance = async () => {
+  // FEAT-8: track mount status and guarantee the poll timer is cleared on
+  // unmount — no leaked timer, no post-unmount setState.
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      stopBalancePoll();
+    };
+  }, []);
+
+  // Returns the freshly-fetched balance (or null on failure) so callers such as
+  // the FEAT-8 crypto-top-up poll can compare it to a baseline without reading
+  // stale React state. Guarded by isMountedRef so a fetch that resolves after
+  // unmount never calls setState.
+  const loadTurboBalance = async (): Promise<TurboBalance | null> => {
     try {
       setLoading(true);
       // UX-3: getBalance resolves an IpcResult; a business failure no longer
       // throws, so surface it explicitly (MONEY-13: never show a broken value).
       const result = await window.electronAPI.turbo.getBalance();
+      if (!isMountedRef.current) return null;
       if (!result.success) {
         console.error('Failed to load Turbo balance:', result.error);
         setError('Failed to load Turbo Credits balance');
-        return;
+        return null;
       }
       setBalance(result.data);
+      return result.data;
     } catch (err) {
       console.error('Failed to load Turbo balance:', err);
-      setError('Failed to load Turbo Credits balance');
+      if (isMountedRef.current) setError('Failed to load Turbo Credits balance');
+      return null;
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
+  };
+
+  // FEAT-8: stop the crypto-top-up return poll and reset its lifecycle state.
+  // Idempotent — safe to call on success, cap exhaustion, manual refresh and
+  // unmount. Clears the pending timer so nothing fires after we stop.
+  const stopBalancePoll = () => {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    pollRunningRef.current = false;
+    pollAttemptsRef.current = 0;
+  };
+
+  // FEAT-8: bounded, self-terminating balance poll started when the user returns
+  // from an initiated crypto top-up. Re-checks the Turbo balance up to
+  // CRYPTO_BALANCE_POLL_MAX_ATTEMPTS times (~14s apart) and STOPS the instant the
+  // balance rises past the captured baseline (credits landed). Uses a recursive
+  // setTimeout so a slow fetch can never overlap the next one. Never starts a
+  // second poll while one is running (no stacked timers / no fetch spam).
+  const startBalancePoll = () => {
+    if (pollRunningRef.current) return; // guard: never stack a second poll
+    pollRunningRef.current = true;
+    pollAttemptsRef.current = 0;
+    setError(null);
+    setPollStatus({ tone: 'info', text: 'Checking for new credits from your ar.io Console top-up…' });
+
+    const runAttempt = async () => {
+      pollAttemptsRef.current += 1;
+      const fetched = await loadTurboBalance();
+      // Unmounted (or poll stopped) mid-fetch — bail without touching state/timers.
+      if (!isMountedRef.current || !pollRunningRef.current) return;
+
+      const baseline = baselineWincRef.current;
+      const creditsLanded =
+        fetched !== null && baseline !== null && wincIncreased(fetched.winc, baseline);
+
+      if (creditsLanded) {
+        stopBalancePoll();
+        setPollStatus({ tone: 'success', text: 'Credits added! Your balance is up to date.' });
+        setTimeout(() => { if (isMountedRef.current) setPollStatus(null); }, 6000);
+        return;
+      }
+
+      if (pollAttemptsRef.current >= CRYPTO_BALANCE_POLL_MAX_ATTEMPTS) {
+        stopBalancePoll();
+        // Honest, gentle timeout copy — NOT an error, and it never implies the
+        // top-up failed (it may simply still be confirming on-chain).
+        setPollStatus({
+          tone: 'info',
+          text:
+            'No new credits detected yet — if you completed your top-up, it may still be ' +
+            'confirming. Click Refresh to check again.',
+        });
+        return;
+      }
+
+      // Schedule the next check (recursive setTimeout → never overlaps a fetch).
+      pollTimerRef.current = setTimeout(runAttempt, CRYPTO_BALANCE_POLL_INTERVAL_MS);
+    };
+
+    // First check fires immediately on return, before the interval kicks in.
+    runAttempt();
+  };
+
+  // FEAT-8: manual "Refresh balance" affordance — cancels any running poll and
+  // forces an immediate fetch, so the button always reflects "check right now".
+  const handleManualRefresh = () => {
+    stopBalancePoll();
+    return loadTurboBalance();
   };
 
   const loadFiatEstimate = async () => {
@@ -290,14 +419,17 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
       encodeURIComponent(address) +
       '&source=ardrive-desktop';
 
-    // Remember we started a top-up so the window-focus handler refreshes the
-    // balance when the user returns from the browser.
+    // Capture the "before" balance and remember we started a top-up, so the
+    // window-focus handler can poll for the balance to rise past this baseline
+    // (credits landing) when the user returns from the browser.
+    baselineWincRef.current = balance?.winc ?? null;
     cryptoTopUpInitiatedRef.current = true;
 
     // D-005: shell:open-external resolves the IpcResult envelope.
     const result = await window.electronAPI.shell.openExternal(url);
     if (result && result.success === false) {
       cryptoTopUpInitiatedRef.current = false;
+      baselineWincRef.current = null;
       setError(result.error || 'Failed to open ar.io Console in your browser');
       return;
     }
@@ -335,11 +467,11 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
       </div>
 
       {/* Balance Card */}
-      <TurboBalanceCard 
+      <TurboBalanceCard
         balance={balance}
         loading={loading}
         fiatEstimate={fiatEstimate}
-        onRefresh={loadTurboBalance}
+        onRefresh={handleManualRefresh}
       />
 
       {/* Tabs */}
@@ -389,6 +521,21 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
         </div>
       )}
 
+      {/* FEAT-8: crypto-top-up poll status. Informational only — announced
+          politely so it never interrupts. Neutral (info) while checking or when
+          no credits have landed yet; positive (success) only when the balance
+          actually rose. */}
+      {pollStatus && (
+        <div
+          className={pollStatus.tone === 'success' ? 'tcm-success-message' : 'tcm-info-message'}
+          role="status"
+          aria-live="polite"
+        >
+          {pollStatus.tone === 'success' ? <Check size={16} /> : <Info size={16} />}
+          {pollStatus.text}
+        </div>
+      )}
+
       {/* Tab Content */}
       <div className="tcm-content">
         {activeTab === 'purchase' && (
@@ -406,7 +553,7 @@ const TurboCreditsManager: React.FC<TurboCreditsManagerProps> = ({ walletInfo, o
             handleTokenTopUp={handleTokenTopUp}
             walletAddress={walletInfo.address}
             handleCryptoTopUp={handleCryptoTopUp}
-            onRefreshBalance={loadTurboBalance}
+            onRefreshBalance={handleManualRefresh}
           />
         )}
 
