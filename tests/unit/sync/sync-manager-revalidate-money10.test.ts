@@ -95,7 +95,11 @@ describe('MONEY-10: re-validate file size at upload time (no unapproved-size upl
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockWrapFileOrFolder.mockImplementation(() => ({ destinationBaseName: 'doc.txt' }));
+    // MONEY-10 (TOCTOU): the wrap now reports the exact bytes to be uploaded and
+    // that size is asserted == the approved size before uploadAllEntities. A real
+    // ArFSFileToUpload always exposes a numeric `size`; the only test here that
+    // reaches the wrap is the UNCHANGED-size case (approved 100 → wrap 100).
+    mockWrapFileOrFolder.mockImplementation(() => ({ destinationBaseName: 'doc.txt', size: 100 }));
 
     mockDatabaseManager = createMockDatabaseManager();
     mockDatabaseManager.getDriveMappings.mockResolvedValue([publicMapping]);

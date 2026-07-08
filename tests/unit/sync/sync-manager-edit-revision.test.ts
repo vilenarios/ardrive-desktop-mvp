@@ -100,8 +100,11 @@ describe('SYNC-26: edit re-uploads as an ArFS revision (fileId reuse)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // A fresh wrapped-file object per wrap call, so we observe exactly what the
-    // upload engine mutates (existingId) and forwards to core-js.
-    mockWrapFileOrFolder.mockImplementation(() => ({ destinationBaseName: 'doc.txt' }));
+    // upload engine mutates (existingId) and forwards to core-js. `size` matches
+    // the approved fileSize (17) — a real ArFSFileToUpload always exposes its
+    // byte count, and MONEY-10's wrap-adjacent assert requires it to equal the
+    // approved size before the upload proceeds (an unchanged edit here).
+    mockWrapFileOrFolder.mockImplementation(() => ({ destinationBaseName: 'doc.txt', size: 17 }));
 
     mockDatabaseManager = createMockDatabaseManager();
     mockDatabaseManager.getDriveMappings.mockResolvedValue([publicMapping]);
