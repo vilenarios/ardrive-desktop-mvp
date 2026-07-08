@@ -19,6 +19,9 @@ import { notificationService } from './notification-service';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
 import { retryWithBackoff } from './sync/retry';
 import { resolveDrivePrivacyOrThrow } from './sync/drive-privacy';
+// MONEY-14 single source for the Turbo free-tier boundary (107520 bytes).
+// MONEY-10 uses it to flag an approved upload that grew past it before execution.
+import { TURBO_FREE_SIZE_LIMIT } from '../utils/turbo-utils';
 import {
   fetchTxDataWithFailover,
   queryMetadataWithResilience,
@@ -642,7 +645,218 @@ export class SyncManager {
     console.log(`Upload ${upload.id} cancelled before any paid work started`);
     return true;
   }
-  
+
+  /**
+   * MONEY-10 spend checkpoint: re-validate an approved file's size against the
+   * on-disk bytes we are about to upload. The user approved a specific size —
+   * the cost shown and OK'd was computed from it. Between approval and this
+   * execution the file can change (the user edits it). Uploading whatever is on
+   * disk NOW would let a file that grew after approval upload at the LARGER
+   * size, which can cross the Turbo free-tier boundary (<=TURBO_FREE_SIZE_LIMIT
+   * → >limit) or simply cost more than approved — an UNAPPROVED SPEND.
+   *
+   * Tolerance = exact match (0 bytes). Any difference between the approved size
+   * and the current size returns the item to the approval queue:
+   *   - Grew while paid → costs more than approved.
+   *   - Crossed the free-tier boundary (free → paid) → the core money bug: an
+   *     outright unapproved charge.
+   *   - Shrank / changed within the free tier → cheaper or still free, but the
+   *     on-disk bytes no longer match what the user reviewed; re-approving on any
+   *     material change is the safe default (and only re-prompts when the file
+   *     genuinely changed after approval, so it does not flap on stable files).
+   *
+   * Handling:
+   *   - Deleted / unreadable → cancel the upload (nothing to upload); mark the
+   *     execution record failed with a clear note; do NOT re-queue.
+   *   - Size changed → drop the in-flight execution record and re-queue a fresh
+   *     awaiting_approval pending upload at the NEW size (with a re-approve note
+   *     and a freshly computed cost) so the user re-confirms.
+   *
+   * Returns true when the upload was handled here (caller must stop before any
+   * wrap/upload); false to proceed with the upload at the approved size. Runs
+   * before SYNC-26 (revision fileId) and PRIV-8 (privacy routing), so it never
+   * weakens them — it only decides whether this upload happens at all.
+   */
+  private async revalidateApprovedFileSize(upload: FileUpload): Promise<boolean> {
+    // MONEY-2 takes precedence: an upload with a pending cancellation must be
+    // finalized as CANCELLED, not re-queued for approval. Defer to the existing
+    // cancellation checkpoints (uploadFileWithArDriveCore / uploadFile's catch),
+    // which stop before any spend — so returning false here never uploads.
+    if (this.uploadQueueManager.isCancellationRequested(upload.id)) {
+      return false;
+    }
+
+    const approvedSize = upload.fileSize;
+
+    let currentSize: number;
+    try {
+      const stats = await fs.stat(upload.localPath);
+      if (!stats.isFile()) {
+        // Something that is not a regular file now sits at this path — treat it
+        // as gone (we approved a file, not a directory/device).
+        throw new Error('path is no longer a regular file');
+      }
+      currentSize = stats.size;
+    } catch (statError) {
+      // Deleted / moved / unreadable since approval — cancel cleanly, never crash.
+      const note =
+        'File no longer exists on disk — upload cancelled (nothing was uploaded)';
+      console.warn(
+        `MONEY-10: cannot re-stat "${upload.fileName}" (${upload.id}) before upload: ` +
+          `${statError instanceof Error ? statError.message : String(statError)}. Cancelling.`
+      );
+      upload.status = 'failed';
+      upload.error = note;
+      await this.databaseManager.updateUpload(upload.id, { status: 'failed', error: note });
+      this.emitUploadProgress(upload.id, 0, 'failed', note);
+      this.uploadQueueManager.removeFromQueue(upload.id);
+      return true;
+    }
+
+    // Unchanged — safe to upload at exactly the approved size.
+    if (currentSize === approvedSize) {
+      return false;
+    }
+
+    // Size changed since approval — return to the approval queue at the new size
+    // via the shared re-queue path (also used by the wrap-adjacent TOCTOU assert).
+    await this.requeueUploadForReapproval(upload, currentSize);
+    return true;
+  }
+
+  /**
+   * MONEY-10 shared re-queue: drop the in-flight execution record and return the
+   * upload to the approval queue at its ACTUAL current size so the user re-confirms
+   * the (possibly higher) cost. Used by BOTH the start-of-uploadFile re-stat
+   * (revalidateApprovedFileSize) and the wrap-adjacent TOCTOU assert
+   * (assertWrappedSizeApproved), so the two never drift apart. Never spends;
+   * preserves the SYNC-26 revision target so re-approval still uploads a revision
+   * of the same on-chain file rather than minting a new entity.
+   */
+  private async requeueUploadForReapproval(
+    upload: FileUpload,
+    currentSize: number
+  ): Promise<void> {
+    const approvedSize = upload.fileSize;
+    const wasFree = approvedSize <= TURBO_FREE_SIZE_LIMIT;
+    const nowFree = currentSize <= TURBO_FREE_SIZE_LIMIT;
+    const crossedFreeBoundary = wasFree && !nowFree;
+
+    const note =
+      `File changed since approval — re-approve to upload at the new size ` +
+      `(${approvedSize} → ${currentSize} bytes)` +
+      (crossedFreeBoundary
+        ? ' — now exceeds the free-tier limit and will cost credits'
+        : '');
+
+    console.warn(
+      `MONEY-10: "${upload.fileName}" (${upload.id}) changed since approval — ` +
+        `${approvedSize} → ${currentSize} bytes` +
+        (crossedFreeBoundary ? ' (crossed the free-tier boundary)' : '') +
+        `. Returning to approval queue; not uploading at the new size.`
+    );
+
+    // Recompute the cost estimate for the NEW size so the re-approval shows the
+    // real (possibly higher) cost the user must confirm.
+    const costs = await this.costCalculator.calculateUploadCosts(currentSize);
+
+    // Drop the in-flight execution: remove it from the in-memory queue AND delete
+    // its uploads row so re-approval's addUpload (a plain INSERT keyed by id) does
+    // not collide with a stale record.
+    this.uploadQueueManager.removeFromQueue(upload.id);
+    await this.databaseManager.removeUpload(upload.id);
+
+    // Re-queue as a fresh awaiting_approval pending upload at the NEW size.
+    const requeued: Omit<PendingUpload, 'createdAt'> = {
+      id: upload.id,
+      driveId: upload.driveId,
+      localPath: upload.localPath,
+      fileName: upload.fileName,
+      fileSize: currentSize,
+      estimatedCost: costs.estimatedCost,
+      // MONEY-6: a legit 0 quote (free) must not coerce to "estimate unavailable".
+      estimatedTurboCost: costs.estimatedTurboCost ?? undefined,
+      recommendedMethod: costs.recommendedMethod,
+      hasSufficientTurboBalance: costs.hasSufficientTurboBalance,
+      conflictType: 'content_conflict',
+      conflictDetails: note,
+      status: 'awaiting_approval',
+      // SYNC-26: preserve the revision target so re-approval still uploads this as
+      // a revision of the same on-chain file, not a brand-new entity.
+      arfsFileId: upload.existingArfsFileId
+    };
+    await this.databaseManager.addPendingUpload(requeued);
+
+    // Reflect the outcome on the in-memory record and refresh the approval UI.
+    upload.status = 'pending';
+    upload.error = note;
+    this.notifyRenderer('sync:pending-uploads-updated');
+    try {
+      const stillPending = await this.databaseManager.getPendingUploads();
+      notificationService.notifyApprovalNeeded(stillPending.length);
+    } catch (notifyError) {
+      console.error('MONEY-10: failed to notify approval-needed after re-queue:', notifyError);
+    }
+  }
+
+  /**
+   * MONEY-10 (TOCTOU close): assert the WRAPPED file's byte count equals the
+   * approved size immediately before uploadAllEntities. wrapFileOrFolder performs
+   * a FRESH disk read; between the start-of-uploadFile re-stat
+   * (revalidateApprovedFileSize) and this wrap there are awaits — notably
+   * getTargetFolderId(), which can create parent folders on-chain with 1s/2s
+   * retry sleeps — during which the file can change. ArFSFileToUpload's `size`
+   * getter is the EXACT number of bytes uploadAllEntities will upload/charge for
+   * (a ByteCount; Number() unwraps it), so it is the authoritative money-safety
+   * check. On mismatch, do NOT upload: re-queue for approval at the current
+   * (wrapped) size via the SAME path revalidateApprovedFileSize uses and return
+   * true so the caller aborts BEFORE any spend. Returns false (safe to upload)
+   * ONLY when wrapped size == approved size — which also neutralizes the
+   * isFreeWithTurbo(upload.fileSize) amplifier, since skipBalanceCheck can then
+   * only take effect on bytes that match the approval.
+   */
+  private async assertWrappedSizeApproved(
+    wrappedFile: unknown,
+    upload: FileUpload
+  ): Promise<boolean> {
+    // wrapFileOrFolder returns an ArFSFileToUpload for files; its `size` getter is
+    // a ByteCount (Number() unwraps it) equal to the exact bytes to be uploaded.
+    // Read defensively — the type is the file|folder union at the call site.
+    const rawSize =
+      wrappedFile && typeof wrappedFile === 'object' && 'size' in wrappedFile
+        ? (wrappedFile as { size?: unknown }).size
+        : undefined;
+    const wrappedSize = Number(rawSize);
+
+    // Exact match against the approved size — the bytes about to be uploaded are
+    // precisely what the user approved. Safe to proceed.
+    if (Number.isFinite(wrappedSize) && wrappedSize === upload.fileSize) {
+      return false;
+    }
+
+    // Mismatch (or a wrap that exposed no numeric size): the bytes about to be
+    // uploaded are NOT the ones the user approved. Determine the size to re-queue
+    // at (the wrapped size when numeric; otherwise a fresh stat), then return to
+    // the approval queue and abort — nothing is uploaded, nothing is spent.
+    let currentSize = wrappedSize;
+    if (!Number.isFinite(currentSize)) {
+      try {
+        currentSize = (await fs.stat(upload.localPath)).size;
+      } catch {
+        currentSize = upload.fileSize;
+      }
+    }
+
+    console.warn(
+      `MONEY-10 (TOCTOU): "${upload.fileName}" (${upload.id}) changed between the ` +
+        `approval re-stat and the wrap — approved ${upload.fileSize} bytes, wrapped ` +
+        `${currentSize} bytes. Aborting upload and returning to the approval queue; ` +
+        `no bytes uploaded at the unapproved size.`
+    );
+    await this.requeueUploadForReapproval(upload, currentSize);
+    return true;
+  }
+
   // Emit upload progress event
   private emitUploadProgress(uploadId: string, progress: number, status: 'uploading' | 'completed' | 'failed', error?: string): void {
     this.progressTracker.emitUploadProgress(uploadId, progress, status, error);
@@ -2529,6 +2743,17 @@ export class SyncManager {
     }
 
     try {
+      // MONEY-10: re-validate the file's size against what the user approved
+      // BEFORE any upload work (before we even mark it 'uploading' or wrap it).
+      // An upload is approved at a specific size (the cost the user OK'd was
+      // computed from it); the file can change on disk between approval and now.
+      // If it grew/shrank — or is gone — do NOT upload at the new size: re-queue
+      // for approval, or cancel cleanly. Folders are metadata-only (size 0) and
+      // are exempt. Returns true when handled here (nothing more to upload).
+      if (!isFolder && (await this.revalidateApprovedFileSize(upload))) {
+        return;
+      }
+
       // Update status to uploading
       console.log(`Setting upload status to 'uploading' for ${itemName}`);
       upload.status = 'uploading';
@@ -2539,9 +2764,17 @@ export class SyncManager {
 
       // Use ArDrive Core for both files AND folders
       await this.uploadFileWithArDriveCore(upload);
-      
-      // Emit completion event
-      this.emitUploadProgress(upload.id, 100, 'completed');
+
+      // Emit completion event — unless a MONEY-10 wrap-adjacent size mismatch
+      // re-queued this item for approval (status 'pending'). A re-queued upload
+      // was never uploaded and must not be painted 'completed'. (Only the new
+      // TOCTOU re-queue leaves status === 'pending' here; success => 'completed',
+      // cancellation => 'failed', both of which still emit as before.)
+      // (Cast widens the flow-narrowed 'uploading' literal back to the full union —
+      // uploadFileWithArDriveCore mutates upload.status through the reference.)
+      if ((upload.status as FileUpload['status']) !== 'pending') {
+        this.emitUploadProgress(upload.id, 100, 'completed');
+      }
 
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -2747,6 +2980,15 @@ export class SyncManager {
       // PRIV-8 privacy routing. Absent id => normal new upload (fallback).
       this.applyRevisionFileId(wrappedFile, upload);
 
+      // MONEY-10 (TOCTOU): close the residual window between the start-of-uploadFile
+      // re-stat and this wrap. wrappedFile.size is the exact byte count about to be
+      // uploaded/charged; assert it still equals the approved size BEFORE building
+      // upload options or calling uploadAllEntities. On mismatch, re-queue for
+      // approval at the current size and abort this execution — no spend.
+      if (await this.assertWrappedSizeApproved(wrappedFile, upload)) {
+        return;
+      }
+
       // Get drive mapping to check if private
       const mappings = await this.databaseManager.getDriveMappings();
       const mapping = mappings.find(m => m.driveId === this.driveId);
@@ -2836,6 +3078,12 @@ export class SyncManager {
             const retryWrappedFile = wrapFileOrFolder(upload.localPath);
             // SYNC-26: the retry is still the same edit — keep it a revision
             this.applyRevisionFileId(retryWrappedFile, upload);
+            // MONEY-10 (TOCTOU): the retry re-wraps (a SECOND fresh disk read) —
+            // assert the re-wrapped bytes still match the approval before this
+            // second paid attempt; on mismatch, re-queue and abort (no spend).
+            if (await this.assertWrappedSizeApproved(retryWrappedFile, upload)) {
+              return;
+            }
             const retryTargetFolderId = await this.getTargetFolderId(upload.localPath, upload.id);
             
             // Build retry options
