@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check, Plus, HardDrive, Lock, Globe, Star, RefreshCw } from 'lucide-react';
+import { ChevronDown, Check, Plus, HardDrive, Lock, Globe, Star, RefreshCw, Trash2 } from 'lucide-react';
 import { DriveInfo, DriveInfoWithStatus } from '../../types';
 import { PrivateDriveUnlockModal } from './PrivateDriveUnlockModal';
 import { InfoButton } from './common/InfoButton';
@@ -11,6 +11,9 @@ interface DriveSelectorProps {
   onDriveSelect: (driveId: string) => void;
   onCreateDrive: () => void;
   onAddExistingDrive: () => void;
+  // UX-18: removing a drive is optional so existing renders/tests that don't
+  // wire it up keep working — the row simply omits the action.
+  onRemoveDrive?: (driveId: string) => void;
 }
 
 export const DriveSelector: React.FC<DriveSelectorProps> = ({
@@ -19,7 +22,8 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
   isLoading,
   onDriveSelect,
   onCreateDrive,
-  onAddExistingDrive
+  onAddExistingDrive,
+  onRemoveDrive
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -179,49 +183,72 @@ export const DriveSelector: React.FC<DriveSelectorProps> = ({
                 : `${drive.name}, not syncing. Select to sync this drive instead — only one drive syncs at a time.`;
             return (
               <React.Fragment key={drive.id}>
-                <button
-                  className={`drive-selector-option ${isActive ? 'is-active' : ''}`}
-                  onClick={() => handleDriveClick(drive)}
-                  aria-label={optionLabel}
-                >
-                  {isActive ? (
-                    <Check size={16} className="drive-selector-option-check" />
-                  ) : (
-                    <div className="drive-selector-option-check-spacer" />
-                  )}
-                  <HardDrive size={16} />
-                  <span className="drive-selector-option-name" title={drive.name}>
-                    {drive.name}
-                    {drive.privacy === 'private' && drive.isLocked && drive.emojiFingerprint && (
-                      <span className="drive-selector-option-fingerprint">
-                        {drive.emojiFingerprint}
-                      </span>
-                    )}
-                  </span>
-                  {/* UX-15: the truth signal for THIS row — active vs. every
-                      other mapped drive, which is connected but not syncing. */}
-                  <span
-                    className={`drive-selector-sync-badge ${isActive ? 'is-syncing' : 'is-not-syncing'}`}
-                    aria-hidden="true"
+                <div className="drive-selector-row">
+                  <button
+                    className={`drive-selector-option ${isActive ? 'is-active' : ''} ${onRemoveDrive ? 'has-remove' : ''}`}
+                    onClick={() => handleDriveClick(drive)}
+                    aria-label={optionLabel}
                   >
                     {isActive ? (
-                      <>
-                        <RefreshCw size={10} />
-                        Syncing
-                      </>
+                      <Check size={16} className="drive-selector-option-check" />
                     ) : (
-                      'Not syncing'
+                      <div className="drive-selector-option-check-spacer" />
                     )}
-                  </span>
-                  {drive.privacy === 'private' ? (
-                    <Lock
-                      size={14}
-                      className={`drive-selector-lock-icon ${drive.isLocked ? 'is-locked' : ''}`}
-                    />
-                  ) : (
-                    <Globe size={14} className="drive-selector-globe-icon" />
+                    <HardDrive size={16} />
+                    <span className="drive-selector-option-name" title={drive.name}>
+                      {drive.name}
+                      {drive.privacy === 'private' && drive.isLocked && drive.emojiFingerprint && (
+                        <span className="drive-selector-option-fingerprint">
+                          {drive.emojiFingerprint}
+                        </span>
+                      )}
+                    </span>
+                    {/* UX-15: the truth signal for THIS row — active vs. every
+                        other mapped drive, which is connected but not syncing. */}
+                    <span
+                      className={`drive-selector-sync-badge ${isActive ? 'is-syncing' : 'is-not-syncing'}`}
+                      aria-hidden="true"
+                    >
+                      {isActive ? (
+                        <>
+                          <RefreshCw size={10} />
+                          Syncing
+                        </>
+                      ) : (
+                        'Not syncing'
+                      )}
+                    </span>
+                    {drive.privacy === 'private' ? (
+                      <Lock
+                        size={14}
+                        className={`drive-selector-lock-icon ${drive.isLocked ? 'is-locked' : ''}`}
+                      />
+                    ) : (
+                      <Globe size={14} className="drive-selector-globe-icon" />
+                    )}
+                  </button>
+                  {/* UX-18: removal only touches this device's local mapping —
+                      the confirm dialog (owned by Dashboard, which also knows
+                      whether this is the currently-syncing drive) spells out
+                      that Arweave data is untouched. A sibling button, not
+                      nested inside drive-selector-option, since a <button>
+                      can't contain another <button>. */}
+                  {onRemoveDrive && (
+                    <button
+                      type="button"
+                      className="drive-selector-remove-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsOpen(false);
+                        onRemoveDrive(drive.id);
+                      }}
+                      aria-label={`Remove "${drive.name}" from this device`}
+                      title="Remove drive from this device"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   )}
-                </button>
+                </div>
 
                 {/* PRIV-4: remember/forget this drive (only for unlocked private drives).
                     INFO-2: this used to explain itself only via a native

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { AppConfig, DriveInfo, DriveInfoWithStatus, WalletInfo, SyncStatus, FileUpload, PendingUpload, Profile, SyncProgress } from '../../types';
+import { AppConfig, DriveInfo, DriveInfoWithStatus, WalletInfo, SyncStatus, FileUpload, PendingUpload, Profile, SyncProgress, DriveSyncMapping } from '../../types';
 import { IpcResult } from '../../types/ipc';
 import UploadApprovalQueueModern from './UploadApprovalQueueModern';
 import TurboCreditsManager from './TurboCreditsManager';
@@ -476,36 +476,42 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   // Drive switching handler
-  const handleDriveSwitch = async (driveId: string) => {
+  // UX-18: `skipConfirm` lets handleRemoveDrive hand off to another mapped
+  // drive right after the user already confirmed removing the active one —
+  // without this, they'd hit a second "Switch to X?" dialog for a switch
+  // they didn't explicitly ask for.
+  const handleDriveSwitch = async (driveId: string, skipConfirm = false) => {
     if (driveId === drive?.id || isSwitchingDrive) return;
-    
+
     // Find the target drive for better confirmation message
     const targetDrive = drives.find(d => d.id === driveId);
     if (!targetDrive) {
       toast?.error('Drive not found');
       return;
     }
-    
-    // Always show confirmation for drive switching (UX-9: in-app modal, not
-    // the native OS confirm dialog).
-    // UX-15: only one drive syncs at a time in this beta (D-010) — spell out
-    // exactly what that means at the one moment the user commits to it:
-    // the current drive stops syncing, the target one starts.
-    const switchExplanation = drive?.name
-      ? `"${drive.name}" will stop syncing and "${targetDrive.name}" will become the drive that syncs. Only one drive syncs at a time in this beta — "${drive.name}" stays connected but won't sync until you switch back.`
-      : `"${targetDrive.name}" will become the drive that syncs. Only one drive syncs at a time in this beta.`;
-    const confirmMessage = pendingUploads.length > 0
-      ? `You have ${pendingUploads.length} pending upload${pendingUploads.length === 1 ? '' : 's'} that will be cancelled. ${switchExplanation}`
-      : switchExplanation;
 
-    const confirmed = await confirm({
-      title: `Switch to "${targetDrive.name}"?`,
-      message: confirmMessage,
-      confirmLabel: 'Switch',
-      variant: pendingUploads.length > 0 ? 'danger' : 'default'
-    });
-    if (!confirmed) return;
-    
+    if (!skipConfirm) {
+      // Always show confirmation for drive switching (UX-9: in-app modal, not
+      // the native OS confirm dialog).
+      // UX-15: only one drive syncs at a time in this beta (D-010) — spell out
+      // exactly what that means at the one moment the user commits to it:
+      // the current drive stops syncing, the target one starts.
+      const switchExplanation = drive?.name
+        ? `"${drive.name}" will stop syncing and "${targetDrive.name}" will become the drive that syncs. Only one drive syncs at a time in this beta — "${drive.name}" stays connected but won't sync until you switch back.`
+        : `"${targetDrive.name}" will become the drive that syncs. Only one drive syncs at a time in this beta.`;
+      const confirmMessage = pendingUploads.length > 0
+        ? `You have ${pendingUploads.length} pending upload${pendingUploads.length === 1 ? '' : 's'} that will be cancelled. ${switchExplanation}`
+        : switchExplanation;
+
+      const confirmed = await confirm({
+        title: `Switch to "${targetDrive.name}"?`,
+        message: confirmMessage,
+        confirmLabel: 'Switch',
+        variant: pendingUploads.length > 0 ? 'danger' : 'default'
+      });
+      if (!confirmed) return;
+    }
+
     try {
       setIsSwitchingDrive(true);
       toast?.info(`Switching to "${targetDrive.name}"...`);
@@ -537,6 +543,105 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Add existing drive handler
   const handleAddExistingDrive = () => {
     setShowAddExistingDriveModal(true);
+  };
+
+  // UX-18: remove a drive's LOCAL mapping/sync association from this device.
+  // This is not a data-deletion path — the drive and every file on it stay on
+  // Arweave permanently; only the local sync-folder link this device holds
+  // is deleted (`databaseManager.removeDriveMapping`, a DELETE against
+  // `drive_mappings`, main.ts's `drive-mappings:remove` handler).
+  const handleRemoveDrive = async (driveId: string) => {
+    const targetDrive = drives.find(d => d.id === driveId);
+    if (!targetDrive) {
+      toast?.error('Drive not found');
+      return;
+    }
+
+    const isActiveDrive = drive?.id === driveId;
+
+    // Honest, permanence-safe copy (UX-18): never let this read as "delete my
+    // files". Arweave data is permanent regardless of what happens here.
+    const pendingWarning = isActiveDrive && pendingUploads.length > 0
+      ? `You have ${pendingUploads.length} pending upload${pendingUploads.length === 1 ? '' : 's'} for this drive that will be cancelled. `
+      : '';
+    const removalExplanation = isActiveDrive
+      ? `This stops syncing "${targetDrive.name}" on this device and removes its local folder mapping.`
+      : `This removes "${targetDrive.name}"'s local folder mapping from this device.`;
+    const permanenceNote = `It does NOT delete the drive or any files from Arweave — permaweb data is permanent, so everything you've uploaded stays exactly where it is. You can add this drive back on this device at any time.`;
+
+    const confirmed = await confirm({
+      title: `Remove "${targetDrive.name}" from this device?`,
+      message: `${pendingWarning}${removalExplanation} ${permanenceNote}`,
+      confirmLabel: 'Remove drive',
+      cancelLabel: 'Cancel',
+      variant: 'danger'
+    });
+    if (!confirmed) return;
+
+    try {
+      // SYNC: if we're removing the drive currently being synced, stop the
+      // watcher FIRST so it never outlives the mapping row it's watching for
+      // (D-010: only one drive syncs at a time, so "active" == "syncing").
+      // A no-op if nothing is running; safe to call even when a subsequent
+      // handleDriveSwitch below re-points/restarts it for another drive.
+      if (isActiveDrive) {
+        const stopResult = await window.electronAPI.sync.stop();
+        if (!stopResult.success) {
+          console.error('Failed to stop sync before removing drive:', stopResult.error);
+        }
+      }
+
+      // Resolve the drive's mapping id — `drives` is keyed by ArFS driveId,
+      // but `driveMappings.remove` takes the mapping row's own id.
+      const mappingsResult = await window.electronAPI.driveMappings.list();
+      const mappings: DriveSyncMapping[] = mappingsResult.success ? mappingsResult.data : [];
+      const mappingToRemove = mappings.find(m => m.driveId === driveId);
+      if (!mappingToRemove) {
+        toast?.error('Drive mapping not found');
+        return;
+      }
+
+      // The existing drive-mappings:remove IPC (D-005 envelope) — the ONLY
+      // change here is finally calling it from a product UI.
+      const removeResult = await window.electronAPI.driveMappings.remove(mappingToRemove.id);
+      if (!removeResult.success) {
+        throw new Error(removeResult.error || 'Failed to remove drive');
+      }
+
+      // Refresh the drives list with status info (same merge used everywhere
+      // else in this component).
+      const mappedDrives = extractMappedDrives(await window.electronAPI.drive.getMapped());
+      const drivesWithStatus = extractDrivesWithStatus(await window.electronAPI.drive.listWithStatus());
+      const mergedDrives = mappedDrives.map((mappedDrive: any) => {
+        const driveWithStatus = drivesWithStatus.find((d: DriveInfoWithStatus) => d.id === mappedDrive.id);
+        return {
+          ...mappedDrive,
+          isLocked: driveWithStatus?.isLocked ?? false,
+          emojiFingerprint: driveWithStatus?.emojiFingerprint
+        };
+      });
+      setDrives(mergedDrives);
+
+      if (isActiveDrive) {
+        if (mergedDrives.length > 0) {
+          // Hand off to another mapped drive instead of leaving the
+          // dashboard pointed at a mapping that no longer exists. Already
+          // confirmed above — skip handleDriveSwitch's own confirm.
+          toast?.success(`"${targetDrive.name}" removed from this device. Your files remain on Arweave.`);
+          await handleDriveSwitch(mergedDrives[0].id, true);
+        } else {
+          // Edge case: last/only drive removed — land in drive setup rather
+          // than a dashboard with no drive. onDriveDeleted (App.tsx) already
+          // shows its own "choose or create a new drive" toast.
+          onDriveDeleted();
+        }
+      } else {
+        toast?.success(`"${targetDrive.name}" removed from this device. Your files remain on Arweave.`);
+      }
+    } catch (error) {
+      console.error('Failed to remove drive:', error);
+      toast?.error(error instanceof Error ? error.message : 'Failed to remove drive');
+    }
   };
 
   // Handle drive created
@@ -872,6 +977,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             onDriveSelect={handleDriveSwitch}
             onCreateDrive={handleCreateDrive}
             onAddExistingDrive={handleAddExistingDrive}
+            onRemoveDrive={handleRemoveDrive}
           />
 
           {/* Sync Button */}
