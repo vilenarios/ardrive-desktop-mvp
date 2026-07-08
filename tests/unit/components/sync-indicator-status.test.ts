@@ -56,4 +56,61 @@ describe('syncIndicatorStatus (UX-28)', () => {
       expect(syncIndicatorLabelFor(snapshot)).toBe('Up to date');
     });
   });
+
+  // SYNC-9: a broken/offline sync must never look healthy — the degraded
+  // states win over the ambient paused/syncing/up-to-date states.
+  describe('degraded / offline health (SYNC-9)', () => {
+    it("is 'offline' when health is offline, overriding a healthy-looking pendingCount", () => {
+      // The engine can even still report isActive with pending files — offline
+      // still wins, because sync is actually not reaching the network.
+      expect(
+        resolveSyncIndicatorKind({ isActive: true, pendingCount: 3, health: 'offline' })
+      ).toBe('offline');
+      expect(
+        syncIndicatorLabelFor({ isActive: true, pendingCount: 3, health: 'offline' })
+      ).toBe('Offline — sync paused');
+    });
+
+    it("is 'error' when health is error, overriding 'paused' (a failed start leaves isActive false)", () => {
+      // A failed startSync leaves isActive=false; without SYNC-9 that read as a
+      // benign "Paused". Health 'error' must override it so the failure shows.
+      expect(
+        resolveSyncIndicatorKind({ isActive: false, pendingCount: 0, health: 'error' })
+      ).toBe('error');
+      expect(
+        syncIndicatorLabelFor({ isActive: false, pendingCount: 0, health: 'error' })
+      ).toBe('Sync error');
+    });
+
+    it('offline wins over error when both are somehow indicated (health offline is offline)', () => {
+      expect(
+        resolveSyncIndicatorKind({ isActive: false, pendingCount: 0, health: 'offline' })
+      ).toBe('offline');
+    });
+
+    it("flips to 'offline' from the navigator.onLine HINT even when main-process health is still healthy", () => {
+      expect(
+        resolveSyncIndicatorKind({ isActive: true, pendingCount: 0, health: 'healthy', isOnline: false })
+      ).toBe('offline');
+      expect(
+        syncIndicatorLabelFor({ isActive: true, pendingCount: 0, isOnline: false })
+      ).toBe('Offline — sync paused');
+    });
+
+    it('recovery: health back to healthy (and online) returns to the ambient states', () => {
+      // syncing again...
+      expect(
+        resolveSyncIndicatorKind({ isActive: true, pendingCount: 2, health: 'healthy', isOnline: true })
+      ).toBe('syncing');
+      // ...or up to date
+      expect(
+        resolveSyncIndicatorKind({ isActive: true, pendingCount: 0, health: 'healthy', isOnline: true })
+      ).toBe('up-to-date');
+    });
+
+    it('back-compat: a snapshot with no health/isOnline behaves exactly like pre-SYNC-9', () => {
+      expect(resolveSyncIndicatorKind({ isActive: true, pendingCount: 0 })).toBe('up-to-date');
+      expect(resolveSyncIndicatorKind({ isActive: false, pendingCount: 0 })).toBe('paused');
+    });
+  });
 });

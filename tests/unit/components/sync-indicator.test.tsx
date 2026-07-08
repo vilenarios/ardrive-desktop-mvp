@@ -29,6 +29,55 @@ describe('SyncIndicator (UX-28)', () => {
     expect(screen.getByText('Paused')).toBeInTheDocument();
   });
 
+  // SYNC-9: the degraded states must be visible in the chip.
+  it('shows "Offline — sync paused" when health is offline (even while active with pending files)', () => {
+    render(
+      <SyncIndicator snapshot={{ isActive: true, pendingCount: 3, health: 'offline' }} />
+    );
+    expect(screen.getByText('Offline — sync paused')).toBeInTheDocument();
+  });
+
+  it('shows "Sync error" when health is error, not a benign "Paused"', () => {
+    render(
+      <SyncIndicator snapshot={{ isActive: false, pendingCount: 0, health: 'error' }} />
+    );
+    expect(screen.getByText('Sync error')).toBeInTheDocument();
+    expect(screen.queryByText('Paused')).toBeNull();
+  });
+
+  it('flips to Offline from the navigator.onLine hint even when main-process health is healthy', () => {
+    render(
+      <SyncIndicator snapshot={{ isActive: true, pendingCount: 0, health: 'healthy', isOnline: false }} />
+    );
+    expect(screen.getByText('Offline — sync paused')).toBeInTheDocument();
+  });
+
+  it('surfaces the honest health detail as a hover tooltip on a degraded state', () => {
+    render(
+      <SyncIndicator
+        snapshot={{
+          isActive: false,
+          pendingCount: 0,
+          health: 'offline',
+          healthMessage: "Offline — couldn't reach the gateway. Sync is paused."
+        }}
+      />
+    );
+    expect(screen.getByRole('status')).toHaveAttribute(
+      'title',
+      "Offline — couldn't reach the gateway. Sync is paused."
+    );
+  });
+
+  it('carries the state-specific class so the degraded chip is styled distinctly', () => {
+    const { rerender } = render(
+      <SyncIndicator snapshot={{ isActive: true, pendingCount: 0, health: 'offline' }} />
+    );
+    expect(screen.getByRole('status')).toHaveClass('sync-indicator-offline');
+    rerender(<SyncIndicator snapshot={{ isActive: false, pendingCount: 0, health: 'error' }} />);
+    expect(screen.getByRole('status')).toHaveClass('sync-indicator-error');
+  });
+
   it('is an informational, non-interactive live region — aria-live="polite", no button/tabIndex', () => {
     render(<SyncIndicator snapshot={{ isActive: true, pendingCount: 2 }} />);
     const region = screen.getByRole('status');

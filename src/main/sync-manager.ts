@@ -6,7 +6,7 @@ import { BrowserWindow } from 'electron';
 import { ArDrive, wrapFileOrFolder, EID, PrivateKeyData } from 'ardrive-core-js';
 import { DatabaseManager } from './database-manager';
 import { VersionManager, ChangeType } from './version-manager';
-import { FileUpload, SyncStatus, PendingUpload } from '../types';
+import { FileUpload, SyncStatus, SyncHealth, PendingUpload } from '../types';
 import { SyncProgressTracker } from './sync/SyncProgressTracker';
 import { FileStateManager } from './sync/FileStateManager';
 import { CostCalculator } from './sync/CostCalculator';
@@ -17,7 +17,7 @@ import { FileOperationDetector, FileOperationDetection } from './sync/FileOperat
 import { driveKeyManager } from './drive-key-manager';
 import { notificationService } from './notification-service';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
-import { retryWithBackoff } from './sync/retry';
+import { retryWithBackoff, isNetworkDownError } from './sync/retry';
 import { resolveDrivePrivacyOrThrow } from './sync/drive-privacy';
 // MONEY-14 single source for the Turbo free-tier boundary (107520 bytes).
 // MONEY-10 uses it to flag an approved upload that grew past it before execution.
@@ -98,6 +98,21 @@ export class SyncManager {
   private foldersToCreate = 0;
   private filesToDownload = 0;
 
+  // SYNC-9: honest sync-health so a degraded/offline sync is always visible
+  // (surfaced through getStatus() -> the persistent header indicator + tray).
+  // 'healthy' by default; set to 'error'/'offline' when sync breaks, cleared
+  // back to 'healthy' on a successful (re)start or an intentional stop.
+  private syncHealth: SyncHealth = 'healthy';
+  private syncHealthMessage: string | null = null;
+  // Params of the most recent startSync so the offline watchdog can re-attempt
+  // it once connectivity returns (startSync's catch nulls driveId/rootFolderId
+  // for PRIV-5, so we can't rely on those).
+  private lastStartArgs: { driveId: string; rootFolderId: string; driveName?: string } | null = null;
+  // SYNC-9 offline auto-resume watchdog.
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnecting = false;
+  private static readonly RECONNECT_DELAY_MS = 15000;
+
   constructor(private databaseManager: DatabaseManager) {
     this.versionManager = new VersionManager(databaseManager);
     this.progressTracker = new SyncProgressTracker();
@@ -144,6 +159,128 @@ export class SyncManager {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(channel, data);
     }
+  }
+
+  // ─── SYNC-9: sync-health signal ──────────────────────────────────────────
+  // A degraded/offline sync must never look healthy. Health is surfaced through
+  // getStatus() (the same channel the persistent header indicator + tray
+  // already poll), so no parallel system is introduced.
+
+  /** Read-only accessor used by tests / callers that want the raw health. */
+  getSyncHealth(): { health: SyncHealth; message: string | null } {
+    return { health: this.syncHealth, message: this.syncHealthMessage };
+  }
+
+  /** Set health, returning whether the KIND changed (so we only notify once). */
+  private setSyncHealth(health: SyncHealth, message: string | null): boolean {
+    const changed = this.syncHealth !== health;
+    this.syncHealth = health;
+    this.syncHealthMessage = health === 'healthy' ? null : message;
+    return changed;
+  }
+
+  /**
+   * Record that sync has broken. Classifies the failure: a network-down /
+   * gateway-unreachable error (after SYNC-20 retries + SYNC-23 failover are
+   * exhausted) is the authoritative OFFLINE signal; anything else is a
+   * user-actionable ERROR (locked drive, watcher died, validation).
+   *
+   * On the TRANSITION into a degraded state we fire one OS notification (UX-29)
+   * and — for a user-initiated (non-silent) flow — drive the progress modal's
+   * error state (UX-8). Re-marking the same state stays quiet (no notification
+   * spam while the offline watchdog keeps retrying). OFFLINE additionally arms
+   * the auto-resume watchdog.
+   */
+  private markSyncDegraded(error: unknown, context: string, silent: boolean): void {
+    const message = error instanceof Error ? error.message : String(error);
+    const health: SyncHealth = isNetworkDownError(error) ? 'offline' : 'error';
+    const userMessage =
+      health === 'offline'
+        ? "Offline — couldn't reach the gateway. Sync is paused and will resume automatically."
+        : `Sync error: ${message}`;
+
+    const changed = this.setSyncHealth(health, userMessage);
+    if (changed) {
+      console.warn(`⚠️ [SYNC-HEALTH] ${context}: sync is now "${health}" — ${message}`);
+      // UX-29: OS notification so the failure is visible even when nothing is
+      // watching the UI (e.g. a silent auto-sync at launch).
+      notificationService.notifySyncError(
+        health === 'offline' ? 'Offline — sync paused' : message || 'Sync error'
+      );
+      // UX-8: a user-initiated failure surfaces the progress modal's honest
+      // error state. A silent/background failure stays quiet-modal — it is
+      // still fully visible via the persistent header indicator (which polls
+      // getStatus() and now sees the degraded health) + the OS notification,
+      // so the app can never look healthy while offline/failing.
+      if (!silent) {
+        this.progressTracker.emitSyncProgress({
+          phase: 'error',
+          description: userMessage,
+          error: userMessage,
+        });
+      }
+    }
+    if (health === 'offline') {
+      this.scheduleReconnect();
+    }
+  }
+
+  /** Sync is working again — clear any degraded state and stop the watchdog. */
+  private markSyncHealthy(): void {
+    this.clearReconnect();
+    this.setSyncHealth('healthy', null);
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer || this.reconnecting) {
+      return;
+    }
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.attemptReconnect();
+    }, SyncManager.RECONNECT_DELAY_MS);
+    // Never keep the process alive just for the reconnect watchdog.
+    (this.reconnectTimer as unknown as { unref?: () => void }).unref?.();
+  }
+
+  private clearReconnect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.reconnecting = false;
+  }
+
+  /**
+   * SYNC-9 auto-resume: while offline, periodically re-attempt the last
+   * startSync. A success clears the degraded state (startSync marks healthy);
+   * a still-offline failure re-arms the watchdog. Read-only w.r.t. spending —
+   * startSync only reads metadata and (re)attaches the watcher.
+   */
+  private async attemptReconnect(): Promise<void> {
+    if (this.syncHealth !== 'offline' || !this.lastStartArgs) {
+      return;
+    }
+    // Already recovered / running under another path — nothing to resume.
+    if (this.syncState !== 'idle') {
+      return;
+    }
+    this.reconnecting = true;
+    const { driveId, rootFolderId, driveName } = this.lastStartArgs;
+    try {
+      console.log('🔄 [SYNC-HEALTH] Offline watchdog re-attempting sync…');
+      await this.startSync(driveId, rootFolderId, driveName, true);
+      // startSync marks healthy on success.
+    } catch {
+      // startSync's catch already re-marked the degraded state; re-arm the
+      // watchdog if we're still offline.
+      this.reconnecting = false;
+      if (this.syncHealth === 'offline') {
+        this.scheduleReconnect();
+      }
+      return;
+    }
+    this.reconnecting = false;
   }
 
   // Helper to get parent folder ID from path
@@ -238,7 +375,10 @@ export class SyncManager {
     this.syncState = 'syncing';
     this.driveId = driveId;
     this.rootFolderId = rootFolderId;
-    
+    // SYNC-9: remember what we tried to start so the offline watchdog can
+    // re-attempt exactly this drive once connectivity returns.
+    this.lastStartArgs = { driveId, rootFolderId, driveName };
+
     // SYNC-4: stopSync destroys the progress tracker and download manager in
     // place; re-arm them so progress reporting and download batching survive
     // stop -> start cycles and drive switches.
@@ -278,15 +418,18 @@ export class SyncManager {
       
       // Start processing upload queue
       this.uploadQueueManager.startProcessing();
-      
+
+      // SYNC-9: a successful (re)start clears any prior degraded/offline state.
+      this.markSyncHealthy();
       return true;
     } catch (error) {
       console.error('Failed to start sync:', error);
-      // UX-29: sync failing to start has no other user-facing signal besides
-      // this console.error and the rejected promise the caller may or may not
-      // surface — a native notification makes the failure visible even when
-      // nothing is watching the UI (e.g. silent auto-sync at launch).
-      notificationService.notifySyncError(error instanceof Error ? error.message : 'Failed to start sync');
+      // SYNC-9: sync failing to start must NOT leave a silent healthy-looking
+      // app. markSyncDegraded classifies the failure (offline vs actionable
+      // error), fires the UX-29 OS notification, drives the UX-8 progress
+      // modal for user-initiated starts, flips the persistent header indicator
+      // (via getStatus()), and — when offline — arms the auto-resume watchdog.
+      this.markSyncDegraded(error, 'startSync', silent);
       this.syncState = 'idle';
       this.isActive = false;
       // PRIV-5 (qa-gate finding): a failed start must not leave the failed
@@ -428,16 +571,28 @@ export class SyncManager {
 
     this.watcher.on('error', (error) => {
       console.error('File watcher error:', error);
-      // UX-29: the watcher dying mid-session silently stops sync with no other
-      // signal to the user — surface it.
-      notificationService.notifySyncError(error instanceof Error ? error.message : 'File watcher error');
+      // SYNC-9 (was UX-29): the watcher dying mid-session silently stops sync
+      // with no other signal to the user. Surface it as a visible degraded
+      // state (persistent indicator + OS notification + progress modal), not
+      // just a console line. A watcher/FS error is local, so it classifies as
+      // 'error' (user-actionable), not 'offline'.
+      this.markSyncDegraded(
+        error instanceof Error ? error : new Error('File watcher error'),
+        'watcher',
+        false
+      );
     });
   }
 
   async stopSync(): Promise<boolean> {
     this.isActive = false;
     this.syncState = 'idle';
-    
+    // SYNC-9: an intentional stop is not a degraded state — clear any
+    // error/offline health and cancel the auto-resume watchdog so a
+    // deliberately-paused sync doesn't silently restart itself. The indicator
+    // then honestly reads "Paused", not "Sync error"/"Offline".
+    this.markSyncHealthy();
+
     if (this.watcher) {
       await this.watcher.close();
       this.watcher = null;
@@ -585,7 +740,12 @@ export class SyncManager {
       totalFiles: uploads.length,
       uploadedFiles,
       failedFiles,
-      currentFile: currentUpload?.fileName
+      currentFile: currentUpload?.fileName,
+      // SYNC-9: the honest sync-health the persistent header indicator + tray
+      // consume, so a degraded/offline sync is never hidden behind an
+      // "up to date"/"paused"-looking chip.
+      health: this.syncHealth,
+      healthMessage: this.syncHealthMessage ?? undefined,
     };
   }
 
@@ -1288,32 +1448,44 @@ export class SyncManager {
     
     // First, sync all metadata to cache
     try {
-      await this.downloadManager.syncDriveMetadata();
-      
+      // SYNC-20: self-heal a transient gateway blip before declaring failure;
+      // idempotent read, so bounded retry is safe (mirrors performFullDriveSync).
+      await retryWithBackoff(() => this.downloadManager.syncDriveMetadata(), {
+        label: 'syncDriveMetadata (manual)',
+        timeoutMs: 30000,
+      });
+
       // Update metadata sync timestamp
       if (this.driveId) {
         await this.databaseManager.updateMetadataSyncTimestamp(this.driveId);
       }
       console.log('Metadata sync completed and timestamp updated');
-      
+
       // Create all folders
       await this.downloadManager.createAllFolders();
       console.log('Folder structure created');
-      
+
       // Queue missing files for download
       await this.downloadManager.downloadMissingFilesWithProgress();
       console.log('Files queued for download');
-      
+
+      // SYNC-9: a clean manual sync clears any prior degraded/offline state.
+      this.markSyncHealthy();
     } catch (error) {
       console.error('Failed to sync drive metadata:', error);
       console.error('Error details:', {
         message: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined
       });
-      
+
       // PRIV-5 (qa-gate finding): never "continue anyway" — a swallowed
       // metadata failure here (locked drive, gateway) reported a successful
       // manual sync over an already-cleared cache (empty drive lie).
+      // SYNC-9: extend that honesty to VISIBILITY — flip the persistent
+      // indicator to offline/error via getStatus() (silent: the sync:manual
+      // IPC handler owns the progress-modal error state, so we don't emit a
+      // competing one here) before re-throwing.
+      this.markSyncDegraded(error, 'manual metadata sync', true);
       throw error;
     }
   }

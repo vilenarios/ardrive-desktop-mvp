@@ -92,6 +92,14 @@ const Dashboard: React.FC<DashboardProps> = ({
   // fetch resolves so the header never flashes a fabricated "Paused" before
   // the real state is known.
   const [uploadSyncStatus, setUploadSyncStatus] = useState<SyncStatus | null>(null);
+  // SYNC-9: renderer-side navigator.onLine hint for the header sync indicator.
+  // A hint only — the main process's gateway-unreachable health is
+  // authoritative — but it flips the chip to "Offline" the instant the OS
+  // reports the link is down, and triggers an immediate status re-poll when it
+  // comes back so recovery shows up without waiting for the next poll tick.
+  const [isOnline, setIsOnline] = useState<boolean>(
+    typeof navigator !== 'undefined' && 'onLine' in navigator ? navigator.onLine : true
+  );
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncResults, setSyncResults] = useState<{
     uploadsFound: number;
@@ -154,7 +162,15 @@ const Dashboard: React.FC<DashboardProps> = ({
         isActive: uploadSyncStatus.isActive,
         pendingCount:
           Math.max(0, uploadSyncStatus.totalFiles - uploadSyncStatus.uploadedFiles) +
-          (downloadQueueStatus?.total ?? 0)
+          (downloadQueueStatus?.total ?? 0),
+        // SYNC-9: the authoritative degraded/offline health from
+        // SyncManager.getStatus() — makes a broken/offline sync visible in the
+        // persistent header chip instead of the app looking "Up to date".
+        health: uploadSyncStatus.health,
+        healthMessage: uploadSyncStatus.healthMessage,
+        // SYNC-9 renderer-side HINT: flip to "Offline" instantly when the OS
+        // reports the link is down, before the next status poll confirms it.
+        isOnline
       }
     : null;
 
@@ -304,6 +320,25 @@ const Dashboard: React.FC<DashboardProps> = ({
       loadSyncIndicatorStatus();
     }
   }, [syncProgress]);
+
+  // SYNC-9: reflect OS connectivity changes in the header indicator. Going
+  // offline flips the chip to "Offline — sync paused" instantly (hint); coming
+  // back online re-polls the real sync-health immediately, so the main
+  // process's auto-resume (once it reconnects) shows up promptly rather than on
+  // the next 5s tick.
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      loadSyncIndicatorStatus();
+    };
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     // Listen for download progress updates
