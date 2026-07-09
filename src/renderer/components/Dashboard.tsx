@@ -373,6 +373,23 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
   }, []);
 
+  // UX-36: actionable-notification navigation. When the user clicks the
+  // approval-needed toast, the main process brings the window forward and asks
+  // us to show the upload queue; the low-Turbo-credits toast asks us to open the
+  // top-up flow. Scoped disposer (UX-4) so we never clobber a co-subscriber.
+  useEffect(() => {
+    const dispose = window.electronAPI.onNavigate((target) => {
+      if (target === 'upload-queue') {
+        setDashboardTab('upload-queue');
+      } else if (target === 'top-up') {
+        setShowTurboManager(true);
+      }
+    });
+    return () => {
+      dispose?.();
+    };
+  }, []);
+
   // Removed file state change handler - StorageTab handles its own updates
 
   

@@ -58,16 +58,27 @@ const h = vi.hoisted(() => {
     restore: vi.fn(),
     show: vi.fn(),
     focus: vi.fn(),
+    // UX-36: navigation-target notifications (approval-needed, low-Turbo) tell
+    // the renderer where to go via webContents.send('navigate', target).
+    webContents: { send: vi.fn() },
   };
 
   const getAllWindows = vi.fn(() => [windowInstance]);
 
-  return { notificationInstances, MockNotification, windowInstance, getAllWindows, state };
+  // UX-36: reveal/open actionable notifications go straight to the OS file
+  // manager via electron.shell.
+  const shell = {
+    showItemInFolder: vi.fn(),
+    openPath: vi.fn(() => Promise.resolve('')),
+  };
+
+  return { notificationInstances, MockNotification, windowInstance, getAllWindows, shell, state };
 });
 
 vi.mock('electron', () => ({
   Notification: h.MockNotification,
   BrowserWindow: { getAllWindows: h.getAllWindows },
+  shell: h.shell,
 }));
 
 const cfg = vi.hoisted(() => ({
@@ -89,7 +100,10 @@ describe('NotificationService (UX-29)', () => {
     h.windowInstance.restore.mockReset();
     h.windowInstance.show.mockReset();
     h.windowInstance.focus.mockReset();
+    h.windowInstance.webContents.send.mockReset();
     h.getAllWindows.mockReset().mockReturnValue([h.windowInstance]);
+    h.shell.showItemInFolder.mockReset();
+    h.shell.openPath.mockReset().mockResolvedValue('');
     cfg.getNotificationsEnabled.mockReset().mockReturnValue(true);
     h.state.throwOnConstruct = false;
   });
@@ -163,14 +177,92 @@ describe('NotificationService (UX-29)', () => {
     });
   });
 
+  // UX-36: clicking a notification opens the RELEVANT target (OneDrive/Dropbox
+  // parity), not just the window. Each test drives the recorded click handler
+  // and asserts the correct target was opened.
+  describe('actionable clicks open the relevant target (UX-36)', () => {
+    it('upload-complete reveals the uploaded file in the OS file manager', () => {
+      notificationService.notifyUploadComplete('report.pdf', '/sync/report.pdf');
+      h.notificationInstances[0].clickHandler!();
+
+      expect(h.shell.showItemInFolder).toHaveBeenCalledWith('/sync/report.pdf');
+      // Revealing a file does not (need to) steal window focus.
+      expect(h.windowInstance.focus).not.toHaveBeenCalled();
+    });
+
+    it('upload-complete without a path falls back to focusing the window', () => {
+      notificationService.notifyUploadComplete('report.pdf');
+      h.notificationInstances[0].clickHandler!();
+
+      expect(h.shell.showItemInFolder).not.toHaveBeenCalled();
+      expect(h.windowInstance.focus).toHaveBeenCalledTimes(1);
+    });
+
+    it('sync-complete opens the sync folder', () => {
+      notificationService.notifySyncComplete(3, '/sync');
+      h.notificationInstances[0].clickHandler!();
+
+      expect(h.shell.openPath).toHaveBeenCalledWith('/sync');
+    });
+
+    it('download-complete (single file) reveals that file', () => {
+      notificationService.notifyDownloadComplete(1, { fileName: 'a.txt', localPath: '/sync/a.txt', syncFolderPath: '/sync' });
+      expect(h.notificationInstances[0].body).toBe('a.txt');
+      h.notificationInstances[0].clickHandler!();
+
+      expect(h.shell.showItemInFolder).toHaveBeenCalledWith('/sync/a.txt');
+    });
+
+    it('download-complete (batch) opens the sync folder with an honest count', () => {
+      notificationService.notifyDownloadComplete(5, { syncFolderPath: '/sync' });
+      expect(h.notificationInstances[0].body).toContain('5 files');
+      h.notificationInstances[0].clickHandler!();
+
+      expect(h.shell.openPath).toHaveBeenCalledWith('/sync');
+    });
+
+    it('download-complete with zero files fires no notification (honest count)', () => {
+      notificationService.notifyDownloadComplete(0, { syncFolderPath: '/sync' });
+      expect(h.notificationInstances).toHaveLength(0);
+    });
+
+    it('approval-needed focuses the app and navigates the renderer to the upload queue', () => {
+      notificationService.notifyApprovalNeeded(2);
+      h.notificationInstances[0].clickHandler!();
+
+      expect(h.windowInstance.focus).toHaveBeenCalledTimes(1);
+      expect(h.windowInstance.webContents.send).toHaveBeenCalledWith('navigate', 'upload-queue');
+    });
+
+    it('low-Turbo-balance is actionable copy that opens the top-up flow', () => {
+      notificationService.notifyLowTurboBalance();
+      expect(h.notificationInstances[0].title.toLowerCase()).toContain('credits low');
+      h.notificationInstances[0].clickHandler!();
+
+      expect(h.windowInstance.focus).toHaveBeenCalledTimes(1);
+      expect(h.windowInstance.webContents.send).toHaveBeenCalledWith('navigate', 'top-up');
+    });
+
+    it('sync-error just focuses the app (no navigation target)', () => {
+      notificationService.notifySyncError('boom');
+      h.notificationInstances[0].clickHandler!();
+
+      expect(h.windowInstance.focus).toHaveBeenCalledTimes(1);
+      expect(h.windowInstance.webContents.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('suppressed when notifications are disabled (Settings opt-out)', () => {
     it('does not construct a Notification for any method when disabled', () => {
       cfg.getNotificationsEnabled.mockReturnValue(false);
 
-      notificationService.notifySyncComplete(5);
-      notificationService.notifyUploadComplete('file.txt');
+      notificationService.notifySyncComplete(5, '/sync');
+      notificationService.notifyUploadComplete('file.txt', '/sync/file.txt');
       notificationService.notifySyncError('oops');
       notificationService.notifyApprovalNeeded(2);
+      // UX-36: the new actionable notifications must respect the opt-out too.
+      notificationService.notifyDownloadComplete(3, { syncFolderPath: '/sync' });
+      notificationService.notifyLowTurboBalance();
 
       expect(h.notificationInstances).toHaveLength(0);
     });
@@ -181,10 +273,12 @@ describe('NotificationService (UX-29)', () => {
       h.MockNotification.isSupported.mockReturnValue(false);
 
       expect(() => {
-        notificationService.notifySyncComplete(5);
-        notificationService.notifyUploadComplete('file.txt');
+        notificationService.notifySyncComplete(5, '/sync');
+        notificationService.notifyUploadComplete('file.txt', '/sync/file.txt');
         notificationService.notifySyncError('oops');
         notificationService.notifyApprovalNeeded(2);
+        notificationService.notifyDownloadComplete(3, { syncFolderPath: '/sync' });
+        notificationService.notifyLowTurboBalance();
       }).not.toThrow();
 
       expect(h.notificationInstances).toHaveLength(0);
