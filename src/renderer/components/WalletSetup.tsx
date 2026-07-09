@@ -498,7 +498,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
           }}>
             <h1 style={{ marginBottom: 'var(--space-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)' }}>
               Save Your Recovery Phrase
-              <InfoButton tooltip="A recovery phrase (sometimes called a seed phrase) is a list of 12 or 24 words that can restore full access to your wallet. Anyone who has it can access your files. Never share it or type it into a website." />
+              <InfoButton tooltip="A recovery phrase (sometimes called a seed phrase) is a list of 12 words that can restore full access to your wallet. Anyone who has it can access your files. Never share it or type it into a website." />
             </h1>
             <p style={{ fontSize: '15px', color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
               Write down these 12 words in order. You&apos;ll need them to recover your account.
@@ -722,15 +722,21 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
             {/* Seed Phrase Import */}
             {importMethod === 'seedphrase' && (() => {
               // TRUST-3: two bugs lived here. (1) The inline error hardcoded
-              // "exactly 12 words" even though ClientInputValidator.validateSeedPhrase
-              // (input-validator.ts) has always accepted 12 *or* 24 — a valid
-              // 24-word phrase was told it was wrong. (2) The error (and the
-              // textarea's red .invalid border) fired on every keystroke, so
-              // the single most sensitive field in the app rendered red for
-              // ~95% of normal typing. Fix: reuse the validator's own message
+              // "exactly 12 words" while it rendered on every keystroke, so
+              // the single most sensitive field in the app was red for ~95%
+              // of normal typing. Fix: reuse the validator's own message
               // instead of a hand-written string, and only show it once the
               // field has been left (blur) or submit was attempted --
               // otherwise show a neutral word count.
+              // UX-34: the copy and ClientInputValidator.validateSeedPhrase
+              // (input-validator.ts) used to also accept/advertise 24 words,
+              // but ardrive-core-js's SeedPhrase only ever derives an Arweave
+              // wallet from a 12-word BIP-39 phrase (see wallet-manager-secure.ts
+              // and node_modules/ardrive-core-js SeedPhrase, regex `{12}`) — a
+              // 24-word phrase always failed closed at derivation with "...
+              // exactly 12 words", even though this screen said it would work.
+              // Both the copy and the validator now expect 12 words only, so
+              // the UI never invites input it will then reject.
               const seedValidation = validateSeedPhrase(seedPhrase);
               const seedWordCount = seedPhrase.trim() ? seedPhrase.trim().split(/\s+/).length : 0;
               const showSeedError = seedPhraseTouched && seedPhrase.length > 0 && !seedValidation.isValid;
@@ -740,7 +746,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                 <label htmlFor="recovery-phrase-input" style={{ marginBottom: 'var(--space-2)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                   Enter Recovery Phrase
                   <InfoButton
-                    tooltip="A recovery phrase (also called a seed phrase) is 12 or 24 words that fully control your wallet. Keep it secret. ArDrive will never ask you for it outside this screen."
+                    tooltip="A recovery phrase (also called a seed phrase) is 12 words that fully control your wallet. Keep it secret. ArDrive will never ask you for it outside this screen."
                   />
                 </label>
 
@@ -780,7 +786,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                       e.target.style.height = Math.max(120, e.target.scrollHeight) + 'px';
                     }}
                     onBlur={() => setSeedPhraseTouched(true)}
-                    placeholder="Enter your 12 or 24-word recovery phrase, separated by spaces"
+                    placeholder="Enter your 12-word recovery phrase, separated by spaces"
                     aria-invalid={showSeedError}
                     className={
                       'seed-phrase-textarea' +
@@ -808,7 +814,7 @@ const WalletSetup: React.FC<WalletSetupProps> = ({ onWalletImported }) => {
                     color: 'var(--text-tertiary)',
                     marginTop: 'var(--space-2)'
                   }}>
-                    {seedWordCount} word{seedWordCount === 1 ? '' : 's'} entered (12 or 24 expected)
+                    {seedWordCount} word{seedWordCount === 1 ? '' : 's'} entered (12 expected)
                   </div>
                 )}
 
