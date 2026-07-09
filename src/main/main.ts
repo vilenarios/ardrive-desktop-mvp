@@ -265,7 +265,7 @@ class ArDriveApp {
         preload: path.join(__dirname, 'preload.js'),
         webSecurity: true  // Re-enabled for security
       },
-      icon: path.join(__dirname, '../../assets/favicon.png'),
+      icon: path.join(__dirname, '../../assets/app-icon.png'), // UX-35 follow-up: branded square icon (was low-res favicon)
       show: false,
       autoHideMenuBar: true, // Hide menu bar
       titleBarStyle: 'default'
