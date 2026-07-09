@@ -71,7 +71,9 @@ These gate the native layers *and* GA distribution broadly (beta is unsigned per
 
 **Recommended immediate step:** start Phase 0 now (I can dispatch it — it's safe and useful regardless), and in parallel Phil procures the certs + CI runners (which GA needs anyway). Native phases begin once those land.
 
-## 6. Open decisions for Phil
-1. **Platform order** — Windows first (recommended) vs macOS first vs fund both in parallel.
-2. **Cert/CI procurement** — greenlight the Apple Developer Program + Windows OV cert + macOS CI runner (the blocking dependency; also the GA-distribution prerequisite).
-3. **Confirm GA-track** — overlays do not block beta; ship beta on the current in-app + tray + notification status surfaces, add overlays for GA.
+## 6. Decisions — RESOLVED (Phil, 2026-07-09; D-035 CONFIRMED)
+1. **Platform order → Windows first**, then macOS.
+2. **Cert/CI procurement → greenlit** (Phil to procure the Apple Developer Program + Windows OV cert + macOS/Xcode CI runner — the blocking dependency and the GA-distribution prerequisite).
+3. **GA-track confirmed** — overlays do not block beta; beta ships on the in-app + tray + notification status surfaces, overlays land for GA.
+
+**Active state:** Phase 0 (`OverlayStatusPublisher`) in progress. Windows native phase (Phase 1) starts once the Windows OV cert + an MSVC CI agent are available.
