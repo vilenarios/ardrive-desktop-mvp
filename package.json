@@ -114,7 +114,8 @@
     "appId": "com.ardrive.desktop",
     "productName": "ArDrive Desktop",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
@@ -124,10 +125,10 @@
     "extraResources": [
       "assets/**/*"
     ],
-    "icon": "assets/ArDrive-Logo-Wordmark-Dark.png",
+    "icon": "build/icon.png",
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "assets/ArDrive-Logo-Wordmark-Dark.png",
+      "icon": "build/icon.icns",
       "target": [
         {
           "target": "dmg",
@@ -146,7 +147,7 @@
       ]
     },
     "win": {
-      "icon": "assets/ArDrive-Logo-Wordmark-Dark.png",
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -166,7 +167,7 @@
       "signingHashAlgorithms": []
     },
     "linux": {
-      "icon": "assets/ArDrive-Logo-Wordmark-Dark.png",
+      "icon": "build/icon.png",
       "target": [
         {
           "target": "AppImage",
