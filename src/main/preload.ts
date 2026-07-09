@@ -64,8 +64,8 @@ const api = {
       ipcRenderer.invoke('wallet:complete-setup'),
     getInfo: (forceRefresh?: boolean): Promise<IpcResult<WalletInfo | null>> =>
       ipcRenderer.invoke('wallet:get-info', forceRefresh),
-    ensureLoaded: (): Promise<IpcResult<boolean>> =>
-      ipcRenderer.invoke('wallet:ensure-loaded'),
+    // UX-6 / D-031: `ensureLoaded` (the renderer trigger for boot auto-login)
+    // has been removed — beta always prompts for the password on launch.
     isLoaded: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('wallet:is-loaded'),
     hasStoredWallet: (): Promise<IpcResult<boolean>> =>

@@ -182,28 +182,17 @@ class ArDriveApp {
       }
       
       const config = await configManager.getConfig();
-      
-      // If we have a stored wallet, try to auto-load it
-      if (!config.isFirstRun && await this.walletManager.hasStoredWallet()) {
-        console.log('Attempting to restore wallet state...');
-        const loaded = await this.walletManager.attemptAutoLoad();
-        if (loaded) {
-          console.log('Wallet auto-loaded successfully');
-          
-          const arDrive = this.walletManager.getArDrive();
-          if (arDrive) {
-            // Get private key data for private drive operations
-            const privateKeyData = await driveKeyManager.getPrivateKeyData();
-            // Set ArDrive for sync manager
-            this.syncManager.setArDrive(arDrive, privateKeyData);
-          }
-          
-          // Legacy migration removed - no longer needed
-        } else {
-          console.log('Wallet auto-load failed - will need manual re-import');
-        }
-      }
-      
+
+      // UX-6 / D-031: beta ships with ALWAYS-PROMPT login — the wallet is NEVER
+      // auto-loaded at boot. A returning user re-enters their password on the
+      // unlock screen (ProfileManagement -> profiles:switch -> loadWallet). The
+      // former boot auto-load path (walletManager.attemptAutoLoad, gated on
+      // hasStoredWallet) has been removed; it was also dead code (the gate could
+      // never fire because currentProfileId is null at boot). Because no wallet
+      // is loaded here, isWalletLoaded() below is false at cold boot, so the
+      // wallet-dependent auto-sync does not run until a manual unlock has loaded
+      // the wallet.
+
       // Sync folder will be restored when needed
       console.log('Sync folder loaded:', config.syncFolder || 'None');
       
@@ -677,14 +666,6 @@ class ArDriveApp {
       }
       
       return walletInfo;
-    }));
-
-    ipcMain.handle('wallet:ensure-loaded', envelopeHandler(async () => {
-      // Check if wallet is loaded, if not try to auto-load
-      if (!this.walletManager.isWalletLoaded()) {
-        return await this.walletManager.attemptAutoLoad();
-      }
-      return true;
     }));
 
     ipcMain.handle('wallet:is-loaded', envelopeHandler(async () => {
