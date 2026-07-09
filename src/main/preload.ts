@@ -156,6 +156,14 @@ const api = {
       ipcRenderer.invoke('sync:start'),
     stop: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('sync:stop'),
+    // UX-21/UX-22: first-class pause/resume for the continuous sync engine.
+    // Unlike start/stop above (also used for internal orchestration), these
+    // persist the user's choice (ConfigManager.autoSyncEnabled) so it is
+    // honored on the next boot too.
+    pause: (): Promise<IpcResult<boolean>> =>
+      ipcRenderer.invoke('sync:pause'),
+    resume: (): Promise<IpcResult<boolean>> =>
+      ipcRenderer.invoke('sync:resume'),
     getStatus: (): Promise<IpcResult<SyncStatus>> =>
       ipcRenderer.invoke('sync:status'),
     manual: (): Promise<IpcResult<void>> =>
@@ -247,6 +255,12 @@ const api = {
       ipcRenderer.invoke('config:get-notifications-enabled'),
     setNotificationsEnabled: (enabled: boolean): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('config:set-notifications-enabled', enabled),
+    // UX-21/UX-22: per-profile Auto-Sync preference (default on). Set by
+    // DriveAndSyncSetup's toggle and by sync.pause()/sync.resume().
+    getAutoSyncEnabled: (): Promise<IpcResult<boolean>> =>
+      ipcRenderer.invoke('config:get-auto-sync-enabled'),
+    setAutoSyncEnabled: (enabled: boolean): Promise<IpcResult<boolean>> =>
+      ipcRenderer.invoke('config:set-auto-sync-enabled', enabled),
   },
 
   // Dialog operations (UX-3: migrated to the IpcResult envelope)

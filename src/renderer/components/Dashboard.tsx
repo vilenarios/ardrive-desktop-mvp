@@ -21,6 +21,7 @@ import { AddExistingDriveModal } from './AddExistingDriveModal';
 import { useConfirm } from '../hooks/useConfirm';
 import {
   Pause,
+  Play,
   RefreshCw,
   Download,
   FolderOpen,
@@ -101,6 +102,9 @@ const Dashboard: React.FC<DashboardProps> = ({
     typeof navigator !== 'undefined' && 'onLine' in navigator ? navigator.onLine : true
   );
   const [isSyncing, setIsSyncing] = useState(false);
+  // UX-22: in-flight guard for the pause/resume control below, so a slow
+  // sync:pause/sync:resume round trip can't be double-clicked into a race.
+  const [isTogglingSync, setIsTogglingSync] = useState(false);
   const [syncResults, setSyncResults] = useState<{
     uploadsFound: number;
     downloadsFound: number;
@@ -750,6 +754,39 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
+  // UX-21/UX-22: first-class pause/resume for the continuous sync engine.
+  // Reuses the exact SyncManager.stopSync()/startSync() path the UX-30 tray's
+  // pause/resume menu item already calls (sync:pause/sync:resume in main.ts
+  // just wrap those, plus persisting the choice) — no new sync engine here.
+  // Reads/reflects `uploadSyncStatus.isActive`, the same live
+  // sync.getStatus() polled state the header indicator already uses, so this
+  // button and that indicator can never disagree.
+  const handleToggleSync = async () => {
+    if (!uploadSyncStatus || isTogglingSync) {
+      return;
+    }
+    const wasActive = uploadSyncStatus.isActive;
+    setIsTogglingSync(true);
+    try {
+      const result = wasActive
+        ? await window.electronAPI.sync.pause()
+        : await window.electronAPI.sync.resume();
+      if (!result.success) {
+        toast?.error(`Failed to ${wasActive ? 'pause' : 'resume'} sync: ${result.error}`);
+      } else {
+        toast?.success(wasActive ? 'Sync paused' : 'Sync resumed');
+      }
+    } catch (err) {
+      console.error('Failed to toggle sync:', err);
+      toast?.error('Failed to toggle sync. Please try again.');
+    } finally {
+      // Re-poll immediately so the button/indicator reflect the new state
+      // without waiting for the next 5s background poll.
+      await loadSyncIndicatorStatus();
+      setIsTogglingSync(false);
+    }
+  };
+
   // Turbo-only (D-010): 'turbo' is the only upload method the queue submits
   const handleApproveUpload = async (uploadId: string, uploadMethod?: 'turbo', metadata?: any) => {
     try {
@@ -988,6 +1025,19 @@ const Dashboard: React.FC<DashboardProps> = ({
           >
             <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
             {isSyncing ? 'Syncing...' : 'Sync'}
+          </button>
+
+          {/* UX-22: pause/resume continuous sync. Disabled until the first
+              sync.getStatus() poll resolves (uploadSyncStatus is null) so it
+              can't fire against an unknown state. */}
+          <button
+            className="button"
+            onClick={handleToggleSync}
+            disabled={!uploadSyncStatus || isTogglingSync}
+            title={uploadSyncStatus?.isActive ? 'Pause continuous sync' : 'Resume continuous sync'}
+          >
+            {uploadSyncStatus?.isActive ? <Pause size={16} /> : <Play size={16} />}
+            {uploadSyncStatus?.isActive ? 'Pause' : 'Resume'}
           </button>
 
           {/* UX-28: persistent global sync indicator — lives in the header

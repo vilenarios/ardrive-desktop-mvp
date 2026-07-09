@@ -280,18 +280,29 @@ const App: React.FC = () => {
 
       // All setup complete, go to dashboard
       setAppState('dashboard');
-      
+
       // Start monitoring sync status
       startSyncMonitoring();
-      
+
       // Start the sync process
-      console.log('Starting sync after initialization...');
-      try {
-        await window.electronAPI.sync.start();
-        console.log('Sync started successfully');
-      } catch (syncError) {
-        console.error('Failed to start sync:', syncError);
-        // Don't show error - sync might already be running
+      // UX-21: respect the user's persisted Auto-Sync choice (DriveAndSyncSetup's
+      // toggle, or a later pause via sync.pause()) — this call used to be
+      // unconditional, so the toggle was decorative and every boot started sync
+      // regardless of the user's choice (same fabricated-setting class as the
+      // fixed MONEY-4/MONEY-11). appConfigResult is this profile's freshly
+      // fetched config from the top of this function, not the (possibly
+      // stale, async-set) `config` state.
+      if (appConfigResult.success && appConfigResult.data?.autoSyncEnabled === false) {
+        console.log('Auto-Sync is disabled for this profile — not starting sync automatically.');
+      } else {
+        console.log('Starting sync after initialization...');
+        try {
+          await window.electronAPI.sync.start();
+          console.log('Sync started successfully');
+        } catch (syncError) {
+          console.error('Failed to start sync:', syncError);
+          // Don't show error - sync might already be running
+        }
       }
     } catch (error) {
       console.error('Failed to initialize app:', error);
@@ -797,14 +808,21 @@ const App: React.FC = () => {
           
           // Start monitoring sync status
           startSyncMonitoring();
-          
+
           // Start the actual sync process for the private drive
-          console.log('Starting sync for private drive...');
-          try {
-            await window.electronAPI.sync.start();
-            console.log('Sync started successfully for private drive');
-          } catch (syncError) {
-            console.error('Failed to start sync for private drive:', syncError);
+          // UX-21: same persisted Auto-Sync gate as the main initializeApp
+          // path above — `config` state was populated earlier in this boot
+          // by initializeApp's setConfig(appConfigResult.data).
+          if (config?.autoSyncEnabled === false) {
+            console.log('Auto-Sync is disabled for this profile — not starting sync automatically.');
+          } else {
+            console.log('Starting sync for private drive...');
+            try {
+              await window.electronAPI.sync.start();
+              console.log('Sync started successfully for private drive');
+            } catch (syncError) {
+              console.error('Failed to start sync for private drive:', syncError);
+            }
           }
         }
         

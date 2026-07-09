@@ -207,8 +207,16 @@ class ArDriveApp {
       // Sync folder will be restored when needed
       console.log('Sync folder loaded:', config.syncFolder || 'None');
       
+      // UX-21: respect the user's persisted Auto-Sync choice (the
+      // DriveAndSyncSetup toggle, or a later sync:pause/sync:resume — see
+      // ConfigManager.getAutoSyncEnabled). Previously this check was
+      // unconditional, so the toggle was decorative and every boot started
+      // sync regardless of the user's choice — same fabricated-setting class
+      // as the already-fixed MONEY-4/MONEY-11.
+      const autoSyncEnabled = config.autoSyncEnabled !== false;
+
       // Auto-start sync for returning users if we have everything needed
-      if (config.syncFolder && this.walletManager.isWalletLoaded()) {
+      if (config.syncFolder && this.walletManager.isWalletLoaded() && autoSyncEnabled) {
         console.log('🔵 [AUTO-SYNC] Conditions met for auto-sync:', {
           hasSyncFolder: !!config.syncFolder,
           isWalletLoaded: this.walletManager.isWalletLoaded(),
@@ -249,8 +257,10 @@ class ArDriveApp {
           // and the app can never look healthy while this sync is actually
           // broken/offline.
         }
+      } else if (config.syncFolder && this.walletManager.isWalletLoaded() && !autoSyncEnabled) {
+        console.log('🔵 [AUTO-SYNC] Auto-Sync is disabled for this profile — not starting sync automatically.');
       }
-      
+
     } catch (error) {
       console.error('Failed to restore sync state:', error);
     }
@@ -631,6 +641,116 @@ class ArDriveApp {
     this.lastWalletFetch = 0;
     this.cachedWalletInfo = null;
     await this.updateTrayMenu();
+  }
+
+  // UX-22: shared body for "start the continuous sync engine for the active
+  // drive mapping" — extracted from the old sync:start handler so sync:start
+  // (generic orchestration: onboarding, profile switch, private-drive
+  // unlock) and sync:resume (UX-21/UX-22's persisted pause/resume control)
+  // run through exactly one implementation. Throws on any precondition
+  // failure (no wallet, no mapping, drive not accessible, locked private
+  // drive, missing/nonexistent sync folder) — envelopeHandler turns that into
+  // { success: false, error } for both callers.
+  private async startSyncEngine(): Promise<boolean> {
+    console.log('IPC: sync:start called');
+    const config = await configManager.getConfig();
+    console.log('Config for sync:', config);
+
+    // SYNC-7: the folder is set AFTER the active mapping is resolved below —
+    // the mapping's localFolderPath is the source of truth, config.syncFolder
+    // is a legacy mirror.
+
+    // Ensure ArDrive instance is available
+    let arDrive = this.walletManager.getArDrive();
+    if (!arDrive) {
+      console.log('ArDrive instance not available, checking if wallet is loaded...');
+
+      // Try to get wallet info to see if wallet is loaded
+      const walletInfo = await this.walletManager.getWalletInfo();
+      if (!walletInfo) {
+        throw new Error('Wallet not loaded. Please restart the app and ensure wallet is imported.');
+      }
+
+      arDrive = this.walletManager.getArDrive();
+      if (!arDrive) {
+        throw new Error('Failed to get ArDrive instance after wallet check');
+      }
+    }
+
+    // Get drive mapping instead of querying Arweave
+    const driveMappings = await databaseManager.getDriveMappings();
+    console.log('Available drive mappings:', driveMappings);
+
+    // Get the primary (active) drive mapping
+    const primaryMapping = driveMappings.find(m => m.isActive) || driveMappings[0];
+
+    if (!primaryMapping) {
+      throw new Error('No drive mappings found. Please complete setup first.');
+    }
+
+    console.log('Using drive mapping:', primaryMapping);
+
+    // Validate drive is accessible.
+    // SYNC-20: right after create, the new drive tx may not be indexed yet —
+    // a bare listDrives() 404s and setup dies on "Starting sync engine…".
+    // Retry with backoff so the index catches up; read-only, no spend.
+    const drives = await retryWithBackoff(() => this.walletManager.listDrives(), {
+      label: 'sync:start drive validation',
+      timeoutMs: 20000,
+    });
+    const targetDrive = drives.find(d => d.id === primaryMapping.driveId);
+
+    if (!targetDrive) {
+      throw new Error(`Drive ${primaryMapping.driveName} (${primaryMapping.driveId}) not found or not accessible`);
+    }
+
+    // For private drives, check if it's unlocked
+    if (primaryMapping.drivePrivacy === 'private' && !driveKeyManager.isUnlocked(primaryMapping.driveId)) {
+      throw new Error(`Private drive "${primaryMapping.driveName}" is locked. Please unlock it before starting sync.`);
+    }
+
+    // SYNC-7: single source of truth — watch the active mapping's folder
+    const syncFolderSource = primaryMapping.localFolderPath || config.syncFolder;
+    if (!syncFolderSource) {
+      throw new Error('No sync folder configured. Please set up sync first.');
+    }
+
+    // Validate sync folder exists
+    try {
+      await fs.access(syncFolderSource);
+    } catch (error) {
+      throw new Error(`Sync folder "${syncFolderSource}" does not exist or is not accessible`);
+    }
+
+    this.syncManager.setSyncFolder(syncFolderSource);
+
+    // Heal the legacy config mirror so every config.syncFolder reader
+    // (Overview/Storage tabs, Settings) agrees with what is actually watched
+    if (config.syncFolder !== syncFolderSource) {
+      await configManager.setSyncFolder(syncFolderSource);
+    }
+
+    // Get private key data for private drive operations
+    const privateKeyData = await driveKeyManager.getPrivateKeyData();
+
+    // Set ArDrive instance and start sync with drive mapping
+    this.syncManager.setArDrive(arDrive, privateKeyData);
+    const startResult = await this.syncManager.startSync(
+      primaryMapping.driveId,
+      primaryMapping.rootFolderId,
+      primaryMapping.driveName
+    );
+    this.refreshTray(); // UX-30: reflect the now-active/syncing state immediately
+    return startResult;
+  }
+
+  // UX-22: shared body for "stop the continuous sync engine" — extracted
+  // alongside startSyncEngine for the same reason (sync:stop and sync:pause
+  // both delegate here).
+  private async stopSyncEngine(): Promise<boolean> {
+    const stopResult = await this.syncManager.stopSync();
+    this.refreshTray(); // UX-30: reflect the now-paused state immediately
+    return stopResult;
   }
 
   private setupIpcHandlers() {
@@ -1920,102 +2040,33 @@ class ArDriveApp {
     }));
 
     ipcMain.handle('sync:start', envelopeHandler(async () => {
-      console.log('IPC: sync:start called');
-      const config = await configManager.getConfig();
-      console.log('Config for sync:', config);
-      
-      // SYNC-7: the folder is set AFTER the active mapping is resolved below —
-      // the mapping's localFolderPath is the source of truth, config.syncFolder
-      // is a legacy mirror.
-      
-      // Ensure ArDrive instance is available
-      let arDrive = this.walletManager.getArDrive();
-      if (!arDrive) {
-        console.log('ArDrive instance not available, checking if wallet is loaded...');
-        
-        // Try to get wallet info to see if wallet is loaded
-        const walletInfo = await this.walletManager.getWalletInfo();
-        if (!walletInfo) {
-          throw new Error('Wallet not loaded. Please restart the app and ensure wallet is imported.');
-        }
-        
-        arDrive = this.walletManager.getArDrive();
-        if (!arDrive) {
-          throw new Error('Failed to get ArDrive instance after wallet check');
-        }
-      }
-      
-      // Get drive mapping instead of querying Arweave
-      const driveMappings = await databaseManager.getDriveMappings();
-      console.log('Available drive mappings:', driveMappings);
-      
-      // Get the primary (active) drive mapping
-      const primaryMapping = driveMappings.find(m => m.isActive) || driveMappings[0];
-      
-      if (!primaryMapping) {
-        throw new Error('No drive mappings found. Please complete setup first.');
-      }
-      
-      console.log('Using drive mapping:', primaryMapping);
-      
-      // Validate drive is accessible.
-      // SYNC-20: right after create, the new drive tx may not be indexed yet —
-      // a bare listDrives() 404s and setup dies on "Starting sync engine…".
-      // Retry with backoff so the index catches up; read-only, no spend.
-      const drives = await retryWithBackoff(() => this.walletManager.listDrives(), {
-        label: 'sync:start drive validation',
-        timeoutMs: 20000,
-      });
-      const targetDrive = drives.find(d => d.id === primaryMapping.driveId);
-      
-      if (!targetDrive) {
-        throw new Error(`Drive ${primaryMapping.driveName} (${primaryMapping.driveId}) not found or not accessible`);
-      }
-      
-      // For private drives, check if it's unlocked
-      if (primaryMapping.drivePrivacy === 'private' && !driveKeyManager.isUnlocked(primaryMapping.driveId)) {
-        throw new Error(`Private drive "${primaryMapping.driveName}" is locked. Please unlock it before starting sync.`);
-      }
-      
-      // SYNC-7: single source of truth — watch the active mapping's folder
-      const syncFolderSource = primaryMapping.localFolderPath || config.syncFolder;
-      if (!syncFolderSource) {
-        throw new Error('No sync folder configured. Please set up sync first.');
-      }
-      
-      // Validate sync folder exists
-      try {
-        await fs.access(syncFolderSource);
-      } catch (error) {
-        throw new Error(`Sync folder "${syncFolderSource}" does not exist or is not accessible`);
-      }
-      
-      this.syncManager.setSyncFolder(syncFolderSource);
-      
-      // Heal the legacy config mirror so every config.syncFolder reader
-      // (Overview/Storage tabs, Settings) agrees with what is actually watched
-      if (config.syncFolder !== syncFolderSource) {
-        await configManager.setSyncFolder(syncFolderSource);
-      }
-      
-      // Get private key data for private drive operations
-      const privateKeyData = await driveKeyManager.getPrivateKeyData();
-      
-      // Set ArDrive instance and start sync with drive mapping
-      this.syncManager.setArDrive(arDrive, privateKeyData);
-      const startResult = await this.syncManager.startSync(
-        primaryMapping.driveId,
-        primaryMapping.rootFolderId,
-        primaryMapping.driveName
-      );
-      this.refreshTray(); // UX-30: reflect the now-active/syncing state immediately
-      return startResult;
+      return await this.startSyncEngine();
     }));
 
     ipcMain.handle('sync:stop', envelopeHandler(async () => {
-      const stopResult = await this.syncManager.stopSync();
-      this.refreshTray(); // UX-30: reflect the now-paused state immediately
-      return stopResult;
+      return await this.stopSyncEngine();
+    }));
+
+    // UX-21/UX-22: dedicated pause/resume — distinct from the generic
+    // sync:start/sync:stop above, which are ALSO called for internal
+    // orchestration (profile switch, private-drive unlock, sync-folder
+    // change) where flipping the user's saved Auto-Sync preference would
+    // misrepresent their actual choice. These two are the only handlers that
+    // persist ConfigManager's autoSyncEnabled flag, so a pause/resume from
+    // the Dashboard is honored on the NEXT boot too (restoreSyncState above),
+    // not just for the rest of the current session. Reuses the exact same
+    // SyncManager.startSync()/stopSync() path the UX-30 tray's pause/resume
+    // menu item already calls — no new sync engine.
+    ipcMain.handle('sync:pause', envelopeHandler(async () => {
+      const result = await this.stopSyncEngine();
+      await configManager.setAutoSyncEnabled(false);
+      return result;
+    }));
+
+    ipcMain.handle('sync:resume', envelopeHandler(async () => {
+      const result = await this.startSyncEngine();
+      await configManager.setAutoSyncEnabled(true);
+      return result;
     }));
 
     ipcMain.handle('sync:status', envelopeHandler(async () => {
@@ -2729,6 +2780,20 @@ class ArDriveApp {
     ipcMain.handle('config:set-notifications-enabled', envelopeHandler(async (_, enabled: unknown) => {
       const validated = InputValidator.validateBoolean(enabled, 'enabled');
       await configManager.setNotificationsEnabled(validated);
+      return validated;
+    }));
+
+    // UX-21/UX-22: per-profile Auto-Sync preference — set from
+    // DriveAndSyncSetup's "Enable Auto Sync" toggle and from the
+    // sync:pause/sync:resume handlers above. Defaults to true — see
+    // ConfigManager.getAutoSyncEnabled.
+    ipcMain.handle('config:get-auto-sync-enabled', envelopeHandler(async () => {
+      return await configManager.getAutoSyncEnabled();
+    }));
+
+    ipcMain.handle('config:set-auto-sync-enabled', envelopeHandler(async (_, enabled: unknown) => {
+      const validated = InputValidator.validateBoolean(enabled, 'enabled');
+      await configManager.setAutoSyncEnabled(validated);
       return validated;
     }));
 

@@ -268,6 +268,19 @@ const DriveAndSyncSetup: React.FC<DriveAndSyncSetupProps> = ({ currentProfile, o
         await window.electronAPI.sync.setFolder(driveFolderPath);
       }
 
+      // UX-21: persist the toggle so it's honored on every later boot instead
+      // of being decorative — the setup screen previously never saved this
+      // choice, so the next launch started sync unconditionally regardless
+      // (same fabricated-setting class as the fixed MONEY-4/MONEY-11). Also
+      // the single source of truth UX-22's pause/resume control reads/writes.
+      // Best-effort: a failed write here shouldn't block onboarding — this
+      // session's engine still starts/doesn't per `enableAutoSync` below via
+      // the same local state either way.
+      const autoSyncPrefResult = await window.electronAPI.config.setAutoSyncEnabled(enableAutoSync);
+      if (!autoSyncPrefResult.success) {
+        console.error('Failed to persist Auto-Sync preference:', autoSyncPrefResult.error);
+      }
+
       // Initialize sync engine — the retryable tail. sync:start is now bounded in
       // the main process (retry + timeout), so it always settles instead of
       // hanging on "Starting sync engine…".
