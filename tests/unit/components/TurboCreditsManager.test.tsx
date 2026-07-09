@@ -29,8 +29,8 @@ const mockElectronAPI = {
     openWindow: vi.fn(),
     // UX-4: on* now returns a scoped disposer; return a fresh spy per call so
     // the unmount test can assert the component invoked its OWN disposer.
-    onPaymentCompleted: vi.fn(() => vi.fn()),
-    onPaymentCancelled: vi.fn(() => vi.fn()),
+    onPaymentCompleted: vi.fn((_callback: () => void) => vi.fn()),
+    onPaymentCancelled: vi.fn((_callback: () => void) => vi.fn()),
   },
   onWalletInfoUpdated: vi.fn(() => vi.fn()),
 };

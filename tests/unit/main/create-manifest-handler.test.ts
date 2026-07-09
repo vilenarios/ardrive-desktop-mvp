@@ -96,7 +96,7 @@ const h = vi.hoisted(() => {
     hasStoredWallet: vi.fn().mockResolvedValue(false),
     attemptAutoLoad: vi.fn().mockResolvedValue(false),
     isWalletLoaded: vi.fn(() => false),
-    getArDrive: vi.fn(() => mockArDrive),
+    getArDrive: vi.fn((): typeof mockArDrive | null => mockArDrive),
     listDrives: vi.fn().mockResolvedValue([]),
     getWalletInfo: vi.fn().mockResolvedValue({
       address: 'mock-address',

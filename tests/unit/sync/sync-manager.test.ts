@@ -964,8 +964,8 @@ describe('SyncManager', () => {
 
     it('does not spam: a burst of watcher events for the same too-big file notifies once', async () => {
       await syncManager['handleNewFile'](filePath, 'create');
-      await syncManager['handleNewFile'](filePath, 'change');
-      await syncManager['handleNewFile'](filePath, 'change');
+      await syncManager['handleNewFile'](filePath, 'update');
+      await syncManager['handleNewFile'](filePath, 'update');
 
       expect(notifySpy).toHaveBeenCalledTimes(1);
     });
