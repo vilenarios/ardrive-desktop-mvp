@@ -327,9 +327,20 @@ class ArDriveApp {
   }
 
   async createTray() {
-    const iconPath = path.join(__dirname, '../../assets/favicon.png');
-    const trayIcon = nativeImage.createFromPath(iconPath);
-    this.tray = new Tray(trayIcon.resize({ width: 16, height: 16 }));
+    // UX-35: dedicated tray asset — 16x16 + 32x32 (@2x) pair for crisp
+    // HiDPI rendering (nativeImage.createFromPath auto-loads the matching
+    // "@2x" file that sits alongside the base file; no manual resize()
+    // needed, unlike the old approach that downscaled the 32px favicon).
+    // On macOS, the "Template" file is a black+alpha silhouette so the menu
+    // bar can recolor it for the light/dark bar automatically.
+    const trayIconPath = process.platform === 'darwin'
+      ? path.join(__dirname, '../../assets/trayTemplate.png')
+      : path.join(__dirname, '../../assets/tray-icon.png');
+    const trayIcon = nativeImage.createFromPath(trayIconPath);
+    if (process.platform === 'darwin') {
+      trayIcon.setTemplateImage(true);
+    }
+    this.tray = new Tray(trayIcon);
 
     await this.updateTrayMenu();
 
