@@ -462,7 +462,7 @@ describe.skipIf(!DatabaseSync)('database migrations — real SQLite (INFRA-7)', 
     await (dm as any).runMigrations();
 
     expect(userVersion(engine)).toBe(CURRENT_SCHEMA_VERSION);
-    expect(CURRENT_SCHEMA_VERSION).toBe(6);
+    expect(CURRENT_SCHEMA_VERSION).toBe(7);
 
     // Lossless: all rows of all tables identical to the pre-migration dump —
     // including the integer booleans, NULLs, and the empty schema_version.
@@ -579,7 +579,7 @@ describe.skipIf(!DatabaseSync)('database migrations — real SQLite (INFRA-7)', 
 
     const { dm } = managerOn(engine);
     await expect((dm as any).runMigrations()).rejects.toThrow(
-      /schema version 99.*only supports up to version 6/
+      /schema version 99.*only supports up to version 7/
     );
 
     expect(userVersion(engine)).toBe(99); // not downgraded
@@ -763,7 +763,7 @@ describe('initialize() wiring (capturing stub)', () => {
     const dm = managerWithStub(stub);
 
     await expect(dm.initialize()).rejects.toThrow(
-      /schema version 99.*only supports up to version 6.*update ArDrive Desktop/i
+      /schema version 99.*only supports up to version 7.*update ArDrive Desktop/i
     );
 
     expect(stub.execCalls).toEqual([]); // data never touched

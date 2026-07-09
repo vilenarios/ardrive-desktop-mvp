@@ -27,6 +27,15 @@
 //   6  — sync_state table (D-026): persists ardrive-core-js's serialized
 //        DriveSyncState per drive so an unchanged re-sync fetches only the
 //        delta since the last synced block (incremental delta-resync).
+//   7  — add 'failed' to drive_metadata_cache.syncStatus's CHECK set (SYNC-16).
+//        Live download/sync code writes syncStatus='failed' (DownloadManager,
+//        sync-manager), but the v3 CHECK omitted it, so those UPDATEs THREW on
+//        a real SQLite DB (invisible under mocked tests) and the failed state
+//        was never persisted. SQLite cannot ALTER a CHECK in place, so this
+//        rebuilds the table (create-new → copy → drop → rename → recreate
+//        indexes) — the standard SQLite "changing a CHECK" procedure. Lossless:
+//        the new allowed set is a strict superset of the old, and no pre-v7 row
+//        could ever have held 'failed' (the old CHECK rejected it).
 //
 // Rules for adding a migration:
 //   - NEVER edit an existing migration (databases in the wild have already
@@ -310,6 +319,70 @@ export const MIGRATIONS: readonly Migration[] = [
             state TEXT NOT NULL,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
           );
+`,
+  },
+  {
+    version: 7,
+    description:
+      "add 'failed' to drive_metadata_cache.syncStatus CHECK set (SYNC-16) via table rebuild",
+    // SQLite cannot ALTER a CHECK constraint in place, so this follows the
+    // standard "changing a CHECK" recipe: build a new table with the widened
+    // CHECK, copy every row, drop the old table, rename the new one into place,
+    // and recreate all of drive_metadata_cache's indexes (DROP TABLE drops
+    // them). foreign_keys is never enabled on these connections (SQLite default
+    // OFF), and nothing references drive_metadata_cache, so the drop/rename is
+    // safe. The column list below is the v3 baseline PLUS v5's additive
+    // isHidden column — i.e. the table's shape at v6 — so the rebuild is
+    // lossless. The only change versus v6 is the extra 'failed' literal in the
+    // syncStatus CHECK.
+    sql: `
+          CREATE TABLE drive_metadata_cache_new (
+            id TEXT PRIMARY KEY,
+            mappingId TEXT NOT NULL,
+            fileId TEXT NOT NULL UNIQUE,
+            parentFolderId TEXT,
+            name TEXT NOT NULL,
+            path TEXT NOT NULL,
+            type TEXT CHECK (type IN ('file', 'folder')),
+            size INTEGER,
+            lastModifiedDate INTEGER,
+            dataTxId TEXT,
+            metadataTxId TEXT,
+            contentType TEXT,
+            fileHash TEXT,
+            lastSyncedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+            localPath TEXT,
+            localFileExists BOOLEAN DEFAULT 0,
+            syncStatus TEXT DEFAULT 'pending' CHECK (syncStatus IN ('synced', 'pending', 'downloading', 'queued', 'cloud_only', 'error', 'failed')),
+            syncPreference TEXT DEFAULT 'auto' CHECK (syncPreference IN ('auto', 'cloud_only')),
+            downloadPriority INTEGER DEFAULT 0,
+            lastError TEXT,
+            isHidden BOOLEAN DEFAULT 0,
+            FOREIGN KEY (mappingId) REFERENCES drive_mappings(id) ON DELETE CASCADE
+          );
+
+          INSERT INTO drive_metadata_cache_new (
+            id, mappingId, fileId, parentFolderId, name, path, type, size,
+            lastModifiedDate, dataTxId, metadataTxId, contentType, fileHash,
+            lastSyncedAt, localPath, localFileExists, syncStatus, syncPreference,
+            downloadPriority, lastError, isHidden
+          )
+          SELECT
+            id, mappingId, fileId, parentFolderId, name, path, type, size,
+            lastModifiedDate, dataTxId, metadataTxId, contentType, fileHash,
+            lastSyncedAt, localPath, localFileExists, syncStatus, syncPreference,
+            downloadPriority, lastError, isHidden
+          FROM drive_metadata_cache;
+
+          DROP TABLE drive_metadata_cache;
+
+          ALTER TABLE drive_metadata_cache_new RENAME TO drive_metadata_cache;
+
+          CREATE INDEX IF NOT EXISTS idx_metadata_mapping ON drive_metadata_cache(mappingId);
+          CREATE INDEX IF NOT EXISTS idx_metadata_parent ON drive_metadata_cache(parentFolderId);
+          CREATE INDEX IF NOT EXISTS idx_metadata_path ON drive_metadata_cache(path);
+          CREATE INDEX IF NOT EXISTS idx_metadata_fileId ON drive_metadata_cache(fileId);
+          CREATE INDEX IF NOT EXISTS idx_metadata_mapping_sync_status ON drive_metadata_cache(mappingId, syncStatus);
 `,
   },
 ];
