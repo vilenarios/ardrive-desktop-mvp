@@ -18,7 +18,6 @@ if (typeof window !== 'undefined') {
         createNew: vi.fn(),
         importFromSeedPhrase: vi.fn(),
         getInfo: vi.fn(),
-        ensureLoaded: vi.fn(),
         clearStored: vi.fn(),
         export: vi.fn(),
       },

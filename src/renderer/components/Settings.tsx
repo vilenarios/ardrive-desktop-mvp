@@ -18,6 +18,17 @@ interface SettingsProps {
   onShowWalletExport: () => void;
 }
 
+// UX-6 / D-031: beta ships with ALWAYS-PROMPT login (no auto-login). The
+// "Remember Me on This Device" control promises "you don't have to type your
+// password every time you open the app" — a promise beta can no longer keep,
+// since the wallet is never auto-loaded at launch. Exposing it would store a
+// login credential at rest that can't actually skip the unlock prompt (a false
+// promise + a pointless at-rest secret), so the control is withheld for beta.
+// SEC-4's opt-in keychain infrastructure is deliberately left intact for a
+// post-beta opt-in auto-unlock; only this UI entry point is withdrawn. Flip to
+// true (and pair with the UX-6 auto-unlock work) to re-enable post-beta.
+const REMEMBER_ME_ENABLED = false;
+
 const Settings: React.FC<SettingsProps> = ({
   isOpen,
   onClose,
@@ -341,7 +352,9 @@ const Settings: React.FC<SettingsProps> = ({
 
           {/* Remember Me / Keychain Section — SEC-4: keychain persistence of
               the login is opt-in per profile, with honest copy about what's
-              stored and a way to clear it. */}
+              stored and a way to clear it. UX-6/D-031: withheld for beta (no
+              auto-login), gated on REMEMBER_ME_ENABLED above. */}
+          {REMEMBER_ME_ENABLED && (
           <div className="settings-section">
             <div className="settings-item">
               <div className="settings-item-header">
@@ -425,6 +438,7 @@ const Settings: React.FC<SettingsProps> = ({
               </div>
             </div>
           </div>
+          )}
 
           {/* Notifications Section — UX-29: native OS notifications (sync
               complete/error, upload complete, approval needed) are opt-out and

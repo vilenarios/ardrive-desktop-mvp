@@ -839,44 +839,14 @@ export class SecureWalletManager {
     }
   }
 
-  // Try to auto-load wallet using session password only
-  async attemptAutoLoad(): Promise<boolean> {
-    if (this.isWalletLoaded()) {
-      return true;
-    }
-
-    // Get active profile
-    const activeProfile = await profileManager.getActiveProfile();
-    if (!activeProfile) {
-      console.log('No active profile found');
-      return false;
-    }
-    
-    this.currentProfileId = activeProfile.id;
-
-    if (!(await this.hasStoredWallet())) {
-      console.log('No stored wallet found');
-      return false;
-    }
-
-    // Only use session password (no disk storage)
-    const sessionPassword = await this.getSessionPassword();
-    if (sessionPassword) {
-      console.log('Attempting automatic authentication...');
-      try {
-        const result = await this.loadWallet(sessionPassword);
-        this.clearPassword(sessionPassword); // Clear decrypted password from memory
-        return result;
-      } catch (error) {
-        console.error('Automatic authentication failed:', error);
-        this.clearPassword(sessionPassword);
-        this.clearSessionPassword();
-      }
-    }
-
-    console.log('Manual authentication required');
-    return false;
-  }
+  // UX-6 / D-031: auto-login has been removed for beta. The app always prompts
+  // for the password on launch — the wallet is never silently loaded from a
+  // stored/session credential at boot. The former attemptAutoLoad() (load the
+  // wallet using the session password without user input) was both a security
+  // downgrade for a self-custody wallet and dead code (its only live entry
+  // points, the boot gate in main.restoreSyncState and the caller-less
+  // wallet:ensure-loaded IPC, could never load a wallet). It has been deleted
+  // rather than left inert. See DECISIONS.md D-031.
 
   // Clear only in-memory wallet data (for logout)
   async logout(): Promise<void> {
