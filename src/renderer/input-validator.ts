@@ -144,8 +144,12 @@ export class ClientInputValidator {
     const trimmed = result.value!;
     const words = trimmed.split(/\s+/);
 
-    if (words.length !== 12 && words.length !== 24) {
-      return { isValid: false, error: 'Seed phrase must contain exactly 12 or 24 words' };
+    // UX-34: ardrive-core-js only ever derives an Arweave wallet from a
+    // 12-word BIP-39 phrase (see wallet-manager-secure.ts / ardrive-core-js
+    // SeedPhrase) — a 24-word phrase always failed at derivation, so this
+    // validator no longer waves it through as "valid" up front.
+    if (words.length !== 12) {
+      return { isValid: false, error: 'Seed phrase must contain exactly 12 words' };
     }
 
     // Validate each word contains only letters

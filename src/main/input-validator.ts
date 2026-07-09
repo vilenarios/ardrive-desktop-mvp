@@ -369,11 +369,15 @@ export class InputValidator {
       maxLength: 500  // Reasonable maximum
     });
 
-    // Split into words and validate count
+    // Split into words and validate count.
+    // UX-34: ardrive-core-js only ever derives an Arweave wallet from a
+    // 12-word BIP-39 phrase (see wallet-manager-secure.ts / ardrive-core-js
+    // SeedPhrase) — a 24-word phrase always failed at derivation, so this
+    // validator no longer waves it through as "valid" up front.
     const words = seedPhrase.trim().split(/\s+/);
-    
-    if (words.length !== 12 && words.length !== 24) {
-      throw new ValidationError(`${fieldName} must contain exactly 12 or 24 words`, fieldName);
+
+    if (words.length !== 12) {
+      throw new ValidationError(`${fieldName} must contain exactly 12 words`, fieldName);
     }
 
     // Basic word validation - only alphanumeric characters
