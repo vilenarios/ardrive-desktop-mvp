@@ -34,9 +34,29 @@ import '@testing-library/jest-dom';
 import { StorageTab } from '../../../src/renderer/components/dashboard/StorageTab';
 import { DriveInfo, AppConfig } from '../../../src/types';
 
+// The IPC-boundary shape of a permaweb-file item as StorageTab consumes it.
+// `isHidden` is deliberately `unknown` so both the clean (boolean) and the
+// DB-shaped (raw sqlite integer) fixtures below are assignable — this test
+// exists precisely to feed the DB-shaped form through.
+type PermawebFileItem = {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  modifiedAt: number;
+  isDownloaded: boolean;
+  status: string;
+  path: string;
+  parentId: string;
+  ardriveUrl: string;
+  dataTxId: string;
+  metadataTxId: string;
+  isHidden: unknown;
+};
+
 const mockElectronAPI = {
   drive: {
-    getPermawebFiles: vi.fn(async () => ({ success: true, data: [] })),
+    getPermawebFiles: vi.fn(async () => ({ success: true, data: [] as PermawebFileItem[] })),
   },
   onSyncComplete: vi.fn(),
   onUploadProgress: vi.fn(),

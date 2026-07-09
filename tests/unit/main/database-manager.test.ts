@@ -751,9 +751,9 @@ describe('DatabaseManager', () => {
 
     it('getDriveMappingById: the same DB-shaped row normalizes identically', async () => {
       mockDbInstance.get.mockImplementationOnce(
-        (sql: string, params: any, callback: (err: Error | null, row?: any) => void) => {
+        (sql: string, params?: any, callback?: (err: Error | null, row?: any) => void) => {
           if (typeof params === 'function') callback = params;
-          callback(null, dbShapedMappingRow({ isActive: 1, lastSyncTime: '2026-07-01T00:00:00.000Z' }));
+          callback!(null, dbShapedMappingRow({ isActive: 1, lastSyncTime: '2026-07-01T00:00:00.000Z' }));
         }
       );
 
@@ -805,9 +805,9 @@ describe('DatabaseManager', () => {
 
     it('getDownloads: isCancelled reaches the caller as a raw integer, not a boolean', async () => {
       mockDbInstance.all.mockImplementationOnce(
-        (sql: string, params: any, callback: (err: Error | null, rows?: any[]) => void) => {
+        (sql: string, params?: any, callback?: (err: Error | null, rows?: any[]) => void) => {
           if (typeof params === 'function') callback = params;
-          callback(null, [dbShapedDownloadRow()]);
+          callback!(null, [dbShapedDownloadRow()]);
         }
       );
 
@@ -824,9 +824,9 @@ describe('DatabaseManager', () => {
 
     it('getDownloadByFileId: same raw-integer isCancelled shape', async () => {
       mockDbInstance.get.mockImplementationOnce(
-        (sql: string, params: any, callback: (err: Error | null, row?: any) => void) => {
+        (sql: string, params?: any, callback?: (err: Error | null, row?: any) => void) => {
           if (typeof params === 'function') callback = params;
-          callback(null, dbShapedDownloadRow({ isCancelled: 0 }));
+          callback!(null, dbShapedDownloadRow({ isCancelled: 0 }));
         }
       );
 
@@ -836,9 +836,9 @@ describe('DatabaseManager', () => {
 
     it('getDownloadByPath: same raw-integer isCancelled shape', async () => {
       mockDbInstance.get.mockImplementationOnce(
-        (sql: string, params: any, callback: (err: Error | null, row?: any) => void) => {
+        (sql: string, params?: any, callback?: (err: Error | null, row?: any) => void) => {
           if (typeof params === 'function') callback = params;
-          callback(null, dbShapedDownloadRow({ isCancelled: 1, localPath: '/sync/file.bin' }));
+          callback!(null, dbShapedDownloadRow({ isCancelled: 1, localPath: '/sync/file.bin' }));
         }
       );
 
@@ -900,9 +900,9 @@ describe('DatabaseManager', () => {
 
     it('getDriveMetadata: returns localFileExists/isHidden as raw integers, not booleans', async () => {
       mockDbInstance.all.mockImplementationOnce(
-        (sql: string, params: any, callback: (err: Error | null, rows?: any[]) => void) => {
+        (sql: string, params?: any, callback?: (err: Error | null, rows?: any[]) => void) => {
           if (typeof params === 'function') callback = params;
-          callback(null, [dbShapedMetadataRow()]);
+          callback!(null, [dbShapedMetadataRow()]);
         }
       );
 
@@ -916,9 +916,9 @@ describe('DatabaseManager', () => {
 
     it('getFilesByStatus: same raw-integer shape (method has no in-tree caller today — dead but part of the public boundary)', async () => {
       mockDbInstance.all.mockImplementationOnce(
-        (sql: string, params: any, callback: (err: Error | null, rows?: any[]) => void) => {
+        (sql: string, params?: any, callback?: (err: Error | null, rows?: any[]) => void) => {
           if (typeof params === 'function') callback = params;
-          callback(null, [dbShapedMetadataRow({ localFileExists: 0 })]);
+          callback!(null, [dbShapedMetadataRow({ localFileExists: 0 })]);
         }
       );
 

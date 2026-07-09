@@ -16,7 +16,9 @@ import {
   getDriveSignatureType,
   DriveSignatureType
 } from 'ardrive-core-js';
-import type { JWKInterface } from 'ardrive-core-js';
+// JWKInterface is no longer re-exported by ardrive-core-js; it now sources the
+// type from @dha-team/arbundles (the same package its crypto entry points use).
+import type { JWKInterface } from '@dha-team/arbundles';
 
 // DriveKeyManager pulls in electron's `app`; redirect it (unused here).
 vi.mock('electron', () => ({
