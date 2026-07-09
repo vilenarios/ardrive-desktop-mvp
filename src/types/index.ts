@@ -35,6 +35,19 @@ export interface AppConfig {
    * ambient "it works" notifications ship on by default.
    */
   notificationsEnabled?: boolean;
+  /**
+   * UX-21/UX-22: whether the continuous sync engine should be running.
+   * Per-profile (like `syncFolder`/`walletPath`) — each profile has its own
+   * drive/sync setup and its own running engine, so pausing one profile's
+   * sync must never affect another. Set at onboarding (DriveAndSyncSetup's
+   * "Enable Auto Sync" toggle) and read on every boot (App.initializeApp /
+   * main.restoreSyncState) to decide whether to auto-start. UX-22's
+   * pause/resume control (sync:pause / sync:resume) writes this SAME flag,
+   * so pausing survives a restart instead of silently resuming. Defaults to
+   * true (unset means enabled) so profiles set up before this preference
+   * existed keep their current auto-start behavior.
+   */
+  autoSyncEnabled?: boolean;
 }
 
 export interface DriveSyncMapping {

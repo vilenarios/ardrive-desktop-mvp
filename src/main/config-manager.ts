@@ -210,6 +210,28 @@ export class ConfigManager {
     await this.saveGlobalConfig();
   }
 
+  // UX-21/UX-22: per-profile (like `syncFolder`/`walletPath`) — whether the
+  // continuous sync engine should be running for the ACTIVE profile. Read via
+  // getConfig() (profile config merged over global) rather than an in-memory
+  // field like notificationsEnabled, since it must be correct immediately
+  // after a profile switch (setActiveProfile only swaps currentProfileId; the
+  // actual value lives on disk per profile). Defaults to true (unset means
+  // enabled) — profiles set up before this preference existed keep auto-
+  // starting. UX-22's pause/resume control (sync:pause/sync:resume in
+  // main.ts) writes this SAME flag, so "paused" is honored on the next boot
+  // too, not just for the rest of the current session.
+  async getAutoSyncEnabled(): Promise<boolean> {
+    const config = await this.getConfig();
+    return config.autoSyncEnabled !== false;
+  }
+
+  async setAutoSyncEnabled(enabled: boolean): Promise<void> {
+    if (!this.currentProfileId) {
+      throw new Error('No active profile');
+    }
+    await this.updateProfileConfig({ autoSyncEnabled: enabled === true });
+  }
+
   private async saveGlobalConfig() {
     try {
       await fs.writeFile(this.globalConfigPath, JSON.stringify(this.globalConfig, null, 2));

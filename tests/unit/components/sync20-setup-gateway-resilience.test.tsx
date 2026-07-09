@@ -56,6 +56,8 @@ const buildApi = () => ({
   config: {
     markFirstRunComplete: vi.fn(async () => ({ success: true, data: true })),
     get: vi.fn(async () => ({ success: true, data: {} })),
+    // UX-21: DriveAndSyncSetup now persists the "Enable Auto Sync" toggle.
+    setAutoSyncEnabled: vi.fn(async () => ({ success: true, data: true })),
   },
   dialog: {
     selectFolder: vi.fn(async () => ({ success: true, data: 'C:\\ARDRIVE' })),
