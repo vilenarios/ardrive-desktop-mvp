@@ -445,6 +445,13 @@ const api = {
     subscribe('sync:completed', callback),
   onFileStateChanged: (callback: (data: { fileId: string; syncStatus?: string; syncPreference?: string }) => void): Unsubscribe =>
     subscribe('sync:file-state-changed', callback),
+
+  // UX-36: main->renderer navigation requests from actionable notifications
+  // (an approval-needed toast asks the UI to show the upload queue; a low-Turbo
+  // toast asks it to open the top-up flow). The renderer focuses the relevant
+  // surface; the main process has already brought the window forward.
+  onNavigate: (callback: (target: 'upload-queue' | 'top-up') => void): Unsubscribe =>
+    subscribe('navigate', callback),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

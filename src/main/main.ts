@@ -30,7 +30,7 @@ import { applySyncFolderChange } from './utils/sync-folder-change';
 import { isRetryAllowed } from './utils/upload-retry-guard';
 import { TURBO_FREE_SIZE_LIMIT } from '../utils/turbo-utils';
 import { retryWithBackoff } from './sync/retry';
-import { TraySyncSnapshot, trayTooltipFor, trayMenuLabelFor } from './tray-status';
+import { TraySyncSnapshot, TrayIconKind, trayTooltipFor, trayMenuLabelFor, resolveTrayIconKind, trayIconAssetFor } from './tray-status';
 
 // Load .env file in development
 if (process.env.NODE_ENV !== 'production') {
@@ -154,6 +154,12 @@ class ArDriveApp {
   // even for state changes that don't flow through an explicit refreshTray()
   // call site (e.g. a profile switch, or background upload progress).
   private trayRefreshTimer: NodeJS.Timeout | null = null;
+
+  // UX-36: the icon glyph currently on the tray. updateTrayMenu resolves the
+  // desired TrayIconKind every refresh but only calls tray.setImage() when it
+  // actually changes — setImage is a native call and a no-op re-set can flicker
+  // some menu bars, and the 15s fallback poll would otherwise re-set it needlessly.
+  private currentTrayIconKind: TrayIconKind | null = null;
 
   constructor() {
     this.walletManager = new SecureWalletManager();
@@ -325,20 +331,49 @@ class ArDriveApp {
     });
   }
 
-  async createTray() {
-    // UX-35: dedicated tray asset — 16x16 + 32x32 (@2x) pair for crisp
-    // HiDPI rendering (nativeImage.createFromPath auto-loads the matching
-    // "@2x" file that sits alongside the base file; no manual resize()
-    // needed, unlike the old approach that downscaled the 32px favicon).
-    // On macOS, the "Template" file is a black+alpha silhouette so the menu
-    // bar can recolor it for the light/dark bar automatically.
-    const trayIconPath = process.platform === 'darwin'
-      ? path.join(__dirname, '../../assets/trayTemplate.png')
-      : path.join(__dirname, '../../assets/tray-icon.png');
-    const trayIcon = nativeImage.createFromPath(trayIconPath);
-    if (process.platform === 'darwin') {
-      trayIcon.setTemplateImage(true);
+  // UX-36: resolve a TrayIconKind to its on-disk asset + template flag.
+  // UX-35 established the 16x16 + 32x32 (@2x) HiDPI pair convention:
+  // nativeImage.createFromPath auto-loads the matching "@2x" file alongside
+  // the base file, so we only name the base here.
+  //
+  // macOS decision (documented): template images render MONOCHROME and recolor
+  // to the menu-bar foreground — they can't be tinted. So idle/syncing/paused
+  // use distinct *template silhouettes* (trayTemplate{,-syncing,-paused}.png:
+  // the black mark with a badge whose glyph is CUT OUT), while the ERROR state
+  // deliberately uses the COLORED red icon as a NON-template image so a broken
+  // sync actually reads as red in the menu bar rather than a subtle grey shape.
+  // Windows/Linux always use the colored variants.
+  private trayImageForKind(kind: TrayIconKind): { image: Electron.NativeImage; isTemplate: boolean } {
+    const { file, isTemplate } = trayIconAssetFor(kind, process.platform);
+    const image = nativeImage.createFromPath(path.join(__dirname, '../../assets', file));
+    if (isTemplate) {
+      image.setTemplateImage(true);
     }
+    return { image, isTemplate };
+  }
+
+  // UX-36: set the tray glyph to reflect `kind`, but only when it actually
+  // changed — setImage is a native call and the 15s fallback poll would
+  // otherwise re-set the same image every tick (needless, and a flicker risk
+  // on some menu bars).
+  private applyTrayIcon(kind: TrayIconKind): void {
+    if (!this.tray) return;
+    if (this.currentTrayIconKind === kind) return;
+    try {
+      const { image } = this.trayImageForKind(kind);
+      this.tray.setImage(image);
+      this.currentTrayIconKind = kind;
+    } catch (error) {
+      console.error('UX-36: failed to update tray icon image:', error);
+    }
+  }
+
+  async createTray() {
+    // UX-36: start on the neutral idle glyph; updateTrayMenu() below swaps it
+    // to the resolved status kind (syncing/paused/error) as soon as it reads
+    // the current sync signals.
+    const { image: trayIcon } = this.trayImageForKind('idle');
+    this.currentTrayIconKind = 'idle';
     this.tray = new Tray(trayIcon);
 
     await this.updateTrayMenu();
@@ -406,6 +441,8 @@ class ArDriveApp {
 
         this.tray.setContextMenu(contextMenu);
         this.tray.setToolTip(`ArDrive Desktop - ${trayTooltipFor(signedOutSnapshot)}`);
+        // UX-36: signed-out reuses the neutral idle glyph.
+        this.applyTrayIcon(resolveTrayIconKind(signedOutSnapshot));
         return;
       }
 
@@ -444,9 +481,17 @@ class ArDriveApp {
       const statusSnapshot: TraySyncSnapshot = {
         isAuthenticated: true,
         isActive: !!globalStatus?.isActive,
-        pendingCount
+        pendingCount,
+        // UX-36: carry sync health so the icon can show the alert glyph when a
+        // sync is offline/errored (the text status label deliberately ignores
+        // health — UX-30 owns that and must not regress).
+        health: globalStatus?.health
       };
       const syncStatusLabel = trayMenuLabelFor(statusSnapshot);
+
+      // UX-36: reflect the resolved status kind in the tray ICON, not just the
+      // tooltip/menu text.
+      this.applyTrayIcon(resolveTrayIconKind(statusSnapshot));
 
       // UX-30: recent activity — last few completed uploads, shown as
       // disabled entries (cheap: one already-existing DB read, capped to 3).

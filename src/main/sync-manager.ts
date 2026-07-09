@@ -16,6 +16,7 @@ import { FolderOperationDetector, OperationDetection } from './sync/FolderOperat
 import { FileOperationDetector, FileOperationDetection } from './sync/FileOperationDetector';
 import { driveKeyManager } from './drive-key-manager';
 import { notificationService } from './notification-service';
+import { evaluateLowBalance } from './turbo-balance-alert';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
 import { retryWithBackoff, isNetworkDownError } from './sync/retry';
 import { resolveDrivePrivacyOrThrow } from './sync/drive-privacy';
@@ -119,6 +120,15 @@ export class SyncManager {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnecting = false;
   private static readonly RECONNECT_DELAY_MS = 15000;
+
+  // UX-36: edge-triggered low-Turbo-credits notification. True while we're in
+  // the "credits are below what a needed upload costs" state — so we fire the
+  // "top up" toast exactly ONCE on the ok->low edge and stay quiet until the
+  // balance recovers (low->ok re-arms it). Without this flag, every queued file
+  // (or every poll) with an insufficient balance would re-fire. Never trust a
+  // fabricated number — the signal is CostCalculator's real balance-vs-cost
+  // comparison (hasSufficientTurboBalance with a non-null Turbo quote).
+  private turboBalanceLow = false;
 
   constructor(private databaseManager: DatabaseManager) {
     this.versionManager = new VersionManager(databaseManager);
@@ -236,6 +246,37 @@ export class SyncManager {
   private markSyncHealthy(): void {
     this.clearReconnect();
     this.setSyncHealth('healthy', null);
+  }
+
+  /**
+   * UX-36: edge-triggered "Turbo credits low" notification. Called with the
+   * real CostCalculator result each time a cost-bearing upload is evaluated.
+   *
+   * `estimatedTurboCost === null` means the Turbo quote is unavailable (Turbo
+   * not initialized / quote fetch failed) — NOT a low balance — so we ignore it
+   * to avoid a false "top up" prompt. A real quote with
+   * `hasSufficientTurboBalance === false` is the honest "credits below cost"
+   * signal: fire the actionable toast exactly ONCE (ok->low edge), then stay
+   * armed-quiet until a later evaluation shows sufficient balance (low->ok),
+   * which re-arms it. This is the anti-spam guarantee — no re-fire per poll/upload.
+   */
+  private maybeNotifyLowTurboBalance(
+    estimatedTurboCost: number | null | undefined,
+    hasSufficientTurboBalance: boolean
+  ): void {
+    const { shouldNotify, low } = evaluateLowBalance(
+      this.turboBalanceLow,
+      estimatedTurboCost,
+      hasSufficientTurboBalance
+    );
+    this.turboBalanceLow = low;
+    if (shouldNotify) {
+      try {
+        notificationService.notifyLowTurboBalance();
+      } catch (notifyError) {
+        console.error('UX-36: failed to show low-Turbo-balance notification:', notifyError);
+      }
+    }
   }
 
   private scheduleReconnect(): void {
@@ -498,8 +539,12 @@ export class SyncManager {
 
     // UX-29: mirror the renderer-progress silent gate — a silent (background
     // auto-)sync shouldn't pop a notification every time the app launches.
+    // UX-36: clicking opens the sync folder.
     if (!silent) {
-      notificationService.notifySyncComplete(await this.getKnownFileCountForNotification());
+      notificationService.notifySyncComplete(
+        await this.getKnownFileCountForNotification(),
+        this.syncFolderPath ?? undefined
+      );
     }
 
     console.log('✅ Metadata sync completed, files queued for background download');
@@ -1094,8 +1139,11 @@ export class SyncManager {
     });
 
     // UX-29: this path is always a user-triggered manual sync (never silent),
-    // so always notify.
-    notificationService.notifySyncComplete(await this.getKnownFileCountForNotification());
+    // so always notify. UX-36: clicking opens the sync folder.
+    notificationService.notifySyncComplete(
+      await this.getKnownFileCountForNotification(),
+      this.syncFolderPath ?? undefined
+    );
 
     // Wait a bit more to ensure all database transactions are complete
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -2932,6 +2980,11 @@ export class SyncManager {
         console.error('Failed to notify approval-needed:', notifyError);
       }
 
+      // UX-36: this is a real cost-bearing upload that now needs Turbo credits.
+      // If the real quote exceeds the real balance, warn once (edge-triggered)
+      // so the user can top up before the queue stalls on insufficient credits.
+      this.maybeNotifyLowTurboBalance(estimatedTurboCost, hasSufficientTurboBalance);
+
       // Create file version (without upload info yet, will be updated after upload).
       // FEAT-6: scope the version to the drive being synced so getFileVersions
       // (which filters `mappingId IN (SELECT id FROM drive_mappings)`) returns it
@@ -3892,7 +3945,8 @@ export class SyncManager {
     }
 
     // UX-29: ambient "it works" confirmation for a completed upload.
-    notificationService.notifyUploadComplete(upload.fileName);
+    // UX-36: clicking reveals the uploaded file in the OS file manager.
+    notificationService.notifyUploadComplete(upload.fileName, upload.localPath);
 
     // Add the uploaded file to local cache immediately
     try {

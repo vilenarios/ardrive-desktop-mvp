@@ -10,6 +10,7 @@ import { BrowserWindow } from 'electron';
 import { driveKeyManager } from '../drive-key-manager';
 import { runWithGatewayFailover } from './gateway-failover';
 import { incrementalSyncService } from './incremental-sync-service';
+import { notificationService } from '../notification-service';
 
 export class DownloadManager {
   private isDownloading = false;
@@ -37,6 +38,13 @@ export class DownloadManager {
   
   // Silent mode control
   private silent = false;
+
+  // UX-36: download-complete notification. We coalesce the background queue
+  // into ONE toast per drain (not one per file — that would spam), tracking how
+  // many files completed since the queue was last empty and the last file's
+  // name/path so a single-file batch can reveal it directly.
+  private batchDownloadCount = 0;
+  private lastDownloadedFile: { name: string; localPath: string } | null = null;
 
   constructor(
     private databaseManager: DatabaseManager,
@@ -1518,7 +1526,12 @@ export class DownloadManager {
       // Mark as synced and update local file exists flag
       await this.databaseManager.updateDriveMetadataStatus(fileId, 'synced', true);
       this.emitFileStateChange(fileId, 'synced');
-      
+
+      // UX-36: count this successful download toward the batch-complete
+      // notification fired when the queue fully drains (see the finally block).
+      this.batchDownloadCount++;
+      this.lastDownloadedFile = { name: fileToDownload.name, localPath: expectedPath };
+
       // Notify UI to update activity tab
       try {
         const mainWindow = BrowserWindow.getAllWindows()[0];
@@ -1571,8 +1584,38 @@ export class DownloadManager {
     } finally {
       // Remove from active downloads
       this.activeDownloads.delete(fileId);
+      // UX-36: the queue has fully drained (nothing queued, nothing active) —
+      // fire ONE download-complete notification for everything that succeeded
+      // in this batch, then reset the counter for the next drain. Gated on
+      // !silent so a background auto-sync at launch stays quiet (mirrors the
+      // sync-complete gate); notification-service also honors the Settings
+      // opt-out. A failed-only batch (count 0) fires nothing.
+      if (this.downloadQueue.size === 0 && this.activeDownloads.size === 0) {
+        this.emitBatchDownloadComplete();
+      }
       // Process queue again to pick up any waiting downloads
       this.processDownloadQueue();
+    }
+  }
+
+  // UX-36: emit the coalesced download-complete notification and reset batch
+  // state. Best-effort — a notification failure must never affect sync.
+  private emitBatchDownloadComplete(): void {
+    const count = this.batchDownloadCount;
+    const last = this.lastDownloadedFile;
+    this.batchDownloadCount = 0;
+    this.lastDownloadedFile = null;
+    if (count <= 0 || this.silent) {
+      return;
+    }
+    try {
+      notificationService.notifyDownloadComplete(count, {
+        fileName: last?.name,
+        localPath: last?.localPath,
+        syncFolderPath: this.syncFolderPath ?? undefined,
+      });
+    } catch (error) {
+      console.error('UX-36: failed to show download-complete notification:', error);
     }
   }
 
