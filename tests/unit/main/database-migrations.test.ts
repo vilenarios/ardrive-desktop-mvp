@@ -462,23 +462,29 @@ describe.skipIf(!DatabaseSync)('database migrations — real SQLite (INFRA-7)', 
     await (dm as any).runMigrations();
 
     expect(userVersion(engine)).toBe(CURRENT_SCHEMA_VERSION);
-    expect(CURRENT_SCHEMA_VERSION).toBe(7);
+    expect(CURRENT_SCHEMA_VERSION).toBe(8);
 
     // Lossless: all rows of all tables identical to the pre-migration dump —
     // including the integer booleans, NULLs, and the empty schema_version.
     // v5 (SYNC-5) additively adds drive_metadata_cache.isHidden (default 0);
     // strip that additive column for the byte-identical comparison. v6 (D-026)
-    // additively adds an empty sync_state table; strip it too.
+    // additively adds an empty sync_state table; strip it too. v8 (MONEY-17)
+    // additively adds uploads.errorReason (default NULL) — strip it as well.
     const after = dumpAllRows(engine);
     const stripAdditive = (d: Record<string, any[]>) => {
       const { sync_state: _syncState, ...rest } = d;
       return {
         ...rest,
         drive_metadata_cache: (d.drive_metadata_cache ?? []).map(({ isHidden, ...r }: any) => r),
+        uploads: (d.uploads ?? []).map(({ errorReason, ...r }: any) => r),
       };
     };
     expect(stripAdditive(after)).toEqual(before);
     expect(after.drive_metadata_cache.every((r: any) => r.isHidden === 0)).toBe(true);
+    // v8 (MONEY-17): the additive uploads.errorReason column defaults to NULL on
+    // every pre-existing row (a migrated failure is a generic one, not a
+    // paused-for-credits one).
+    expect(after.uploads.every((r: any) => r.errorReason === null)).toBe(true);
     expect(after.uploads).toHaveLength(2);
     expect(after.drive_metadata_cache).toHaveLength(2);
     expect(after.schema_version).toHaveLength(0);
@@ -579,7 +585,7 @@ describe.skipIf(!DatabaseSync)('database migrations — real SQLite (INFRA-7)', 
 
     const { dm } = managerOn(engine);
     await expect((dm as any).runMigrations()).rejects.toThrow(
-      /schema version 99.*only supports up to version 7/
+      /schema version 99.*only supports up to version 8/
     );
 
     expect(userVersion(engine)).toBe(99); // not downgraded
@@ -763,7 +769,7 @@ describe('initialize() wiring (capturing stub)', () => {
     const dm = managerWithStub(stub);
 
     await expect(dm.initialize()).rejects.toThrow(
-      /schema version 99.*only supports up to version 7.*update ArDrive Desktop/i
+      /schema version 99.*only supports up to version 8.*update ArDrive Desktop/i
     );
 
     expect(stub.execCalls).toEqual([]); // data never touched

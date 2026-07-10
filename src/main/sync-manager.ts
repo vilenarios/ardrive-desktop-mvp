@@ -17,6 +17,13 @@ import { FileOperationDetector, FileOperationDetection } from './sync/FileOperat
 import { driveKeyManager } from './drive-key-manager';
 import { notificationService } from './notification-service';
 import { evaluateLowBalance } from './turbo-balance-alert';
+import {
+  classifyUploadError,
+  outOfFundsMessage,
+  ClassifiedUploadError,
+  UploadErrorReason,
+} from './upload-error-classifier';
+import { isRetryAllowed } from './utils/upload-retry-guard';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
 import { retryWithBackoff, isNetworkDownError } from './sync/retry';
 import { resolveDrivePrivacyOrThrow } from './sync/drive-privacy';
@@ -3161,18 +3168,121 @@ export class SyncManager {
       }
       
       console.error(`Failed to upload ${upload.fileName}:`, error);
-      
+
+      // MONEY-17: decide WHY it failed. A ClassifiedUploadError already carries
+      // the decided reason (from uploadFileWithArDriveCore); anything else is
+      // classified best-effort here. An 'insufficient_funds' failure is a
+      // RECOVERABLE paused-for-credits state — recorded as a terminal-shaped
+      // `failed` row (so existing failed/activity UI shows it) but tagged with
+      // errorReason so it is DISTINGUISHABLE from a generic failure and can be
+      // AUTO-RESUMED when credits/quota arrive (see resumeUploadsBlockedOnFunds).
+      // We always WRITE errorReason (never leave a stale one), so a later
+      // non-funds failure on the same id can't masquerade as recoverable.
+      const reason: UploadErrorReason =
+        error instanceof ClassifiedUploadError
+          ? error.reason
+          : classifyUploadError(error).reason;
+
       upload.status = 'failed';
       upload.error = message;
+      upload.errorReason = reason;
 
       await this.databaseManager.updateUpload(upload.id, {
         status: 'failed',
-        error: upload.error
+        error: upload.error,
+        errorReason: reason,
       });
-      
+
+      // MONEY-17: an out-of-funds rejection surfaces the actionable top-up CTA,
+      // edge-triggered once per out-of-funds episode (re-armed on recovery) so it
+      // never spams and stays behind the notificationsEnabled gate.
+      if (reason === 'insufficient_funds') {
+        this.maybeNotifyOutOfFunds();
+      }
+
       // Emit failure event
       this.emitUploadProgress(upload.id, 0, 'failed', upload.error);
     }
+  }
+
+  /**
+   * MONEY-17: fire the actionable "you've used your free storage / top up" toast
+   * exactly once per out-of-funds episode. It reuses the SAME `turboBalanceLow`
+   * flag as the UX-36 low-balance nudge, so the projected-low warning and the
+   * actual out-of-funds rejection are ONE anti-spam episode — they never
+   * double-notify, and the flag re-arms on recovery (resumeUploadsBlockedOnFunds
+   * clears it when funds arrive). Gated on notificationsEnabled inside the
+   * notification service.
+   */
+  private maybeNotifyOutOfFunds(): void {
+    if (this.turboBalanceLow) {
+      return; // already notified for this low/out-of-funds episode
+    }
+    this.turboBalanceLow = true;
+    try {
+      notificationService.notifyOutOfFreeStorage();
+    } catch (notifyError) {
+      console.error('MONEY-17: failed to show out-of-funds notification:', notifyError);
+    }
+  }
+
+  /**
+   * MONEY-17 auto-resume: when credits/quota arrive (wired to the FEAT-8
+   * post-top-up path — main.ts's payment-completed handler), re-queue every
+   * upload that was paused for funds. This is the ONLY automatic retrigger of a
+   * funds-blocked upload: it fires on a real funds event, never on a sync tick,
+   * so an exhausted quota is never hammered in a tight loop (anti-infinite-retry).
+   *
+   * Each candidate passes the MONEY-2 retry-admission guard (never re-queue a row
+   * that's in-flight, queued, or already charged) before being reset to `pending`
+   * with errorReason cleared and handed back to the queue — where the normal
+   * uploadFile path (MONEY-10 re-stat, MONEY-2 checkpoints) runs again. Returns
+   * the number of uploads resumed. Best-effort and self-contained: it never
+   * throws out to the caller (a payment handler must not fail on this).
+   */
+  async resumeUploadsBlockedOnFunds(): Promise<number> {
+    let resumed = 0;
+    try {
+      const blocked = await this.databaseManager.getFundsBlockedUploads();
+      for (const upload of blocked) {
+        const guard = isRetryAllowed({
+          dbStatus: upload.status,
+          queueStatus: this.getQueueEntryStatus(upload.id),
+          cancellationPending: this.isUploadCancellationPending(upload.id),
+          hasChargeEvidence: !!(upload.dataTxId || upload.fileId),
+        });
+        if (!guard.allowed) {
+          console.warn(`MONEY-17: not resuming funds-blocked upload ${upload.id}: ${guard.reason}`);
+          continue;
+        }
+
+        // Clear the recoverable marker + error and return it to the queue.
+        await this.databaseManager.updateUpload(upload.id, {
+          status: 'pending',
+          progress: 0,
+          error: undefined,
+          errorReason: undefined,
+        });
+        upload.status = 'pending';
+        upload.progress = 0;
+        upload.error = undefined;
+        upload.errorReason = undefined;
+        this.addToUploadQueue(upload);
+        resumed++;
+      }
+    } catch (error) {
+      console.error('MONEY-17: failed to resume funds-blocked uploads:', error);
+      return resumed;
+    }
+
+    if (resumed > 0) {
+      // Funds arrived — re-arm the out-of-funds/low-balance nudge so a later
+      // shortfall notifies again, and let the UI refresh the queue.
+      this.turboBalanceLow = false;
+      console.log(`MONEY-17: resumed ${resumed} upload(s) paused for credits/quota.`);
+      this.notifyRenderer('sync:pending-uploads-updated');
+    }
+    return resumed;
   }
 
   /**
@@ -3492,27 +3602,33 @@ export class SyncManager {
             console.error('Retry failed:', retryError);
             errorMessage = 'Upload failed after retry. Please ensure the parent folder exists on ArDrive.';
           }
-        } else if (error.message.includes('insufficient')) {
-          // Check if this was supposed to be a free upload
-          const isFreeWithTurbo = upload.uploadMethod === 'turbo' && this.costCalculator.isFreeWithTurbo(upload.fileSize);
-          if (isFreeWithTurbo) {
-            errorMessage = `Upload failed: This file (${upload.fileSize} bytes) should be FREE with Turbo, but ArDrive reported insufficient balance. This may be a configuration issue.`;
-            console.error('FREE UPLOAD FAILED:', {
-              fileName: upload.fileName,
-              fileSize: upload.fileSize,
-              uploadMethod: upload.uploadMethod,
-              error: error.message
-            });
-          } else {
-            errorMessage = 'Upload failed: Insufficient balance for transaction.';
-          }
-        } else if (error.message.includes('network')) {
-          errorMessage = 'Upload failed: Network error. Please check your internet connection.';
         } else {
-          errorMessage = error.message;
+          // MONEY-17: classify the rejection through the ONE centralized helper
+          // (no scattered string-matches). A funds/free-quota rejection is NORMAL
+          // now that the free tier is a cumulative quota (not per-file size), so a
+          // supposedly-FREE small file CAN be turned away once the quota is spent
+          // — that is out-of-funds, NOT the old "configuration issue" glitch.
+          const classification = classifyUploadError(error);
+          if (classification.reason === 'insufficient_funds') {
+            const isFreeWithTurbo =
+              upload.uploadMethod === 'turbo' && this.costCalculator.isFreeWithTurbo(upload.fileSize);
+            // Honest + actionable copy (replaces the misleading FREE/config line).
+            errorMessage = outOfFundsMessage(isFreeWithTurbo);
+            console.warn(
+              `MONEY-17: upload "${upload.fileName}" (${upload.fileSize} bytes, free-tier=${isFreeWithTurbo}) ` +
+                `rejected for funds/quota — routing to the recoverable paused-for-credits state.`
+            );
+            // Carry the decided reason out so uploadFile records a RECOVERABLE
+            // insufficient_funds row (auto-resumed on top-up), not a dead failure.
+            throw new ClassifiedUploadError(errorMessage, 'insufficient_funds', true);
+          } else if (classification.reason === 'network') {
+            errorMessage = 'Upload failed: Network error. Please check your internet connection.';
+          } else {
+            errorMessage = error.message;
+          }
         }
       }
-      
+
       throw new Error(errorMessage);
     }
   }

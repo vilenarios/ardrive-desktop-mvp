@@ -50,6 +50,14 @@ export interface AppConfig {
   autoSyncEnabled?: boolean;
 }
 
+/**
+ * MONEY-17: WHY an upload failed, at recovery granularity. Shared vocabulary
+ * between the classifier (src/main/upload-error-classifier.ts), the uploads
+ * DB row, and the resume logic. 'insufficient_funds' is the RECOVERABLE
+ * payment/free-quota rejection; the others are terminal.
+ */
+export type UploadErrorReason = 'insufficient_funds' | 'network' | 'error';
+
 export interface DriveSyncMapping {
   id: string;                    // Unique mapping ID
   driveId: string;              // ArDrive ID
@@ -124,6 +132,13 @@ export interface FileUpload {
   // (in-memory only; not persisted as an uploads column).
   existingArfsFileId?: string;
   error?: string;
+  // MONEY-17: WHY the upload failed, at recovery granularity. 'insufficient_funds'
+  // marks a payment/free-quota rejection that is RECOVERABLE — it stays a first-
+  // class paused-for-credits record (distinguishable from a generic terminal
+  // failure and from user-cancel/oversize) and is auto-resumed when credits/quota
+  // arrive. Persisted as the nullable `errorReason` uploads column (migration v8);
+  // absent/null on success and on pre-MONEY-17 rows.
+  errorReason?: UploadErrorReason;
   createdAt: Date;
   completedAt?: Date;
 }

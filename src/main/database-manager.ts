@@ -305,11 +305,7 @@ export class DatabaseManager {
         if (err) {
           reject(err);
         } else {
-          const uploads = rows.map(row => ({
-            ...row,
-            createdAt: new Date(row.createdAt),
-            completedAt: row.completedAt ? new Date(row.completedAt) : undefined
-          }));
+          const uploads = rows.map(row => this.normalizeUploadRow(row));
           resolve(uploads);
         }
       });
@@ -319,24 +315,59 @@ export class DatabaseManager {
   async getUploadsByStatus(status: string): Promise<FileUpload[]> {
     return new Promise((resolve, reject) => {
       const sql = `
-        SELECT * FROM uploads 
+        SELECT * FROM uploads
         WHERE status = ?
         ORDER BY createdAt DESC
       `;
-      
+
       this.db!.all(sql, [status], (err, rows: any[]) => {
         if (err) {
           reject(err);
         } else {
-          const uploads = rows.map(row => ({
-            ...row,
-            createdAt: new Date(row.createdAt),
-            completedAt: row.completedAt ? new Date(row.completedAt) : undefined
-          }));
+          const uploads = rows.map(row => this.normalizeUploadRow(row));
           resolve(uploads);
         }
       });
     });
+  }
+
+  // MONEY-17: uploads paused for credits/quota — a funds/quota rejection is
+  // recorded as a terminal-shaped `failed` row (so existing failed/activity UI
+  // shows it) but tagged errorReason='insufficient_funds' so it is DISTINGUISHABLE
+  // from a generic failure and can be AUTO-RESUMED when credits/quota arrive.
+  // The resume trigger (post-top-up) queries exactly these rows. Indexed by the
+  // uploads status index; the reason is filtered in SQL so the caller never sees
+  // a generic failure. errorReason is normalized at the boundary (CLAUDE.md trap
+  // #6: sqlite returns the unset column as null, not undefined).
+  async getFundsBlockedUploads(): Promise<FileUpload[]> {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT * FROM uploads
+        WHERE status = 'failed' AND errorReason = 'insufficient_funds'
+        ORDER BY createdAt DESC
+      `;
+
+      this.db!.all(sql, (err, rows: any[]) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows.map(row => this.normalizeUploadRow(row)));
+        }
+      });
+    });
+  }
+
+  // Shared uploads-row boundary normalization. Dates are rebuilt from their
+  // stored timestamps; errorReason (nullable TEXT, MONEY-17) collapses the
+  // sqlite `null` for an unset column to `undefined` so the FileUpload shape
+  // matches its type and strict-equality consumers behave (CLAUDE.md trap #6).
+  private normalizeUploadRow(row: any): FileUpload {
+    return {
+      ...row,
+      errorReason: row.errorReason ?? undefined,
+      createdAt: new Date(row.createdAt),
+      completedAt: row.completedAt ? new Date(row.completedAt) : undefined,
+    };
   }
 
   // Pending Upload Management

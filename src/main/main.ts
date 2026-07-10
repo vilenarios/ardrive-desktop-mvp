@@ -3233,6 +3233,21 @@ class ArDriveApp {
             .catch((refreshError) => {
               console.error('[payment] Failed to refresh wallet info after payment:', refreshError);
             });
+
+          // MONEY-17: credits just arrived — auto-resume any uploads that were
+          // paused for funds/quota. This is the FEAT-8 post-top-up hook and the
+          // ONLY automatic retrigger of a funds-blocked upload (never a sync
+          // tick), so an exhausted quota is never retried in a tight loop.
+          // Strictly best-effort: a payment SUCCESS must never be masked by a
+          // resume hiccup, so guard the call itself (sync throw) AND the promise.
+          try {
+            const resume = this.syncManager?.resumeUploadsBlockedOnFunds();
+            Promise.resolve(resume).catch((resumeError) => {
+              console.error('[payment] MONEY-17 resume after top-up failed:', resumeError);
+            });
+          } catch (resumeError) {
+            console.error('[payment] MONEY-17 resume after top-up threw:', resumeError);
+          }
         };
 
         const settleCancel = () => {
