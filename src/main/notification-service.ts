@@ -178,6 +178,23 @@ class NotificationService {
     );
   }
 
+  /**
+   * MONEY-17: an upload was REJECTED for funds/free-quota (not merely projected
+   * to be low — actually turned away by Turbo). Under the cumulative free-tier
+   * model a small "free" file can hit this once the quota is spent, so the copy
+   * is honest ("used your free storage") and actionable — clicking opens the
+   * top-up flow (the same UX-36 navigate:'top-up' CTA). Anti-spam (fire once per
+   * out-of-funds episode, re-arm on recovery) is the CALLER's responsibility
+   * (SyncManager reuses the turboBalanceLow flag); this only renders the toast.
+   */
+  notifyOutOfFreeStorage(): void {
+    this.show(
+      "You've used your free storage",
+      'Top up $5 to get 10 MB free every month, or add credits to keep uploading.',
+      { type: 'navigate', target: 'top-up' }
+    );
+  }
+
   private openFolderOrFocus(folderPath?: string): NotificationAction {
     return folderPath ? { type: 'open-folder', path: folderPath } : { type: 'focus' };
   }

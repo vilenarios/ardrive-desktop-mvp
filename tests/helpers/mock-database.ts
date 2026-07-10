@@ -17,6 +17,8 @@ export class MockDatabaseManager {
   public getUploadHistory = vi.fn();
   public updateUploadStatus = vi.fn();
   public getUploads = vi.fn();
+  public getUploadsByStatus = vi.fn();
+  public getFundsBlockedUploads = vi.fn();
   public addUpload = vi.fn();
   public updateUpload = vi.fn();
   public removeUpload = vi.fn();
@@ -66,6 +68,8 @@ export class MockDatabaseManager {
     this.getPendingUploads.mockResolvedValue([]);
     this.getUploadHistory.mockResolvedValue([]);
     this.getUploads.mockResolvedValue([]);
+    this.getUploadsByStatus.mockResolvedValue([]);
+    this.getFundsBlockedUploads.mockResolvedValue([]);
     this.getDownloads.mockResolvedValue([]);
     this.getProcessedFiles.mockResolvedValue([]);
     this.getLatestFileVersion.mockResolvedValue(null);

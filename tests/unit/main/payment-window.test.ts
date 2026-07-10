@@ -99,6 +99,9 @@ const h = vi.hoisted(() => {
     setArDrive: vi.fn(),
     setSyncFolder: vi.fn(),
     startSync: vi.fn().mockResolvedValue(true),
+    // MONEY-17: the payment-completed handler fires this post-top-up to resume
+    // funds-blocked uploads. Best-effort in production; stubbed here.
+    resumeUploadsBlockedOnFunds: vi.fn().mockResolvedValue(0),
   };
 
   return { handlers, MockBrowserWindow, databaseManager, turboManager, walletManagerInstance, syncManagerInstance };

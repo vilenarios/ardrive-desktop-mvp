@@ -385,6 +385,21 @@ export const MIGRATIONS: readonly Migration[] = [
           CREATE INDEX IF NOT EXISTS idx_metadata_mapping_sync_status ON drive_metadata_cache(mappingId, syncStatus);
 `,
   },
+  {
+    version: 8,
+    description:
+      "errorReason column on uploads (MONEY-17): first-class 'insufficient_funds' marker for a recoverable, auto-resumable out-of-funds/quota rejection",
+    // Additive nullable column (like v5's isHidden). Existing rows default to
+    // NULL — i.e. no recovery reason — which is correct: a pre-MONEY-17 failed
+    // row is a generic terminal failure, not a paused-for-credits one. Only rows
+    // whose upload was rejected for funds/quota carry 'insufficient_funds', which
+    // the resume trigger keys off. No CHECK (uploads.status itself is un-CHECKed
+    // pending INFRA-7; a free-text reason column matches that and avoids a
+    // table rebuild).
+    sql: `
+          ALTER TABLE uploads ADD COLUMN errorReason TEXT;
+`,
+  },
 ];
 
 // Derived from the list so it can never drift from the migrations actually
