@@ -11,6 +11,7 @@ import { driveKeyManager } from '../drive-key-manager';
 import { runWithGatewayFailover } from './gateway-failover';
 import { incrementalSyncService } from './incremental-sync-service';
 import { notificationService } from '../notification-service';
+import { overlayStatusPublisher, OVERLAYS_ENABLED } from '../overlay-status-publisher';
 
 export class DownloadManager {
   private isDownloading = false;
@@ -240,6 +241,17 @@ export class DownloadManager {
     } catch (error) {
       // Window was destroyed, ignore
       console.debug('Cannot emit file state change - window not available');
+    }
+
+    // FEAT-9 Phase 0: this is the central emit site for all real download
+    // state transitions (queued/downloading/synced/failed) - the two sites in
+    // main.ts only cover the cloud_only toggle. No-op while OVERLAYS_ENABLED
+    // is false; errors are swallowed so a badge-snapshot hiccup can never
+    // interrupt an actual download.
+    if (OVERLAYS_ENABLED) {
+      overlayStatusPublisher.updateFileStatus(fileId, syncStatus).catch((error) => {
+        console.debug('[OverlayStatusPublisher] updateFileStatus failed:', error);
+      });
     }
   }
 
