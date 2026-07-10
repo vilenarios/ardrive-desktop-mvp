@@ -89,9 +89,9 @@ export interface OverlaySink {
 
 /** Default sink: does nothing. Used whenever no native transport is wired up. */
 export class NoopOverlaySink implements OverlaySink {
-  // Deliberately ignores its arguments - fewer params than the interface
-  // declares is a valid implementation in TS/JS (callers never rely on arity).
-  applyBadges(): void {
+  // Interface-conformant signature (underscore-prefixed so lint doesn't flag the
+  // unused params); the no-op deliberately ignores them.
+  applyBadges(_dirPath: string, _entries: Map<string, OverlayBucket>): void {
     // Intentionally inert - Phase 0 has no native transport.
   }
   clear(): void {
