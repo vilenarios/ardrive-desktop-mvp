@@ -135,7 +135,9 @@ describe.skipIf(!DatabaseSync)('SYNC-16 — syncStatus=failed on a real drive_me
     const dm = managerOn(engine);
     await (dm as any).runMigrations();
     expect(userVersion(engine)).toBe(CURRENT_SCHEMA_VERSION);
-    expect(CURRENT_SCHEMA_VERSION).toBe(7);
+    // v7 (the SYNC-16 CHECK-widening rebuild) must exist; don't pin the absolute
+    // schema version — later migrations (e.g. v8 errorReason) legitimately bump it.
+    expect(CURRENT_SCHEMA_VERSION).toBeGreaterThanOrEqual(7);
     seedDbShapedRow(engine, 'downloading');
 
     await expect(
