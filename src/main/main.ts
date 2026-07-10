@@ -18,6 +18,7 @@ import { SecureWalletManager } from './wallet-manager-secure';
 import { configManager } from './config-manager';
 import { SyncManager } from './sync-manager';
 import { databaseManager } from './database-manager';
+import { overlayStatusPublisher, OVERLAYS_ENABLED } from './overlay-status-publisher';
 import { turboManager } from './turbo-manager';
 import { FileUpload, PendingUpload } from '../types';
 import { IpcResult } from '../types/ipc';
@@ -185,6 +186,13 @@ class ArDriveApp {
       if (activeProfile) {
         console.log('🔵 [AUTO-SYNC] Setting up database for active profile:', activeProfile.id);
         await databaseManager.setActiveProfile(activeProfile.id);
+
+        // FEAT-9 Phase 0: seed the overlay-badge snapshot for the profile
+        // whose DB we just opened. No-op (no DB read) while OVERLAYS_ENABLED
+        // is false.
+        if (OVERLAYS_ENABLED) {
+          await overlayStatusPublisher.hydrateFromDb();
+        }
       }
       
       const config = await configManager.getConfig();
@@ -1067,7 +1075,16 @@ class ArDriveApp {
           await this.syncManager.stopAndClearAllState();
         }
         
-        return await this.walletManager.switchProfile(validatedProfileId, validatedPassword);
+        const switched = await this.walletManager.switchProfile(validatedProfileId, validatedPassword);
+
+        // FEAT-9 Phase 0: the new profile means a freshly-opened DB (SEC-3
+        // isolation), so re-seed the overlay-badge snapshot from it. No-op
+        // (no DB read) while OVERLAYS_ENABLED is false.
+        if (switched && OVERLAYS_ENABLED) {
+          await overlayStatusPublisher.hydrateFromDb();
+        }
+
+        return switched;
       } catch (error) {
         if (error instanceof ValidationError) {
           console.error('Profile switch validation failed:', error.message);
@@ -2224,6 +2241,15 @@ class ArDriveApp {
           syncStatus: preference === 'cloud_only' ? 'cloud_only' : undefined
         });
       }
+      // FEAT-9 Phase 0: keep the overlay-badge snapshot in lockstep with the
+      // same event the renderer just received. No-op while OVERLAYS_ENABLED
+      // is false.
+      if (OVERLAYS_ENABLED) {
+        await overlayStatusPublisher.updateFileStatus(
+          fileId,
+          preference === 'cloud_only' ? 'cloud_only' : undefined
+        );
+      }
     }));
 
     ipcMain.handle('sync:queue-download', envelopeHandler(async (_, fileId: string, priority?: number) => {
@@ -2250,6 +2276,10 @@ class ArDriveApp {
       // Emit file state change event
       if (this.mainWindow) {
         this.mainWindow.webContents.send('sync:file-state-changed', { fileId, syncStatus: 'cloud_only' });
+      }
+      // FEAT-9 Phase 0: no-op while OVERLAYS_ENABLED is false.
+      if (OVERLAYS_ENABLED) {
+        await overlayStatusPublisher.updateFileStatus(fileId, 'cloud_only');
       }
     }));
 

@@ -1669,6 +1669,43 @@ export class DatabaseManager {
     });
   }
 
+  // FEAT-9 Phase 0: single-row lookup by fileId (unique in the schema), used by
+  // OverlayStatusPublisher to resolve fileId -> localPath off the same
+  // `sync:file-state-changed` payload the renderer already receives. Read-only;
+  // returns null (not a throw) when the file isn't cached yet.
+  async getDriveMetadataByFileId(fileId: string): Promise<any | null> {
+    return new Promise((resolve, reject) => {
+      const sql = `SELECT * FROM drive_metadata_cache WHERE fileId = ? LIMIT 1`;
+
+      this.db!.get(sql, [fileId], (err, row) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row || null);
+        }
+      });
+    });
+  }
+
+  // FEAT-9 Phase 0: full fileId/localPath/syncStatus projection across every
+  // drive mapping (not scoped to the active one - overlay badges apply to
+  // every locally-synced folder), used to seed OverlayStatusPublisher's
+  // in-memory snapshot on startup / profile switch. Rows with no localPath
+  // (never downloaded / cloud_only) are excluded - nothing to badge on disk.
+  async getAllDriveMetadataWithLocalPath(): Promise<Array<{ fileId: string; localPath: string; syncStatus: string | null }>> {
+    return new Promise((resolve, reject) => {
+      const sql = `SELECT fileId, localPath, syncStatus FROM drive_metadata_cache WHERE localPath IS NOT NULL`;
+
+      this.db!.all(sql, [], (err, rows) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve((rows as any[]) || []);
+        }
+      });
+    });
+  }
+
   async updateDriveMetadataStatus(fileId: string, status: string, localFileExists: boolean): Promise<void> {
     return new Promise((resolve, reject) => {
       const sql = `
