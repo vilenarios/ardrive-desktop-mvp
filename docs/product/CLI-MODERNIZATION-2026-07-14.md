@@ -48,5 +48,34 @@ Four parallel read-only analyses (full detail in `research/01..04-*.md`). This s
 
 **Independent of the CLI: core-js `GatewayAPI` client-timeout fix** — add a bounded per-request timeout so a slow gateway fails cleanly instead of hanging ~127s. This is the real mitigation for the Discord symptom class and helps desktop + CLI + web alike. Tracked as a core-js candidate (authorized repo).
 
-## Discord reply (draft — triage, not a version promise)
-> That hostname isn't on the CLI's upload path by default — uploads go to `upload.ardrive.io` (with `--turbo`) or your configured `--gateway`, and reads/GraphQL go to whatever gateway you've set. If you're seeing `turbo-gateway.com` specifically, do you have `--gateway https://turbo-gateway.com` or `ARWEAVE_GATEWAY` set? Both `turbo-gateway.com` and `upload.ardrive.io` are healthy right now, so it looks transient or config-related. Can you share: your exact command, `echo $ARWEAVE_GATEWAY`, whether you used `--turbo`, the file size, and whether the same upload succeeds with `--gateway https://arweave.net`? That'll pin it down fast.
+---
+
+## UPDATE 2026-07-14 — VERIFIED root cause (supersedes the triage guesses above)
+
+After the user clarified *"with no gateway flag it hasn't worked for some time,"* we **reproduced the hang** and instrumented the real CLI (axios interceptors, per-request timing). Full evidence: [research/05-CLI-HANG-ROOTCAUSE.md](./research/05-CLI-HANG-ROOTCAUSE.md). The "hang" is **three separable causes** — and it is a genuine client-side bug, **not** user misconfiguration and **not** a specific-gateway outage (individual endpoints on every gateway respond in <0.5s):
+
+- **A — WSL2 `/mnt/c` startup tax (~70s; a TEST-ENV artifact, not the user's bug).** `require('ardrive-core-js')` alone took 73s over the 9p mount (36k `.js` files, eager-loaded). On a native FS this is ~1–3s. This is why *our* first repro "hung on every gateway" — it was startup before any HTTP. Not the user's production issue.
+- **B — THE production bug: arweave.net 429 → infinite loop.** core-js `GatewayAPI.retryRequestUntilMaxRetries` paused **60s per HTTP 429 without incrementing any counter** → looped forever on a gateway that rate-limits every request (arweave.net now does, for CLI traffic). This is the "hasn't worked for some time."
+- **C — slow ar.io data-tx fetches.** `GET /{txid}` 302-redirects to a per-tx sandbox subdomain serving in 12–24s+, and there was **no axios timeout** → multi-entity drives accumulate minutes.
+- **NOT the ClickHouse `TOO_MANY_ROWS` row cap** — every query core-js *actually* sends returned 200 + valid data in <0.5s. (An earlier hand-crafted broad query tripped the cap; core-js's own scoped queries don't. Corrected.)
+
+### The fix: two-part, scoped apart
+
+**1. Robustness (stop the hang) — shipped in core-js PR #278 (`439df56`), verified + e2e-tested, owner-gated merge.**
+   - **Bounded 429 retries** (cause B): a *separate* `rateLimitRetries` counter (default 5, configurable) — a persistent 429 now fails with a clear `"Gateway is rate limiting… try a different --gateway or wait and retry"` instead of hanging. The error-retry budget stays independent, so **transient-throttle tolerance is preserved (no regression)** — our desktop app + on-chain test harness that deliberately wait out arweave.net 429s still work.
+   - **Bounded request timeout** (cause C): axios `timeout` so a slow data fetch fails cleanly.
+   - TOO_MANY_ROWS fail-fast kept as harmless defense-in-depth.
+   - **E2E proof** (real local 429 server, real axios/timers): persistent-429 → clean failure in **806ms** (was infinite); 429×2→200 control → **succeeds in 444ms** (no regression). Full core-js suite +5 tests, no regressions.
+
+**2. Functionality (make it actually *work*) — OPEN item, needs Phil's product decision (see below).** #278 converts the hang into a fast clean error, but a user pointed at a rate-limiting gateway still can't upload. Restoring that is a gateway-strategy change.
+
+### OPEN — Gateway strategy decision (CLI-2 / a CORE item)
+The real "make it work again" fix, needing a product call:
+- **The v4.0.0 default-gateway flip** (`arweave.net → ardrive.net`, an ar.io gateway) was deliberate — but ar.io gateways serve GraphQL fast yet data-tx slowly, and arweave.net now 429s CLI traffic. Neither default is clearly good. **Decision needed: what should the CLI default to?**
+- **Gateway fail-over on persistent 429/slow** — core-js `GatewayAPI` is single-gateway; desktop got fail-over at a higher layer (SYNC-23). Adding fail-over *in* core-js would help CLI + desktop + web. Bigger change; recommend as its own core-js item.
+- **Lazy-load CLI commands** (startup, cause A) — low priority; helps even on native FS.
+
+Recommendation: merge #278 (robustness) now; take the gateway-strategy decision as a separate tracked item.
+
+## Discord reply (UPDATED — it's a known client bug we're fixing, not their config)
+> Thanks for the detail — you're right, and it's on us, not your setup. It's a known client-side bug in the CLI's gateway layer: when a gateway rate-limits (HTTP 429), the CLI paused 60s and retried **without ever giving up**, so it hangs indefinitely instead of erroring — and arweave.net has been rate-limiting CLI traffic, which is why "no `--gateway` flag" stopped working. We've got a fix up in `ardrive-core-js` (bounds the retries + adds a request timeout, so it fails fast with a clear message instead of hanging) landing in the next release. **Immediate workaround:** try `--gateway https://turbo-gateway.com` (or another ar.io gateway) — GraphQL there is fast; large drives may still be slow on data fetches, which the same fix addresses. If you can share your exact command + drive size, I'll confirm it matches what we fixed.
