@@ -139,6 +139,24 @@ export class ConfigManager {
     await this.saveGlobalConfig();
   }
 
+  // CORE-10: the GraphQL page size (`first:` argument) ardrive-core-js uses
+  // for every paged GraphQL walk (transaction listing, incremental sync,
+  // snapshot listing). Device/app-level global config, like `gatewayHost` —
+  // applies before any profile is active. Returns the raw configured value
+  // (may be undefined); the default (1000, the ar.io gateway max) and the
+  // bridge into core-js's OWN setGqlPageSize/getGqlPageSize are handled by
+  // src/main/gql-page-size.ts, the single resolution point. Named
+  // getConfiguredGqlPageSize/setConfiguredGqlPageSize (not getGqlPageSize/
+  // setGqlPageSize) so this never collides with core-js's same-named exports.
+  getConfiguredGqlPageSize(): number | undefined {
+    return this.globalConfig.gqlPageSize;
+  }
+
+  async setConfiguredGqlPageSize(pageSize: number): Promise<void> {
+    this.globalConfig.gqlPageSize = pageSize;
+    await this.saveGlobalConfig();
+  }
+
   // Legacy clear methods removed - use removeDriveMapping instead
 
   // Migration removed - legacy fields no longer supported

@@ -250,6 +250,13 @@ const api = {
     // primary; defaults to [perma.online, arweave.net]). DATA fetches only.
     setGatewayFallbacks: (hosts: string[]): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('config:set-gateway-fallbacks', hosts),
+    // CORE-10: GraphQL page size ardrive-core-js uses per paged request
+    // (defaults to 1000, the ar.io gateway max). Lower it if the configured
+    // gateway rejects large page requests (e.g. Goldsky).
+    getGqlPageSize: (): Promise<IpcResult<number>> =>
+      ipcRenderer.invoke('config:get-gql-page-size'),
+    setGqlPageSize: (pageSize: number): Promise<IpcResult<number>> =>
+      ipcRenderer.invoke('config:set-gql-page-size', pageSize),
     // UX-29: native desktop notifications opt-out (device/app-level, default on).
     getNotificationsEnabled: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('config:get-notifications-enabled'),
