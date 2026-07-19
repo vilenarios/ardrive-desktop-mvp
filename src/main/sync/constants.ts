@@ -9,16 +9,14 @@ import { TURBO_FREE_SIZE_LIMIT } from '../../utils/turbo-utils';
  * and every user-facing "too big" message derive from THIS constant so the two
  * can never drift apart.
  *
- * Value is 100 MiB — matching the CLAUDE.md / README / in-code claim. The old
- * 500 MiB CostCalculator constant silently contradicted every one of those
- * (audit §2.11), which is exactly the dishonesty SYNC-6 removes.
- *
- * FOLLOW-UP: raising this to 2 GiB (D-014's eventual target) is blocked on
- * SYNC-10 (streaming hashing) — today the sync path reads whole files into
- * memory up to 3× per event, which is fatal at 2 GiB. Until SYNC-10 lands the
- * honest beta cap stays 100 MiB.
+ * Value is 2 GiB (D-014's eventual target), matching the ArDrive web app's
+ * upload ceiling. Raised from the interim 100 MiB now that SYNC-10 (streaming
+ * hashing + indexed processed_files lookups) has landed — the sync path no
+ * longer reads whole files into memory per event, so hashing/dedup at this
+ * size keeps memory flat. Downloads have no such cap (SYNC-6) and must keep
+ * streaming arbitrarily large files.
  */
-export const MAX_SYNC_FILE_SIZE_BYTES = 100 * 1024 * 1024; // 100 MiB
+export const MAX_SYNC_FILE_SIZE_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
 
 export const SYNC_CONSTANTS = {
   // Single source of truth lives in utils/turbo-utils (107520 bytes / 105 KiB).

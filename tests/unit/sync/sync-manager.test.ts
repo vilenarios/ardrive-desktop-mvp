@@ -70,6 +70,22 @@ vi.mock('fs/promises', () => ({
   stat: vi.fn().mockResolvedValue({ size: 0, isFile: () => true, isDirectory: () => false }),
 }));
 
+// SYNC-10: sync-manager.ts now hashes files via the real streaming utility
+// (fs.createReadStream), which would try to open the (non-existent, mocked)
+// test file paths on the REAL filesystem. These tests are about the sync
+// engine's dedup/business logic, not the hash algorithm itself (that's
+// covered directly, on real files, in streaming-hash.test.ts) — so hash the
+// SAME mocked `fs/promises.readFile` content the old inline
+// `readFile + createHash` code used to, preserving identical behavior.
+vi.mock('@/main/sync/streaming-hash', () => ({
+  hashFileStream: vi.fn(async (filePath: string) => {
+    const fsp = await import('fs/promises');
+    const crypto = await import('crypto');
+    const content = await fsp.readFile(filePath);
+    return crypto.createHash('sha256').update(content as any).digest('hex');
+  }),
+}));
+
 describe('SyncManager', () => {
   let syncManager: SyncManager;
   let mockDatabaseManager: any;
@@ -894,7 +910,7 @@ describe('SyncManager', () => {
   describe('File-size cap is surfaced, not silently skipped (SYNC-6)', () => {
     const oversizeName = 'big.zip';
     const filePath = `${testSyncPath}/${oversizeName}`;
-    const OVERSIZE_BYTES = 240 * 1024 * 1024; // 240 MiB — comfortably over the cap
+    const OVERSIZE_BYTES = 2200 * 1024 * 1024; // 2200 MiB — comfortably over the 2 GiB (2048 MiB) cap
     let notifySpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(async () => {
@@ -941,8 +957,8 @@ describe('SyncManager', () => {
       expect(notifySpy).toHaveBeenCalledTimes(1);
       const message = notifySpy.mock.calls[0][0] as string;
       expect(message).toContain(oversizeName);
-      expect(message).toContain('240 MB');
-      expect(message).toContain('100 MB');
+      expect(message).toContain('2200 MB');
+      expect(message).toContain('2048 MB');
       expect(message.toLowerCase()).toContain("won't sync");
 
       // 2) Persistent surface: a 'failed' uploads row carrying the same honest reason.
@@ -985,7 +1001,7 @@ describe('SyncManager', () => {
 
       expect(handled).toBe(true); // caller stops before any upload work
       expect(upload.status).toBe('failed');
-      expect(upload.error).toContain('100 MB');
+      expect(upload.error).toContain('2048 MB');
       expect(mockDatabaseManager.updateUpload).toHaveBeenCalledWith(
         'upload-oversize-1',
         expect.objectContaining({ status: 'failed' })
@@ -1023,7 +1039,7 @@ describe('SyncManager', () => {
       // the check derives from the constant (not a separate magic number).
       expect(calc.isFileTooBig(MAX_SYNC_FILE_SIZE_BYTES)).toBe(false);
       expect(calc.isFileTooBig(MAX_SYNC_FILE_SIZE_BYTES + 1)).toBe(true);
-      expect(MAX_SYNC_FILE_SIZE_BYTES).toBe(100 * 1024 * 1024);
+      expect(MAX_SYNC_FILE_SIZE_BYTES).toBe(2 * 1024 * 1024 * 1024); // SYNC-10-gated 2 GiB cap (D-014)
     });
   });
 

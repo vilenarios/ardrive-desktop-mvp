@@ -324,7 +324,7 @@ npm run typecheck -- --watch
 **Error Scenarios:**
 - [ ] Invalid wallet files
 - [ ] Network disconnection
-- [ ] Large file handling (>100MB)
+- [ ] Large file handling (>2GiB, over the upload cap)
 - [ ] Insufficient AR tokens
 - [ ] Corrupted file detection
 

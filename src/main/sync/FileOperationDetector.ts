@@ -1,8 +1,8 @@
 import * as fs from 'fs/promises';
 import { Stats } from 'fs';
 import * as path from 'path';
-import * as crypto from 'crypto';
 import { DatabaseManager } from '../database-manager';
+import { hashFileStream } from './streaming-hash';
 
 export interface FileSnapshot {
   path: string;
@@ -552,10 +552,11 @@ export class FileOperationDetector {
       const timeout = setTimeout(() => {
         reject(new Error('Hash calculation timeout'));
       }, 5000); // 5 second timeout
-      
-      fs.readFile(filePath)
-        .then(content => {
-          const hash = crypto.createHash('sha256').update(content).digest('hex');
+
+      // SYNC-10: streamed — flat memory regardless of file size (was a
+      // whole-file fs.readFile + hash, fatal at multi-GB sizes).
+      hashFileStream(filePath)
+        .then(hash => {
           clearTimeout(timeout);
           resolve(hash);
         })

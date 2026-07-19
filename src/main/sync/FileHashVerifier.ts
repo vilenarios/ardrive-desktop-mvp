@@ -1,5 +1,4 @@
-import * as fs from 'fs/promises';
-import * as crypto from 'crypto';
+import { hashFileStream } from './streaming-hash';
 
 /**
  * Verifies file stability by checking if the hash remains consistent over time
@@ -23,10 +22,9 @@ export class FileHashVerifier {
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        // Calculate current hash
-        const content = await fs.readFile(filePath);
-        const currentHash = crypto.createHash('sha256').update(content).digest('hex');
-        
+        // Calculate current hash (SYNC-10: streamed — flat memory regardless of file size)
+        const currentHash = await hashFileStream(filePath);
+
         if (previousHash === currentHash) {
           stableCount++;
           if (stableCount >= requiredStableChecks) {
@@ -63,7 +61,6 @@ export class FileHashVerifier {
    * Quick hash calculation without stability checks
    */
   static async calculateHash(filePath: string): Promise<string> {
-    const content = await fs.readFile(filePath);
-    return crypto.createHash('sha256').update(content).digest('hex');
+    return hashFileStream(filePath);
   }
 }

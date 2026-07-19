@@ -21,6 +21,23 @@ vi.mock('crypto', () => ({
   randomUUID: vi.fn(() => 'mock-uuid-123')
 }));
 
+// SYNC-10: VersionManager.calculateFileHash now streams via
+// fs.createReadStream (the plain 'fs' module, unmocked here), which would try
+// to open the (non-existent, mocked) test file paths on the REAL filesystem.
+// Route the shared streaming-hash utility through the SAME mocked
+// fs/promises.readFile + crypto.createHash this file already configures, so
+// every existing assertion (mock-hash-123, readFile call args, rejection
+// propagation) keeps behaving exactly as it did with the old inline
+// `readFile + createHash` implementation.
+vi.mock('../../../src/main/sync/streaming-hash', () => ({
+  hashFileStream: vi.fn(async (filePath: string) => {
+    const fsp = await import('fs/promises');
+    const cryptoModule = await import('crypto');
+    const content = await fsp.readFile(filePath);
+    return cryptoModule.createHash('sha256').update(content as any).digest('hex') as unknown as string;
+  }),
+}));
+
 describe('VersionManager', () => {
   let versionManager: VersionManager;
   let mockDatabaseManager: Mocked<DatabaseManager>;

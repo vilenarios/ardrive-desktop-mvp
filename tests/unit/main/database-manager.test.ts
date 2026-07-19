@@ -190,6 +190,27 @@ describe('DatabaseManager', () => {
       expect(Array.isArray(result)).toBe(true);
     });
 
+    // SYNC-10: indexed single-row-shaped lookups (getProcessedFilesByHash /
+    // getProcessedFilesByPath) replace the per-file-event
+    // getProcessedFiles()-then-filter-in-JS pattern in sync-manager.ts /
+    // DownloadManager.ts. Pin that they query by the indexed column, not the
+    // unfiltered full-table SELECT.
+    it('getProcessedFilesByHash queries WHERE fileHash = ? (indexed column)', async () => {
+      const result = await databaseManager.getProcessedFilesByHash('abc123hash');
+      expect(Array.isArray(result)).toBe(true);
+      const [sql, params] = mockDbInstance.all.mock.calls[mockDbInstance.all.mock.calls.length - 1];
+      expect(sql).toContain('WHERE fileHash = ?');
+      expect(params).toEqual(['abc123hash']);
+    });
+
+    it('getProcessedFilesByPath queries WHERE localPath = ? (indexed column, SYNC-10 migration v9)', async () => {
+      const result = await databaseManager.getProcessedFilesByPath('/path/to/test.txt');
+      expect(Array.isArray(result)).toBe(true);
+      const [sql, params] = mockDbInstance.all.mock.calls[mockDbInstance.all.mock.calls.length - 1];
+      expect(sql).toContain('WHERE localPath = ?');
+      expect(params).toEqual(['/path/to/test.txt']);
+    });
+
     it('should remove a processed file', async () => {
       await expect(
         databaseManager.removeProcessedFile('abc123')

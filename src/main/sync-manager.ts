@@ -27,6 +27,7 @@ import { isRetryAllowed } from './utils/upload-retry-guard';
 import { summarizeArFSResult } from './utils/arfs-result-summary';
 import { retryWithBackoff, isNetworkDownError } from './sync/retry';
 import { resolveDrivePrivacyOrThrow } from './sync/drive-privacy';
+import { hashFileStream } from './sync/streaming-hash';
 // MONEY-14 single source for the Turbo free-tier boundary (107520 bytes).
 // MONEY-10 uses it to flag an approved upload that grew past it before execution.
 import { TURBO_FREE_SIZE_LIMIT } from '../utils/turbo-utils';
@@ -1209,9 +1210,9 @@ export class SyncManager {
       });
       
       // Add to processed files database to prevent re-upload
-      const content = await fs.readFile(filePath);
-      const hash = crypto.createHash('sha256').update(content).digest('hex');
-      
+      // SYNC-10: streamed — flat memory regardless of file size.
+      const hash = await hashFileStream(filePath);
+
       await this.databaseManager.addProcessedFile(
         hash,
         fileName,
@@ -1475,9 +1476,9 @@ export class SyncManager {
       });
       
       // Add to processed files database
-      const content = await fs.readFile(localFilePath);
-      const hash = crypto.createHash('sha256').update(content).digest('hex');
-      
+      // SYNC-10: streamed — flat memory regardless of file size.
+      const hash = await hashFileStream(localFilePath);
+
       await this.databaseManager.addProcessedFile(
         hash,
         fileName,
@@ -1782,19 +1783,20 @@ export class SyncManager {
       }
       
       // Update the processed files database with the real hash
-      const content = await fs.readFile(localFilePath);
-      const hash = crypto.createHash('sha256').update(content).digest('hex');
+      // SYNC-10: streamed — flat memory regardless of file size.
+      const hash = await hashFileStream(localFilePath);
       const stats = await fs.stat(localFilePath);
       const fileName = path.basename(localFilePath);
-      
+
       // First remove the placeholder entry
       try {
-        // We need to find the placeholder hash to remove it
-        const processedFiles = await this.databaseManager.getProcessedFiles();
-        const placeholderEntry = processedFiles.find(f => 
-          f.fileHash.startsWith('downloading-') && f.localPath === localFilePath
+        // We need to find the placeholder hash to remove it. SYNC-10: indexed
+        // by localPath instead of a getProcessedFiles() full-table scan.
+        const candidates = await this.databaseManager.getProcessedFilesByPath(localFilePath);
+        const placeholderEntry = candidates.find(f =>
+          f.fileHash.startsWith('downloading-')
         );
-        
+
         if (placeholderEntry) {
           await this.databaseManager.removeProcessedFile(placeholderEntry.fileHash);
           console.log(`Removed placeholder entry for ${localFilePath}`);
@@ -1802,15 +1804,18 @@ export class SyncManager {
       } catch (deleteError) {
         console.warn(`Failed to remove placeholder entry:`, deleteError);
       }
-      
+
       // First, remove any existing entries for this file (both by hash and path)
-      // This ensures we don't have duplicates with different sources
+      // This ensures we don't have duplicates with different sources.
+      // SYNC-10: two indexed lookups (fileHash, localPath) instead of a
+      // getProcessedFiles() full-table scan filtered in JS.
       try {
-        const existingEntries = await this.databaseManager.getProcessedFiles();
-        const toRemove = existingEntries.filter(f => 
-          f.fileHash === hash || f.localPath === localFilePath
-        );
-        
+        const [byHash, byPath] = await Promise.all([
+          this.databaseManager.getProcessedFilesByHash(hash),
+          this.databaseManager.getProcessedFilesByPath(localFilePath),
+        ]);
+        const toRemove = [...byHash, ...byPath];
+
         for (const entry of toRemove) {
           if (entry.fileHash !== hash || entry.source !== 'download') {
             await this.databaseManager.removeProcessedFile(entry.fileHash);
@@ -2756,22 +2761,28 @@ export class SyncManager {
       }
 
       // Check if we've already processed this file
-      const content = await fs.readFile(filePath);
-      const hash = crypto.createHash('sha256').update(content).digest('hex');
+      // SYNC-10: streamed — flat memory regardless of file size (was a
+      // whole-file fs.readFile + hash, fatal at multi-GB sizes).
+      const hash = await hashFileStream(filePath);
       const fileName = path.basename(filePath);
 
       console.log(`File hash check for ${fileName}:`);
       console.log(`  - Generated hash: ${hash.substring(0, 16)}... (full: ${hash})`);
       console.log(`  - File size: ${stats.size}`);
       console.log(`  - File path: ${filePath}`);
-      
+
       // SYNC-1: dedup must distinguish IDENTICAL content (hash match — skip)
       // from an EDIT (same path, different hash — must re-upload as a new
       // ArFS revision). The old `hash OR path` matching made every edited
       // file look "already uploaded/downloaded" and dead-ended it.
-      const processedFiles = await this.databaseManager.getProcessedFiles();
-      const matchingFiles = processedFiles.filter(f => f.fileHash === hash || f.localPath === filePath);
-      
+      // SYNC-10: two indexed lookups (fileHash, localPath) instead of a
+      // getProcessedFiles() full-table scan filtered in JS per file event.
+      const [filesByHash, filesByPath] = await Promise.all([
+        this.databaseManager.getProcessedFilesByHash(hash),
+        this.databaseManager.getProcessedFilesByPath(filePath),
+      ]);
+      const matchingFiles = [...filesByHash, ...filesByPath];
+
       const hashMatches = matchingFiles.filter(f => f.fileHash === hash);
       const hasPlaceholder = matchingFiles.some(f => f.fileHash.startsWith('downloading-'));
       const pathOnlyMatches = matchingFiles.filter(
@@ -2908,10 +2919,11 @@ export class SyncManager {
       // CRITICAL: Check if this exact CONTENT was previously downloaded BEFORE
       // adding to pending uploads. SYNC-1: match by hash only — a path match
       // with different content is an edit of a downloaded file and MUST
-      // re-upload.
-      const allProcessedFiles = await this.databaseManager.getProcessedFiles();
-      const downloadEntry = allProcessedFiles.find(f => 
-        f.fileHash === hash && f.source === 'download'
+      // re-upload. SYNC-10: indexed lookup by fileHash instead of a
+      // getProcessedFiles() full-table scan.
+      const hashMatchesForDownloadCheck = await this.databaseManager.getProcessedFilesByHash(hash);
+      const downloadEntry = hashMatchesForDownloadCheck.find(f =>
+        f.source === 'download'
       );
       
       if (downloadEntry) {
@@ -3971,8 +3983,8 @@ export class SyncManager {
       // watcher's dedup never re-detects and re-charges it (qa-gate finding:
       // skipping this left a retry-independent double-charge vector).
       try {
-        const content = await fs.readFile(upload.localPath);
-        const hash = crypto.createHash('sha256').update(content).digest('hex');
+        // SYNC-10: streamed — flat memory regardless of file size.
+        const hash = await hashFileStream(upload.localPath);
         await this.databaseManager.addProcessedFile(
           hash,
           upload.fileName,
@@ -4112,10 +4124,11 @@ export class SyncManager {
 
     // Update processed files database with the completed upload
     try {
-      const content = await fs.readFile(upload.localPath);
-      const hash = crypto.createHash('sha256').update(content).digest('hex');
+      // SYNC-10: streamed — flat memory regardless of file size.
+      const hash = await hashFileStream(upload.localPath);
       const stats = await fs.stat(upload.localPath);
-      
+
+
       await this.databaseManager.addProcessedFile(
         hash,
         path.basename(upload.localPath),
@@ -4565,10 +4578,11 @@ export class SyncManager {
   }
 
   // Helper method to calculate file hash
+  // SYNC-10: streamed — flat memory regardless of file size (was a
+  // whole-file fs.readFile + hash, fatal at multi-GB sizes).
   private async calculateFileHash(filePath: string): Promise<string> {
     try {
-      const content = await fs.readFile(filePath);
-      return crypto.createHash('sha256').update(content).digest('hex');
+      return await hashFileStream(filePath);
     } catch (error) {
       console.error(`Failed to calculate hash for ${filePath}:`, error);
       throw error;

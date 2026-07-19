@@ -70,7 +70,7 @@ A secure, multi-profile desktop application for syncing files to the Arweave per
 - Hash-based duplicate file detection
 - Support for all file types with appropriate icons
 - Real-time sync status monitoring
-- 100MB file size limit (temporary MVP restriction)
+- 2 GiB upload file size limit (beta restriction); no cap on downloads
 
 ### 💰 **Advanced Cost Control**
 - **Dual Balance Display**: Monitor both AR tokens and Turbo Credits
@@ -264,7 +264,7 @@ userData/
 ## 🚧 Current Limitations (MVP)
 
 - **Public Drives Only**: Private drives coming soon
-- **100MB File Limit**: Large file support planned
+- **2 GiB Upload Limit**: matches the ArDrive web app's upload ceiling; downloads are uncapped
 - **Manual Sync Control**: Auto-sync in development
 - **Basic Conflict Resolution**: Advanced merge planned
 

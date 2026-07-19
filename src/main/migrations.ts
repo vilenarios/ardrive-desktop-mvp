@@ -36,6 +36,11 @@
 //        indexes) — the standard SQLite "changing a CHECK" procedure. Lossless:
 //        the new allowed set is a strict superset of the old, and no pre-v7 row
 //        could ever have held 'failed' (the old CHECK rejected it).
+//   9  — index on processed_files.localPath (SYNC-10): the per-file-event
+//        dedup/edit-detection lookups in sync-manager.ts and DownloadManager.ts
+//        query processed_files by localPath (in addition to the already-indexed
+//        fileHash) once per sync/download event. Without this index that side
+//        of the lookup was a full-table scan.
 //
 // Rules for adding a migration:
 //   - NEVER edit an existing migration (databases in the wild have already
@@ -398,6 +403,14 @@ export const MIGRATIONS: readonly Migration[] = [
     // table rebuild).
     sql: `
           ALTER TABLE uploads ADD COLUMN errorReason TEXT;
+`,
+  },
+  {
+    version: 9,
+    description:
+      'index on processed_files.localPath (SYNC-10): per-file-event dedup/edit-detection lookups are indexed, not full-table scans',
+    sql: `
+          CREATE INDEX IF NOT EXISTS idx_processed_files_localpath ON processed_files(localPath);
 `,
   },
 ];

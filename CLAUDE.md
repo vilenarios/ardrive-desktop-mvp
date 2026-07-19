@@ -198,7 +198,7 @@ DEBUG=ardrive:*                              # Detailed logging
 
 ## Key Technical Decisions
 
-- **100MB file size limit** (MVP restriction), enforced in `sync-manager.ts`
+- **2 GiB upload file size limit** (D-014), enforced via `MAX_SYNC_FILE_SIZE_BYTES` in `sync/constants.ts` (single source of truth; `sync-manager.ts` and `CostCalculator.isFileTooBig` key off it); downloads have no cap
 - **Upload methods**: AR tokens (traditional Arweave) vs Turbo Credits (instant, fiat option); automatic recommendation by file size; files under 100KB are free with Turbo
 - **Upload approval queue**: uploads require explicit user approval for cost control
 - **Profile system**: complete isolation — separate encrypted wallet, SQLite database, config, and sync state per profile
@@ -210,7 +210,7 @@ DEBUG=ardrive:*                              # Detailed logging
 - **IPC handler errors**: ensure handler registered in main.ts AND exposed in preload.ts with matching namespace
 - **`Drive key not found`**: private drive not unlocked — use `drive:unlock` (see drive-key-manager.ts)
 - **`Wallet decryption failed`**: wrong password or corrupted wallet
-- **Sync issues**: check 100MB limit in sync-manager.ts, 3-second FileOperationDetector window, and drive_mappings in the profile database
+- **Sync issues**: check the 2 GiB upload limit (`MAX_SYNC_FILE_SIZE_BYTES` in `sync/constants.ts`), 3-second FileOperationDetector window, and drive_mappings in the profile database
 
 ## Documentation
 
