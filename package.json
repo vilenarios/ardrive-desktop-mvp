@@ -7,7 +7,7 @@
   "author": "ArDrive",
   "license": "MIT",
   "private": true,
-  "//ardrive-core-js": "Pinned to ardrive-core-js 4.1.0 (snapshot consumption + incremental sync + CORE-5/CORE-6 robustness) at git SHA 0e0c1a5b5b719c7f4ab6afd0d44f7eeb5a3fba4c on master. Switch to \"^4.1.0\" once the owner publishes 4.1.0 to npm.",
+  "//ardrive-core-js": "Pinned to ardrive-core-js 4.2.0 (4.1.0: snapshot consumption + incremental sync + CORE-5/6; 4.2.0 adds: GraphQL page size 100->1000 tunable, bounded fetch concurrency, gateway hang fix (bounded 429 + timeout), parallel folder downloads) at git SHA 37e8936de82b8a43a2c53850903bd4cd1ac7d0dc on master. Switch to \"^4.2.0\" once 4.2.0 is published to npm.",
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
     "dev:electron": "cross-env WEBPACK_DEV_SERVER=true electron .",
@@ -51,7 +51,7 @@
     "@types/crypto-js": "^4.2.2",
     "@types/hdkey": "^2.1.0",
     "arbundles": "^0.6.23",
-    "ardrive-core-js": "git+https://github.com/ardriveapp/ardrive-core-js.git#0e0c1a5b5b719c7f4ab6afd0d44f7eeb5a3fba4c",
+    "ardrive-core-js": "git+https://github.com/ardriveapp/ardrive-core-js.git#37e8936de82b8a43a2c53850903bd4cd1ac7d0dc",
     "arweave": "^1.14.4",
     "axios": "^1.9.0",
     "axios-retry": "^4.5.0",
