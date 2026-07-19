@@ -52,6 +52,20 @@ vi.mock('fs/promises', () => ({
   stat: vi.fn().mockResolvedValue({ size: 100, isFile: () => true, isDirectory: () => false }),
 }));
 
+// SYNC-10: sync-manager.ts now hashes via the real streaming utility
+// (fs.createReadStream), which would try to open the (non-existent, mocked)
+// test file path on the REAL filesystem. Hash the same mocked
+// `fs/promises.readFile` content the old inline `readFile + createHash` code
+// used to.
+vi.mock('@/main/sync/streaming-hash', () => ({
+  hashFileStream: vi.fn(async (filePath: string) => {
+    const fsp = await import('fs/promises');
+    const crypto = await import('crypto');
+    const content = await fsp.readFile(filePath);
+    return crypto.createHash('sha256').update(content as any).digest('hex');
+  }),
+}));
+
 import { SyncManager } from '@/main/sync-manager';
 import { createMockDatabaseManager } from '../../helpers/mock-database';
 import { createMockArDrive } from '../../helpers/mock-ardrive';

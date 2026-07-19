@@ -31,6 +31,24 @@ vi.mock('fs/promises', () => ({
   readFile: vi.fn(),
 }));
 
+// SYNC-10: FileOperationDetector.calculateFileHash now streams via the real
+// fs.createReadStream (the plain 'fs' module, unmocked here) — the retry-hash
+// verification inside detectByHash (a same-size hash miss re-reads the file)
+// and the fileHash-not-supplied fallback in onFileAdd both go through it. On
+// this virtual filesystem (statMap/contentMap, no real files on disk) that
+// would ENOENT. Route the shared streaming-hash utility through the SAME
+// mocked fs/promises.readFile (i.e. contentMap) the old inline
+// `readFile + createHash` code used to, so hash-dependent classification
+// (move via metadata fallback, etc.) still resolves correctly.
+vi.mock('@/main/sync/streaming-hash', () => ({
+  hashFileStream: vi.fn(async (filePath: string) => {
+    const fsp = await import('fs/promises');
+    const crypto = await import('crypto');
+    const content = await fsp.readFile(filePath);
+    return crypto.createHash('sha256').update(content as any).digest('hex');
+  }),
+}));
+
 const ARFS_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const DETECTION_WINDOW_MS = 3000;
 

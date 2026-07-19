@@ -2,6 +2,7 @@ import * as fs from 'fs/promises';
 import * as crypto from 'crypto';
 import * as path from 'path';
 import { DatabaseManager } from './database-manager';
+import { hashFileStream } from './sync/streaming-hash';
 
 export type ChangeType = 'create' | 'update' | 'rename' | 'move' | 'unchanged';
 
@@ -50,8 +51,9 @@ export class VersionManager {
 
   async calculateFileHash(filePath: string): Promise<string> {
     try {
-      const content = await fs.readFile(filePath);
-      return crypto.createHash('sha256').update(content).digest('hex');
+      // SYNC-10: streamed — flat memory regardless of file size (was a
+      // whole-file fs.readFile + hash, fatal at multi-GB sizes).
+      return await hashFileStream(filePath);
     } catch (error) {
       throw new Error(`Failed to calculate hash for ${filePath}: ${error}`);
     }

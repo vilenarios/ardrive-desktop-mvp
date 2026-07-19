@@ -89,7 +89,7 @@ export const AddExistingDriveModal: React.FC<AddExistingDriveModalProps> = ({
         isActive: false, // Not active by default when adding additional drives
         syncSettings: {
           syncDirection: 'bidirectional' as const,
-          maxFileSize: 100 * 1024 * 1024, // 100MB default
+          maxFileSize: 2 * 1024 * 1024 * 1024, // 2 GiB default (D-014; matches MAX_SYNC_FILE_SIZE_BYTES)
           uploadPriority: 0
         }
       };

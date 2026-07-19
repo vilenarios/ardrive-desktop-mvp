@@ -462,7 +462,7 @@ describe.skipIf(!DatabaseSync)('database migrations — real SQLite (INFRA-7)', 
     await (dm as any).runMigrations();
 
     expect(userVersion(engine)).toBe(CURRENT_SCHEMA_VERSION);
-    expect(CURRENT_SCHEMA_VERSION).toBe(8);
+    expect(CURRENT_SCHEMA_VERSION).toBe(9);
 
     // Lossless: all rows of all tables identical to the pre-migration dump —
     // including the integer booleans, NULLs, and the empty schema_version.
@@ -505,6 +505,33 @@ describe.skipIf(!DatabaseSync)('database migrations — real SQLite (INFRA-7)', 
     expect(errorRows[0].fileId).toBe('file-2');
     expect(errorRows[0].localFileExists).toBe(0); // still the raw integer — untouched
     expect(errorRows[0].lastError).toBe('Download failed: network error');
+
+    // SYNC-10 (v9): processed_files.localPath is indexed too — the per-event
+    // edit-detection/dedup lookups (getProcessedFilesByPath) must not fall
+    // back to a full-table scan.
+    const localPathIndex = engine
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_processed_files_localpath'")
+      .get();
+    expect(localPathIndex).toBeTruthy();
+    const localPathPlan = engine
+      .prepare('EXPLAIN QUERY PLAN SELECT * FROM processed_files WHERE localPath = ?')
+      .all('C:\\ARDRIVE\\report.pdf');
+    expect(JSON.stringify(localPathPlan)).toContain('idx_processed_files_localpath');
+    expect(JSON.stringify(localPathPlan)).not.toContain('SCAN');
+
+    // fileHash was already indexed pre-SYNC-10 (v3 baseline PRIMARY KEY +
+    // idx_processed_files_hash) — pin that the hash lookup ALSO uses an index.
+    const hashPlan = engine
+      .prepare('EXPLAIN QUERY PLAN SELECT * FROM processed_files WHERE fileHash = ?')
+      .all('abc123hash');
+    expect(JSON.stringify(hashPlan)).not.toContain('SCAN TABLE processed_files');
+
+    const dbHashMatches = await dm.getProcessedFilesByHash('abc123hash');
+    expect(dbHashMatches).toHaveLength(1);
+    expect(dbHashMatches[0].localPath).toBe('C:\\ARDRIVE\\report.pdf');
+    const dbPathMatches = await dm.getProcessedFilesByPath('C:\\ARDRIVE\\report.pdf');
+    expect(dbPathMatches).toHaveLength(1);
+    expect(dbPathMatches[0].fileHash).toBe('abc123hash');
   });
 
   it('stamps a fresh (empty) DB at the current version with the full schema', async () => {
@@ -585,7 +612,7 @@ describe.skipIf(!DatabaseSync)('database migrations — real SQLite (INFRA-7)', 
 
     const { dm } = managerOn(engine);
     await expect((dm as any).runMigrations()).rejects.toThrow(
-      /schema version 99.*only supports up to version 8/
+      /schema version 99.*only supports up to version 9/
     );
 
     expect(userVersion(engine)).toBe(99); // not downgraded
@@ -769,7 +796,7 @@ describe('initialize() wiring (capturing stub)', () => {
     const dm = managerWithStub(stub);
 
     await expect(dm.initialize()).rejects.toThrow(
-      /schema version 99.*only supports up to version 8.*update ArDrive Desktop/i
+      /schema version 99.*only supports up to version 9.*update ArDrive Desktop/i
     );
 
     expect(stub.execCalls).toEqual([]); // data never touched

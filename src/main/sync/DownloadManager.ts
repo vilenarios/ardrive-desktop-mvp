@@ -6,6 +6,7 @@ import { DatabaseManager } from '../database-manager';
 import { IFileStateManager, ISyncProgressTracker } from './interfaces';
 // FileHashVerifier no longer needed - we get hash from streaming download
 import { StreamingDownloader } from './StreamingDownloader';
+import { hashFileStream } from './streaming-hash';
 import { BrowserWindow } from 'electron';
 import { driveKeyManager } from '../drive-key-manager';
 import { runWithGatewayFailover } from './gateway-failover';
@@ -922,21 +923,23 @@ export class DownloadManager {
     
     // Atomic-ish move into place
     await fs.rename(tempPath, localFilePath);
-    
-    const plaintext = await fs.readFile(localFilePath);
-    const hash = crypto.createHash('sha256').update(plaintext).digest('hex');
-    
+
+    // SYNC-10: streamed — flat memory regardless of file size (was a
+    // whole-file fs.readFile + hash, fatal at multi-GB private files).
+    const hash = await hashFileStream(localFilePath);
+    const stats = await fs.stat(localFilePath);
+
     this.progressTracker.emitDownloadProgress({
       downloadId,
       fileName: fileData.name,
       progress: 100,
-      bytesDownloaded: plaintext.length,
-      totalBytes: plaintext.length,
+      bytesDownloaded: stats.size,
+      totalBytes: stats.size,
       speed: 0,
       remainingTime: 0
     });
-    
-    console.log(`✓ Private file decrypted to plaintext: ${fileData.name} (${plaintext.length} bytes)`);
+
+    console.log(`✓ Private file decrypted to plaintext: ${fileData.name} (${stats.size} bytes)`);
     return hash;
   }
 
@@ -1063,11 +1066,12 @@ export class DownloadManager {
           await this.databaseManager.removeProcessedFile(placeholderHash);
           console.log(`Removed placeholder hash: ${placeholderHash}`);
           
-          // Also remove any other placeholder entries for this file (in case of retries)
-          const processedFiles = await this.databaseManager.getProcessedFiles();
-          const otherPlaceholders = processedFiles.filter(f => 
-            f.fileHash.startsWith(`downloading-${fileData.fileId}-`) && 
-            f.localPath === localFilePath &&
+          // Also remove any other placeholder entries for this file (in case of
+          // retries). SYNC-10: indexed lookup by localPath instead of a
+          // getProcessedFiles() full-table scan.
+          const candidates = await this.databaseManager.getProcessedFilesByPath(localFilePath);
+          const otherPlaceholders = candidates.filter(f =>
+            f.fileHash.startsWith(`downloading-${fileData.fileId}-`) &&
             f.fileHash !== placeholderHash
           );
           

@@ -31,6 +31,19 @@ export class MockDatabaseManager {
   public updateDownload = vi.fn();
   public cancelDownload = vi.fn();
   public getProcessedFiles = vi.fn();
+  // SYNC-10: indexed lookups added alongside getProcessedFiles(). Derived from
+  // whatever getProcessedFiles() is configured to resolve for a given test —
+  // this makes them behave exactly like the pre-SYNC-10 "fetch all, filter in
+  // JS" code these replaced, so existing tests that only set up
+  // getProcessedFiles.mockResolvedValue([...]) keep working unchanged.
+  public getProcessedFilesByHash = vi.fn(async (fileHash: string) => {
+    const all = (await this.getProcessedFiles()) ?? [];
+    return all.filter((f: any) => f.fileHash === fileHash);
+  });
+  public getProcessedFilesByPath = vi.fn(async (localPath: string) => {
+    const all = (await this.getProcessedFiles()) ?? [];
+    return all.filter((f: any) => f.localPath === localPath);
+  });
   public addProcessedFile = vi.fn();
   public removeProcessedFile = vi.fn();
   public getLatestFileVersion = vi.fn();

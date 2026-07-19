@@ -6,6 +6,17 @@ import { profileManager } from './profile-manager';
 import { MIGRATIONS, CURRENT_SCHEMA_VERSION, Migration } from './migrations';
 import * as crypto from 'crypto';
 
+/** Row shape returned by getProcessedFiles/getProcessedFilesByHash/getProcessedFilesByPath. */
+interface ProcessedFileRow {
+  fileHash: string;
+  fileName: string;
+  fileSize: number;
+  localPath: string;
+  source: 'download' | 'upload';
+  arweaveId?: string;
+  processedAt: Date;
+}
+
 export class DatabaseManager {
   private db: sqlite3.Database | null = null;
   private currentProfileId: string | null = null;
@@ -596,18 +607,10 @@ export class DatabaseManager {
     });
   }
 
-  async getProcessedFiles(): Promise<Array<{
-    fileHash: string;
-    fileName: string;
-    fileSize: number;
-    localPath: string;
-    source: 'download' | 'upload';
-    arweaveId?: string;
-    processedAt: Date;
-  }>> {
+  async getProcessedFiles(): Promise<Array<ProcessedFileRow>> {
     return new Promise((resolve, reject) => {
       const sql = `SELECT * FROM processed_files ORDER BY processedAt DESC`;
-      
+
       this.db!.all(sql, (err, rows: any[]) => {
         if (err) {
           reject(err);
@@ -617,6 +620,41 @@ export class DatabaseManager {
             processedAt: new Date(row.processedAt)
           }));
           resolve(files);
+        }
+      });
+    });
+  }
+
+  // SYNC-10: indexed single-row-shaped lookups for the per-file-event dedup
+  // checks in sync-manager.ts/DownloadManager.ts. Both `fileHash` (PRIMARY KEY
+  // leftmost column + idx_processed_files_hash) and `localPath`
+  // (idx_processed_files_localpath, migration v9) are indexed, so these never
+  // fall back to a full-table scan the way `getProcessedFiles()` +
+  // JS-side filtering did. Do NOT use these where the full list is genuinely
+  // needed (e.g. a UI listing) — `getProcessedFiles()` stays for that.
+  async getProcessedFilesByHash(fileHash: string): Promise<Array<ProcessedFileRow>> {
+    return new Promise((resolve, reject) => {
+      const sql = `SELECT * FROM processed_files WHERE fileHash = ?`;
+
+      this.db!.all(sql, [fileHash], (err, rows: any[]) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows.map(row => ({ ...row, processedAt: new Date(row.processedAt) })));
+        }
+      });
+    });
+  }
+
+  async getProcessedFilesByPath(localPath: string): Promise<Array<ProcessedFileRow>> {
+    return new Promise((resolve, reject) => {
+      const sql = `SELECT * FROM processed_files WHERE localPath = ?`;
+
+      this.db!.all(sql, [localPath], (err, rows: any[]) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows.map(row => ({ ...row, processedAt: new Date(row.processedAt) })));
         }
       });
     });

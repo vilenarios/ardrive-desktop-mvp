@@ -48,6 +48,19 @@ vi.mock('fs/promises', () => ({
   readdir: vi.fn().mockResolvedValue([]),
 }));
 
+// SYNC-10: downloadPrivateFileDecrypted now hashes via the real streaming
+// utility (fs.createReadStream), which would try to open the (non-existent,
+// mocked) test file path on the REAL filesystem. Hash the same mocked
+// `fs/promises.readFile` content the old inline `readFile + createHash` code
+// used to, so PLAINTEXT_SHA256 below still matches.
+vi.mock('../../../src/main/sync/streaming-hash', () => ({
+  hashFileStream: vi.fn(async (filePath: string) => {
+    const fsp = await import('fs/promises');
+    const content = await fsp.readFile(filePath);
+    return crypto.createHash('sha256').update(content as any).digest('hex');
+  }),
+}));
+
 const DRIVE_ID = '11111111-1111-4111-8111-111111111111';
 const ROOT_FOLDER_ID = '22222222-2222-4222-8222-222222222222';
 const FILE_ID = '33333333-3333-4333-8333-333333333333';
