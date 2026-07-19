@@ -103,7 +103,9 @@ describe('Settings — Gateway host (INFO-3)', () => {
     mockElectronAPI.config.setGateway.mockResolvedValue({ success: true, data: undefined });
 
     render(<Settings {...defaultProps} config={{ syncFolder: '/sync/folder', gatewayHost: 'my-gateway.example' } as any} />);
-    fireEvent.click(screen.getByText('Reset to Default'));
+    // CORE-10 added a second "Reset to Default" button (GraphQL Page Size,
+    // rendered after Gateway) — this section's button is the first one.
+    fireEvent.click(screen.getAllByText('Reset to Default')[0]);
 
     await waitFor(() => {
       expect(mockElectronAPI.config.setGateway).toHaveBeenCalledWith('turbo-gateway.com');
@@ -113,6 +115,8 @@ describe('Settings — Gateway host (INFO-3)', () => {
 
   it('disables "Reset to Default" once the field already reads the default host', () => {
     render(<Settings {...defaultProps} config={{ syncFolder: '/sync/folder', gatewayHost: 'turbo-gateway.com' } as any} />);
-    expect(screen.getByText('Reset to Default')).toBeDisabled();
+    // CORE-10 added a second "Reset to Default" button (GraphQL Page Size) —
+    // the Gateway section's button is the first one.
+    expect(screen.getAllByText('Reset to Default')[0]).toBeDisabled();
   });
 });

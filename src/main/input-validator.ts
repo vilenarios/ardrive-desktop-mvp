@@ -321,6 +321,18 @@ export class InputValidator {
   }
 
   /**
+   * CORE-10: validates the GraphQL page size (`config:set-gql-page-size`) —
+   * the `first:` argument ardrive-core-js uses per paged GraphQL request.
+   * Must be a positive integer no larger than the ar.io gateway max (1000);
+   * core-js's own setGqlPageSize throws RangeError above that, so this
+   * rejects it at the IPC boundary with a clear D-005 error instead of
+   * letting that exception surface from a deeper call.
+   */
+  static validateGqlPageSize(value: any, fieldName: string = 'gqlPageSize'): number {
+    return this.validatePositiveNumber(value, fieldName, { min: 1, max: 1000, integer: true });
+  }
+
+  /**
    * Validates a positive number
    */
   static validatePositiveNumber(

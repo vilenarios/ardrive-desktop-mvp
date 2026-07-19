@@ -26,6 +26,7 @@ import { arnsService } from './arns-service';
 import { profileManager } from './profile-manager';
 import InputValidator, { ValidationError } from './input-validator';
 import { driveKeyManager } from './drive-key-manager';
+import { applyConfiguredGqlPageSize, DEFAULT_GQL_PAGE_SIZE } from './gql-page-size';
 import { readDevEnv } from './utils/dev-env';
 import { applySyncFolderChange } from './utils/sync-folder-change';
 import { isRetryAllowed } from './utils/upload-retry-guard';
@@ -171,7 +172,13 @@ class ArDriveApp {
     await databaseManager.initialize();
     await configManager.initialize();
     await profileManager.initialize();
-    
+
+    // CORE-10: apply the configured GraphQL page size to ardrive-core-js
+    // before anything else can issue a GraphQL request (restoreSyncState
+    // below may auto-start sync). Guarded internally — a bad stored value
+    // falls back to the default rather than throwing.
+    applyConfiguredGqlPageSize();
+
     // Try to restore sync state on startup
     await this.restoreSyncState();
     
@@ -2833,6 +2840,23 @@ class ArDriveApp {
     ipcMain.handle('config:set-gateway-fallbacks', envelopeHandler(async (_, hosts: unknown) => {
       const validated = InputValidator.validateGatewayHosts(hosts);
       await configManager.setGatewayFallbacks(validated);
+    }));
+
+    // CORE-10: the GraphQL page size ardrive-core-js uses for every paged
+    // GraphQL request (defaults to 1000, the ar.io gateway max). Lets a user
+    // whose configured gateway caps `first:` below 1000 (e.g. Goldsky) avoid
+    // gateway-rejected page requests. InputValidator clamps to a positive
+    // integer <=1000; applyConfiguredGqlPageSize additionally guards against
+    // core-js's own RangeError so a bad value can never crash the running
+    // app either.
+    ipcMain.handle('config:get-gql-page-size', envelopeHandler(async () => {
+      return configManager.getConfiguredGqlPageSize() ?? DEFAULT_GQL_PAGE_SIZE;
+    }));
+
+    ipcMain.handle('config:set-gql-page-size', envelopeHandler(async (_, pageSize: unknown) => {
+      const validated = InputValidator.validateGqlPageSize(pageSize);
+      await configManager.setConfiguredGqlPageSize(validated);
+      return applyConfiguredGqlPageSize();
     }));
 
     // UX-29: native desktop notifications opt-out (device/app-level global

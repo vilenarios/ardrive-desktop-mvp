@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, FolderOpen, Key, Info, ExternalLink, Globe, ShieldCheck, Bell } from 'lucide-react';
+import { X, FolderOpen, Key, Info, ExternalLink, Globe, ShieldCheck, Bell, Database } from 'lucide-react';
 import { AppConfig } from '../../types';
 import { InfoButton } from './common/InfoButton';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -29,6 +29,11 @@ interface SettingsProps {
 // true (and pair with the UX-6 auto-unlock work) to re-enable post-beta.
 const REMEMBER_ME_ENABLED = false;
 
+// CORE-10: mirrors src/main/gql-page-size.ts's DEFAULT_GQL_PAGE_SIZE — the
+// main process is the single source of truth for the applied default (the
+// ar.io gateway max); this is just the renderer's display/reset value.
+const DEFAULT_GQL_PAGE_SIZE = 1000;
+
 const Settings: React.FC<SettingsProps> = ({
   isOpen,
   onClose,
@@ -47,6 +52,15 @@ const Settings: React.FC<SettingsProps> = ({
   const [isSavingGateway, setIsSavingGateway] = useState(false);
   const [gatewayError, setGatewayError] = useState<string | null>(null);
   const [gatewaySaved, setGatewaySaved] = useState(false);
+
+  // CORE-10: GraphQL page size field. Seeded from `config`, then re-resolved
+  // from main on open (config:get-gql-page-size) — same pattern as the
+  // notifications toggle below — since `config.gqlPageSize` may be undefined
+  // (main's default is 1000, the ar.io gateway max).
+  const [gqlPageSize, setGqlPageSize] = useState(String(config.gqlPageSize ?? DEFAULT_GQL_PAGE_SIZE));
+  const [isSavingGqlPageSize, setIsSavingGqlPageSize] = useState(false);
+  const [gqlPageSizeError, setGqlPageSizeError] = useState<string | null>(null);
+  const [gqlPageSizeSaved, setGqlPageSizeSaved] = useState(false);
 
   // SEC-4: "remember me on this device" (OS keychain) consent. `null` = still
   // resolving whether a secure keychain is even available on this device.
@@ -118,6 +132,25 @@ const Settings: React.FC<SettingsProps> = ({
         if (cancelled) return;
         if (res.success) {
           setNotificationsEnabled(res.data === true);
+        }
+      } catch (error) {
+        // Keep the seeded value on failure — non-critical setting.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen]);
+
+  // CORE-10: resolve the authoritative GraphQL page size from main whenever
+  // the modal opens (config.gqlPageSize is only the seed).
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await window.electronAPI.config.getGqlPageSize();
+        if (cancelled) return;
+        if (res.success && typeof res.data === 'number') {
+          setGqlPageSize(String(res.data));
         }
       } catch (error) {
         // Keep the seeded value on failure — non-critical setting.
@@ -222,6 +255,39 @@ const Settings: React.FC<SettingsProps> = ({
 
   const handleSaveGateway = () => saveGateway(gatewayHost);
   const handleResetGateway = () => saveGateway(DEFAULT_GATEWAY_HOST);
+
+  // CORE-10: config:set-gql-page-size + config.setGqlPageSize (preload.ts)
+  // validate (InputValidator.validateGqlPageSize) + persist, then re-apply to
+  // ardrive-core-js — mirrors the gateway host field's pattern above.
+  const saveGqlPageSize = async (valueToSave: string) => {
+    const trimmed = valueToSave.trim();
+    const parsed = Number(trimmed);
+    if (trimmed === '' || !Number.isInteger(parsed) || parsed < 1 || parsed > 1000) {
+      setGqlPageSizeError('Enter a whole number between 1 and 1000.');
+      return;
+    }
+    try {
+      setIsSavingGqlPageSize(true);
+      setGqlPageSizeError(null);
+      setGqlPageSizeSaved(false);
+      const result = await window.electronAPI.config.setGqlPageSize(parsed);
+      if (!result.success) {
+        setGqlPageSizeError(result.error || "That doesn't look like a valid page size.");
+        return;
+      }
+      setGqlPageSize(String(parsed));
+      setGqlPageSizeSaved(true);
+      setTimeout(() => setGqlPageSizeSaved(false), 2500);
+    } catch (error) {
+      console.error('Failed to save GraphQL page size:', error);
+      setGqlPageSizeError('Failed to save GraphQL page size. Please try again.');
+    } finally {
+      setIsSavingGqlPageSize(false);
+    }
+  };
+
+  const handleSaveGqlPageSize = () => saveGqlPageSize(gqlPageSize);
+  const handleResetGqlPageSize = () => saveGqlPageSize(String(DEFAULT_GQL_PAGE_SIZE));
 
   const handleExportAccount = () => {
     onShowWalletExport();
@@ -342,6 +408,70 @@ const Settings: React.FC<SettingsProps> = ({
                     className="settings-button-secondary"
                     onClick={handleResetGateway}
                     disabled={isSavingGateway || gatewayHost.trim() === DEFAULT_GATEWAY_HOST}
+                  >
+                    Reset to Default
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* GraphQL Page Size Section — CORE-10: core-js 4.2.0 added a
+              tunable GraphQL page size (setGqlPageSize/getGqlPageSize,
+              default 1000 = the ar.io gateway max); some gateways (e.g.
+              Goldsky) reject page requests that large, so expose the knob
+              here instead of hardcoding it. Reuses the Gateway field's
+              stacked layout classes (settings-gateway-content/-actions). */}
+          <div className="settings-section">
+            <div className="settings-item">
+              <div className="settings-item-header">
+                <Database size={20} className="settings-icon" />
+                <div className="settings-item-info">
+                  <div className="settings-item-title-row">
+                    <h3>GraphQL Page Size</h3>
+                    <InfoButton tooltip="Advanced — the number of items fetched per GraphQL request. Leave at 1000 (the ar.io gateway maximum) unless your gateway rejects large page requests; then lower it (e.g. 100)." />
+                  </div>
+                  <p>Advanced: items fetched per GraphQL request</p>
+                </div>
+              </div>
+              <div className="settings-item-content settings-gateway-content">
+                <label htmlFor="settings-gql-page-size-input" className="settings-input-label">
+                  Page size
+                </label>
+                <input
+                  id="settings-gql-page-size-input"
+                  type="number"
+                  min={1}
+                  max={1000}
+                  step={1}
+                  className={`settings-input${gqlPageSizeError ? ' invalid' : ''}`}
+                  value={gqlPageSize}
+                  onChange={(e) => {
+                    setGqlPageSize(e.target.value);
+                    setGqlPageSizeError(null);
+                    setGqlPageSizeSaved(false);
+                  }}
+                  placeholder={String(DEFAULT_GQL_PAGE_SIZE)}
+                  disabled={isSavingGqlPageSize}
+                />
+                {gqlPageSizeError && (
+                  <div className="settings-field-error">{gqlPageSizeError}</div>
+                )}
+                {gqlPageSizeSaved && !gqlPageSizeError && (
+                  <div className="settings-field-success">GraphQL page size saved.</div>
+                )}
+                <div className="settings-gateway-actions">
+                  <button
+                    className="settings-button"
+                    onClick={handleSaveGqlPageSize}
+                    disabled={isSavingGqlPageSize}
+                  >
+                    {isSavingGqlPageSize ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    className="settings-button-secondary"
+                    onClick={handleResetGqlPageSize}
+                    disabled={isSavingGqlPageSize || gqlPageSize.trim() === String(DEFAULT_GQL_PAGE_SIZE)}
                   >
                     Reset to Default
                   </button>

@@ -170,6 +170,11 @@ vi.mock('../../../src/main/drive-key-manager', () => ({
   driveKeyManager: { getPrivateKeyData: vi.fn().mockResolvedValue(null) },
 }));
 vi.mock('dotenv', () => ({ default: { config: vi.fn() }, config: vi.fn() }));
+// CORE-10: main.ts now applies the configured GraphQL page size to
+// ardrive-core-js at init (src/main/gql-page-size.ts) — mock the whole
+// package so importing the real main.ts here stays fast/deterministic (this
+// suite doesn't exercise anything GraphQL-related).
+vi.mock('ardrive-core-js', () => ({ setGqlPageSize: vi.fn() }));
 
 const CHECKOUT_URL = 'https://checkout.stripe.com/c/pay/cs_test_a1b2c3';
 const SUCCESS_URL = 'https://app.ardrive.io';

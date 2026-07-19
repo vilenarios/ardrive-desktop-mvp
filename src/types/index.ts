@@ -48,6 +48,15 @@ export interface AppConfig {
    * existed keep their current auto-start behavior.
    */
   autoSyncEnabled?: boolean;
+  /**
+   * CORE-10: the GraphQL page size (`first:` argument) ardrive-core-js uses
+   * for every paged GraphQL walk (transaction listing, incremental sync,
+   * snapshot listing). Device/app-level global config, like `gatewayHost` —
+   * applies before any profile is active. Unset → defaults to 1000 (the
+   * ar.io gateway max; see src/main/gql-page-size.ts). Lower it if the
+   * configured gateway rejects large page requests (e.g. Goldsky).
+   */
+  gqlPageSize?: number;
 }
 
 /**
